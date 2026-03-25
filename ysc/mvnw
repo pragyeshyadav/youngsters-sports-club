@@ -1,0 +1,11 @@
+#!/bin/sh
+# -----------------------------------------------------------------------------
+# Apache Maven Wrapper startup script (POSIX)
+# -----------------------------------------------------------------------------
+set -eu
+MAVEN_PROJECTBASEDIR="${MAVEN_PROJECTBASEDIR:-$(cd "$(dirname "$0")" && pwd)}"
+export MAVEN_PROJECTBASEDIR
+WRAPPER_JAR="$MAVEN_PROJECTBASEDIR/.mvn/wrapper/maven-wrapper.jar"
+exec java -classpath "$WRAPPER_JAR" \
+  "-Dmaven.multiModuleProjectDirectory=${MAVEN_PROJECTBASEDIR}" \
+  org.apache.maven.wrapper.MavenWrapperMain "$@"
