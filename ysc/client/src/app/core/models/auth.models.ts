@@ -7,14 +7,6 @@ export interface GoogleIdTokenClaims {
   email_verified?: boolean;
 }
 
-/** Response from Spring Boot POST /api/auth/google (mocked in dev). */
-export interface GoogleAuthApiResponse {
-  accessToken: string;
-  refreshToken?: string;
-  expiresIn?: number;
-  tokenType?: string;
-}
-
 /** Normalized signed-in user for UI and guards. */
 export interface AuthUser {
   id: string;
