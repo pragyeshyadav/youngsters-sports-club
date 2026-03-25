@@ -1,0 +1,25 @@
+<header class="app-header">
+  <div class="header">
+    <a routerLink="/dashboard" class="brand-container-link" aria-label="Home — Dashboard">
+      <div class="brand-container">
+        <img src="/images/logo.png" alt="Youngsters Sports Club, Satna" class="logo-circle logo-sm" />
+        <div class="brand-name">
+          <span class="white">Youngsters</span><span class="yellow"> Sports Club</span><span class="grey"> &amp; Cafe</span>
+        </div>
+      </div>
+    </a>
+
+    <div class="user-section">
+      @if (user$ | async; as user) {
+        <div class="user-block">
+          <img [src]="user.profileImageUrl" width="40" height="40" alt="" class="thumb" />
+          <div class="meta">
+            <span class="name">{{ user.name }}</span>
+            <span class="email">{{ user.email }}</span>
+          </div>
+          <button type="button" class="logout" (click)="logout()">Log out</button>
+        </div>
+      }
+    </div>
+  </div>
+</header>

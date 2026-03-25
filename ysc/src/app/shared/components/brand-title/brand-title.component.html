@@ -1,0 +1,20 @@
+@switch (size) {
+  @case ('large') {
+    <h1 class="brand-title brand-title--large">
+      <span class="brand-title__youngsters">Youngsters</span><span class="brand-title__sports"> Sports Club</span><span class="brand-title__cafe"> &amp; Cafe</span>
+    </h1>
+  }
+  @case ('medium') {
+    <h2 class="brand-title brand-title--medium">
+      <span class="brand-title__youngsters">Youngsters</span><span class="brand-title__sports"> Sports Club</span><span class="brand-title__cafe"> &amp; Cafe</span>
+    </h2>
+  }
+  @case ('small') {
+    <div
+      class="brand-title brand-title--small"
+      aria-label="Youngsters Sports Club and Cafe"
+    >
+      <span class="brand-title__youngsters">Youngsters</span><span class="brand-title__sports"> Sports Club</span><span class="brand-title__cafe"> &amp; Cafe</span>
+    </div>
+  }
+}
