@@ -1,9 +1,0 @@
-:host {
-  display: block;
-  flex-shrink: 0;
-}
-
-:host-context(.brand) {
-  display: flex;
-  justify-content: center;
-}
