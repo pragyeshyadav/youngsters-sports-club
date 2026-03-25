@@ -1,0 +1,162 @@
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(180, 83, 9, 0.2);
+  box-shadow: 0 1px 0 rgba(212, 175, 55, 0.15);
+}
+
+.header {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 10px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand-container-link {
+  flex-shrink: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 8px;
+  outline-offset: 2px;
+
+  &:focus-visible {
+    outline: 2px solid #b45309;
+  }
+}
+
+.brand-container {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(90deg, #0b3d2e, #14532d);
+  padding: 8px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.brand-container .logo-circle {
+  margin-right: 10px;
+}
+
+.brand-name {
+  font-family: 'Anton', sans-serif;
+  font-size: 20px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  line-height: 1.15;
+}
+
+.white {
+  color: #ffffff;
+}
+
+.yellow {
+  color: #ffd700;
+}
+
+.grey {
+  color: #d3d3d3;
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  flex: 1;
+}
+
+.user-block {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.thumb {
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(212, 175, 55, 0.45);
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  text-align: right;
+
+  @media (max-width: 640px) {
+    display: none;
+  }
+}
+
+.name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.email {
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logout {
+  flex-shrink: 0;
+  cursor: pointer;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #7f1d1d;
+  background: rgba(185, 28, 28, 0.12);
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+
+  &:hover {
+    background: rgba(185, 28, 28, 0.2);
+    color: #450a0a;
+  }
+}
+
+@media (max-width: 720px) {
+  .brand-name {
+    font-size: 16px;
+    letter-spacing: 0.75px;
+  }
+
+  .brand-container .logo-circle {
+    margin-right: 8px;
+  }
+
+  .brand-container {
+    padding: 6px 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 8px 12px;
+    gap: 0.5rem;
+  }
+
+  .brand-name {
+    font-size: 13px;
+    letter-spacing: 0.4px;
+    max-width: 11rem;
+  }
+}

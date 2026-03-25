@@ -1,0 +1,31 @@
+<div class="login-page">
+  <div class="login-card">
+    <div class="brand">
+      <app-club-logo size="lg" />
+      <div class="brand-title-banner">
+        <app-brand-title size="large" />
+      </div>
+      <p class="tagline">Satna · Sign in to access your dashboard</p>
+    </div>
+
+    @if (isAuthenticated$ | async) {
+      <p class="hint">You are signed in. <a routerLink="/dashboard">Go to dashboard</a></p>
+    } @else {
+      @if (googleClientConfigInvalid) {
+        <p class="login-error" role="alert">
+          Google login configuration error. Please contact admin.
+        </p>
+      } @else if (googleInitFailed || googleLoginError) {
+        <p class="login-error" role="alert">
+          Google login configuration error. Please try again later.
+        </p>
+      }
+      @if (!googleClientConfigInvalid) {
+        <div class="google-wrap">
+          <div id="google-btn"></div>
+        </div>
+        <p class="fine-print">Sign in with your Google account. Session is stored on this device only.</p>
+      }
+    }
+  </div>
+</div>
