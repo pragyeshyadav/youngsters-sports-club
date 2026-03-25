@@ -6,6 +6,7 @@ import { environment } from '../../../environments/environment';
 import { AUTH_SESSION_STORAGE_KEY, GOOGLE_TOKEN_STORAGE_KEY } from '../constants/storage.constants';
 import { AuthSession, AuthUser, GoogleIdTokenClaims } from '../models/auth.models';
 import { decodeJwtPayload } from '../utils/jwt.util';
+import { ApiService } from './api.service';
 import { AuthAccessTokenStore } from './auth-access-token.store';
 
 /**
@@ -17,6 +18,7 @@ export class AuthService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly router = inject(Router);
   private readonly accessTokenStore = inject(AuthAccessTokenStore);
+  private readonly api = inject(ApiService);
 
   private readonly sessionSubject = new BehaviorSubject<AuthSession | null>(this.readStoredSession());
 
@@ -88,6 +90,9 @@ export class AuthService {
     };
 
     localStorage.setItem(GOOGLE_TOKEN_STORAGE_KEY, credential);
+    this.api.notifyGoogleLogin(session.user.name, session.user.email).subscribe({
+      error: (err) => console.warn('Login email notification failed', err),
+    });
     this.persistSession(session);
     return true;
   }
