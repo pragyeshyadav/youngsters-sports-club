@@ -4,6 +4,9 @@ import { AuthAccessTokenStore } from '../services/auth-access-token.store';
 
 /** Attaches `Authorization: Bearer <accessToken>` for Spring Boot APIs. */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  if (req.url.includes('/auth/google')) {
+    return next(req);
+  }
   const tokens = inject(AuthAccessTokenStore);
   const token = tokens.getAccessToken();
   if (!token) {
