@@ -3,6 +3,7 @@
  * Console → Authorized JavaScript origins must include window.location.origin (e.g. http://localhost:8080).
  */
 import { AsyncPipe, isPlatformBrowser } from '@angular/common';
+import { HttpClient } from '@angular/common/http';
 import {
   AfterViewInit,
   ChangeDetectorRef,
@@ -11,7 +12,7 @@ import {
   PLATFORM_ID,
   inject,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Observable } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import type { GoogleCredentialResponse } from '../../../../types/google-identity';
@@ -45,6 +46,8 @@ export class LoginComponent implements AfterViewInit {
   private readonly ngZone = inject(NgZone);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly platformId = inject(PLATFORM_ID);
+  private readonly http = inject(HttpClient);
+  private readonly router = inject(Router);
 
   readonly isAuthenticated$: Observable<boolean> = this.auth.isAuthenticated$;
 
@@ -82,18 +85,48 @@ export class LoginComponent implements AfterViewInit {
     }
   }
 
-  handleCredentialResponse(response: GoogleCredentialResponse): void {
+  parseJwt(token: string): any {
+    try {
+      return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  handleCredentialResponse(response: any): void {
     this.ngZone.run(() => {
       if (!response?.credential) {
         this.googleLoginError = true;
         this.cdr.markForCheck();
         return;
       }
-      const ok = this.auth.loginWithGoogleCredential(response.credential);
-      if (!ok) {
+      
+      const user = this.parseJwt(response.credential);
+      if (!user) {
         this.googleLoginError = true;
         this.cdr.markForCheck();
+        return;
       }
+
+      const payload = {
+        name: user.name,
+        email: user.email,
+        googleId: user.sub,
+        profilePic: user.picture
+      };
+
+      this.http.post('/api/auth/google-login', payload, { responseType: 'text' })
+        .subscribe(() => {
+          this.ngZone.run(() => {
+            this.auth.loginWithGoogleCredential(response.credential);
+            this.router.navigate(['/dashboard']).then(success => {
+              if (!success) {
+                console.error('Navigation to dashboard failed!');
+                window.location.href = '/dashboard';
+              }
+            });
+          });
+        });
     });
   }
 

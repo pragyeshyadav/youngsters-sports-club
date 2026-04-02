@@ -1,6 +1,8 @@
 package com.youngstersclub.app.api;
 
 import com.youngstersclub.app.mail.EmailService;
+import com.youngstersclub.app.dto.UserLoginRequest;
+import com.youngstersclub.app.service.UserService;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,9 +15,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
   private final EmailService emailService;
+  private final UserService userService;
 
-  public AuthController(EmailService emailService) {
+  public AuthController(EmailService emailService, UserService userService) {
     this.emailService = emailService;
+    this.userService = userService;
   }
 
   @PostMapping("/google")
@@ -26,5 +30,11 @@ public class AuthController {
       emailService.sendLoginNotification(name, email);
     }
     return ResponseEntity.ok(Map.of("status", "ok"));
+  }
+
+  @PostMapping("/google-login")
+  public ResponseEntity<String> login(@RequestBody UserLoginRequest request) {
+    String message = userService.handleGoogleLogin(request);
+    return ResponseEntity.ok(message);
   }
 }
