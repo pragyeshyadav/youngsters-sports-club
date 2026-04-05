@@ -22,5 +22,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/snooker-frame/snooker-frame.component').then((m) => m.SnookerFrameComponent),
   },
+  {
+    path: 'start-frame',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/start-frame/start-frame.component').then((m) => m.StartFrameComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];

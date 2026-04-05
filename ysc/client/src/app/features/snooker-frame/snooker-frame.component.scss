@@ -34,12 +34,8 @@
   background-color: white;
 
   &:hover {
-    border-color: #cbd5e1;
-    transform: translateY(-2px);
-  }
-
-  &.selected {
     border-color: #2c7a7b;
+    transform: translateY(-2px);
     background-color: #f0fdfa;
     box-shadow: 0 4px 12px rgba(44, 122, 123, 0.2);
   }
@@ -60,28 +56,165 @@
   font-style: italic;
 }
 
-.selected-action {
-  margin-top: 2rem;
-  padding-top: 2rem;
-  border-top: 1px solid #e2e8f0;
+.active-frame {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem;
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.08),
+    inset 0 0 0 1px rgba(20, 83, 45, 0.08);
+}
 
-  h3 {
+.active-frame__table {
+  margin: 0 0 0.35rem;
+  color: #14532d;
+  font-size: 1.5rem;
+}
+
+.active-frame__meta {
+  margin: 0 0 1.5rem;
+  color: #64748b;
+}
+
+.players-card {
+  padding: 1.25rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  margin-bottom: 1.5rem;
+
+  h4 {
+    margin: 0 0 1rem;
     color: #0f172a;
-    margin-bottom: 1rem;
   }
 }
 
-.confirm-btn {
-  padding: 12px 30px;
-  background-color: #14532d;
+.players-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.player-chip {
+  padding: 0.7rem 1rem;
+  border-radius: 999px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.end-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
   color: white;
   border: none;
-  border-radius: 4px;
-  font-size: 1.1rem;
+  border-radius: 0.95rem;
+  padding: 1rem 1.2rem;
+  font-size: 1.05rem;
+  font-weight: 700;
   cursor: pointer;
-  font-weight: bold;
+  box-shadow: 0 12px 24px rgba(185, 28, 28, 0.22);
 
   &:hover {
-    background-color: #0f3d20;
+    background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%);
   }
+}
+
+.bill-summary {
+  max-width: 520px;
+  margin: 0 auto 1.75rem;
+  padding: 1.5rem;
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 18px 40px rgba(15, 23, 42, 0.08),
+    inset 0 0 0 1px rgba(20, 83, 45, 0.08);
+
+  h2 {
+    margin: 0 0 0.75rem;
+    color: #14532d;
+  }
+
+  p {
+    margin: 0.35rem 0;
+    color: #334155;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.modal {
+  width: min(420px, 100%);
+  background: white;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.22);
+  text-align: left;
+
+  h3 {
+    margin: 0 0 1rem;
+    color: #14532d;
+    text-align: center;
+  }
+
+  label {
+    display: block;
+    margin: 0.85rem 0 0.4rem;
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  select {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.85rem;
+    font-size: 1rem;
+    background: white;
+  }
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.confirm-btn,
+.cancel-btn {
+  flex: 1;
+  border: none;
+  border-radius: 0.85rem;
+  padding: 0.9rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.confirm-btn {
+  background: #14532d;
+  color: white;
+
+  &:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+  }
+}
+
+.cancel-btn {
+  background: rgba(148, 163, 184, 0.18);
+  color: #334155;
 }
