@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -24,6 +25,16 @@ public class UserController {
         return userRepository.findByEmail(email)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/api/users/search")
+    public List<User> searchUsers(@RequestParam String query) {
+        String normalizedQuery = query == null ? "" : query.trim();
+        if (normalizedQuery.isEmpty()) {
+            return List.of();
+        }
+
+        return userRepository.findTop10ByNameContainingIgnoreCaseOrderByNameAsc(normalizedQuery);
     }
 
     @PostMapping("/api/user/phone")

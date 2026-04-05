@@ -1,0 +1,116 @@
+<div class="start-frame-page">
+  <div class="header">
+    <app-club-logo size="md" />
+    <app-brand-title size="small" />
+  </div>
+
+  <div class="page-card">
+    <button type="button" class="back-link" (click)="goBack()">← Change Table</button>
+
+    <h2 class="title">Start Frame - {{ selectedTable?.tableName }}</h2>
+    <p class="subtitle">Search players from club members and add up to 6 players for this frame.</p>
+
+    @if (!frameStarted && billAmount !== null) {
+      <div class="bill-summary">
+        <h3>Frame Completed</h3>
+        <p>Duration: {{ billDuration }} mins</p>
+        <p>Total Amount: ₹{{ billAmount }}</p>
+      </div>
+    }
+
+    @if (!frameStarted) {
+      <div class="search-panel">
+        <label class="search-label" for="player-search">Search Player</label>
+        <input
+          id="player-search"
+          type="text"
+          [(ngModel)]="searchText"
+          (input)="searchPlayers()"
+          placeholder="Type player name"
+          autocomplete="off"
+          class="search-input"
+        />
+
+        @if (players.length > 0) {
+          <div class="dropdown">
+            @for (player of players; track player.id) {
+              <button type="button" class="dropdown-item" (click)="addPlayer(player)">
+                <span class="player-name">{{ player.name }}</span>
+                <span class="player-email">{{ player.email }}</span>
+              </button>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    <div class="selected-panel">
+      <div class="selected-header">
+        <h3>Selected Players</h3>
+        <span class="count">{{ selectedPlayers.length }}/6</span>
+      </div>
+
+      @if (selectedPlayers.length > 0) {
+        <div class="selected-list">
+          @for (player of selectedPlayers; track player.id) {
+            <div class="selected-player">
+              <div>
+                <div class="selected-player__name">{{ player.name }}</div>
+                <div class="selected-player__email">{{ player.email }}</div>
+              </div>
+              @if (!frameStarted) {
+                <button type="button" class="remove-btn" (click)="removePlayer(player)">Remove</button>
+              }
+            </div>
+          }
+        </div>
+      } @else {
+        <p class="empty-state">No players selected yet.</p>
+      }
+    </div>
+
+    @if (frameStarted) {
+      <div class="frame-control">
+        <div class="frame-meta">Frame #{{ frameId }}</div>
+        <button type="button" class="end-btn" (click)="openEndPopup()">🔴 End Frame ({{ formattedTime }})</button>
+      </div>
+    } @else {
+      <button type="button" class="start-btn" (click)="startFrame()">Start Frame</button>
+    }
+  </div>
+
+  @if (showEndPopup) {
+    <div class="modal-backdrop" (click)="closeEndPopup()">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>🏆 Select Winner &amp; Loser</h3>
+
+        <label for="winner-select">Winner</label>
+        <select id="winner-select" [(ngModel)]="winnerId">
+          <option [ngValue]="null">Select Winner</option>
+          @for (player of framePlayers; track player.id ?? player.userId) {
+            <option [ngValue]="player.id || player.userId">
+              {{ player.name || player.playerName }}
+            </option>
+          }
+        </select>
+
+        <label for="looser-select">Loser</label>
+        <select id="looser-select" [(ngModel)]="looserId">
+          <option [ngValue]="null">Select Loser</option>
+          @for (player of framePlayers; track player.id ?? player.userId) {
+            <option [ngValue]="player.id || player.userId">
+              {{ player.name || player.playerName }}
+            </option>
+          }
+        </select>
+
+        <div class="modal-actions">
+          <button class="confirm-btn" [disabled]="!canEndFrame()" (click)="confirmEndFrame()">
+            Confirm End Frame
+          </button>
+          <button class="cancel-btn" (click)="closeEndPopup()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

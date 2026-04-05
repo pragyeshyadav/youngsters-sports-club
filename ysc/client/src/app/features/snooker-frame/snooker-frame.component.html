@@ -4,24 +4,75 @@
     <app-brand-title size="small" />
   </div>
 
-  <h2 class="title">Select Snooker Table</h2>
+  @if (activeFrame) {
+    <div class="active-frame">
+      <h2 class="title">🎱 Ongoing Frame</h2>
+      <h3 class="active-frame__table">Table: {{ activeFrame.tableName }}</h3>
+      <p class="active-frame__meta">Frame #{{ activeFrame.id }}</p>
 
-  <div class="tables-grid">
-    @for (table of tables; track table.id) {
-      <div class="table-card" [class.selected]="selectedTable?.id === table.id" (click)="selectTable(table)">
-        <div class="table-icon">🎱</div>
-        <div class="table-name">{{ table.tableName }}</div>
+      <div class="players-card">
+        <h4>Players</h4>
+        <div class="players-list">
+          @for (player of players; track player.id) {
+            <div class="player-chip">{{ player.playerName }}</div>
+          }
+        </div>
+      </div>
+
+      <button class="end-btn" (click)="openEndPopup()">🔴 End Frame ({{ formattedTime }})</button>
+    </div>
+  } @else {
+    @if (billAmount !== null) {
+      <div class="bill-summary">
+        <h2>Frame Completed</h2>
+        <p>Duration: {{ billDuration }} mins</p>
+        <p>Total Amount: ₹{{ billAmount }}</p>
       </div>
     }
-    @empty {
-      <p class="no-tables">No tables currently available.</p>
-    }
-  </div>
 
-  @if (selectedTable) {
-    <div class="selected-action">
-      <h3>Selected: {{ selectedTable.tableName }}</h3>
-      <button class="confirm-btn">Proceed Location</button>
+    <h2 class="title">Select Snooker Table</h2>
+
+    <div class="tables-grid">
+      @for (table of tables; track table.id) {
+        <div class="table-card" (click)="selectTable(table)">
+          <div class="table-icon">🎱</div>
+          <div class="table-name">{{ table.tableName }}</div>
+        </div>
+      }
+      @empty {
+        <p class="no-tables">No tables currently available.</p>
+      }
+    </div>
+  }
+
+  @if (showEndPopup) {
+    <div class="modal-backdrop" (click)="closeEndPopup()">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>Select Winner &amp; Loser</h3>
+
+        <label for="winner-select">Winner</label>
+        <select id="winner-select" [(ngModel)]="winnerId">
+          <option [ngValue]="null">Select Winner</option>
+          @for (player of framePlayers; track player.id) {
+            <option [ngValue]="player.userId">{{ player.playerName }}</option>
+          }
+        </select>
+
+        <label for="looser-select">Loser</label>
+        <select id="looser-select" [(ngModel)]="looserId">
+          <option [ngValue]="null">Select Loser</option>
+          @for (player of framePlayers; track player.id) {
+            <option [ngValue]="player.userId">{{ player.playerName }}</option>
+          }
+        </select>
+
+        <div class="modal-actions">
+          <button class="confirm-btn" [disabled]="!canEndFrame()" (click)="confirmEndFrame()">
+            Confirm End Frame
+          </button>
+          <button class="cancel-btn" (click)="closeEndPopup()">Cancel</button>
+        </div>
+      </div>
     </div>
   }
 </div>
