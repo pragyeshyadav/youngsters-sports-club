@@ -1,0 +1,27 @@
+<div class="snooker-frame-page">
+  <div class="header">
+    <app-club-logo size="md" />
+    <app-brand-title size="small" />
+  </div>
+
+  <h2 class="title">Select Snooker Table</h2>
+
+  <div class="tables-grid">
+    @for (table of tables; track table.id) {
+      <div class="table-card" [class.selected]="selectedTable?.id === table.id" (click)="selectTable(table)">
+        <div class="table-icon">🎱</div>
+        <div class="table-name">{{ table.tableName }}</div>
+      </div>
+    }
+    @empty {
+      <p class="no-tables">No tables currently available.</p>
+    }
+  </div>
+
+  @if (selectedTable) {
+    <div class="selected-action">
+      <h3>Selected: {{ selectedTable.tableName }}</h3>
+      <button class="confirm-btn">Proceed Location</button>
+    </div>
+  }
+</div>
