@@ -1,0 +1,87 @@
+.snooker-frame-page {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  color: #14532d;
+  margin-bottom: 1.5rem;
+}
+
+.tables-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.table-card {
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  width: 150px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background-color: white;
+
+  &:hover {
+    border-color: #cbd5e1;
+    transform: translateY(-2px);
+  }
+
+  &.selected {
+    border-color: #2c7a7b;
+    background-color: #f0fdfa;
+    box-shadow: 0 4px 12px rgba(44, 122, 123, 0.2);
+  }
+}
+
+.table-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.table-name {
+  font-weight: 600;
+  color: #334155;
+}
+
+.no-tables {
+  color: #64748b;
+  font-style: italic;
+}
+
+.selected-action {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e2e8f0;
+
+  h3 {
+    color: #0f172a;
+    margin-bottom: 1rem;
+  }
+}
+
+.confirm-btn {
+  padding: 12px 30px;
+  background-color: #14532d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  font-weight: bold;
+
+  &:hover {
+    background-color: #0f3d20;
+  }
+}

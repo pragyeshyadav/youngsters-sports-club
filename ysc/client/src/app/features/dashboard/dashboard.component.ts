@@ -1,6 +1,7 @@
 import { AsyncPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { AuthUser } from '../../core/models/auth.models';
@@ -20,6 +21,7 @@ export class DashboardComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly http = inject(HttpClient);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly router = inject(Router);
 
   readonly user$: Observable<AuthUser | null> = this.auth.user$;
 
@@ -51,8 +53,9 @@ export class DashboardComponent implements OnInit {
 
           if (!this.user.phone) {
             this.showPhoneInput = true;
-            this.cdr.markForCheck();
           }
+          
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('API failed:', err);
@@ -92,9 +95,17 @@ export class DashboardComponent implements OnInit {
       email: this.authUser.email,
       phone: this.phone
     }, { responseType: 'text' }).subscribe((res: any) => {
+      this.user = {
+        ...this.user,
+        phone: this.phone,
+      };
       alert(res);
       this.showPhoneInput = false;
       this.cdr.markForCheck();
     });
+  }
+
+  startFrame() {
+    this.router.navigate(['/snooker-frame']);
   }
 }

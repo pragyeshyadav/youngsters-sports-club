@@ -29,6 +29,14 @@
         </div>
       }
 
+      @if (!showPhoneInput) {
+        <div style="margin-top: 20px;">
+          <button (click)="startFrame()" class="start-btn">
+            🎱 Start Snooker Frame
+          </button>
+        </div>
+      }
+
       <p class="lead">
         You are signed in at our <strong>Satna</strong> location. Snooker session tracking and more will
         appear here in upcoming phases. v2

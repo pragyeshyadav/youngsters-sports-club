@@ -91,3 +91,20 @@
 .btn-save:hover {
   background-color: #235e5d;
 }
+
+.start-btn {
+  padding: 12px 20px;
+  background-color: #2c7a7b;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 1.5rem;
+}
+
+.start-btn:hover {
+  background-color: #235e5d;
+}
