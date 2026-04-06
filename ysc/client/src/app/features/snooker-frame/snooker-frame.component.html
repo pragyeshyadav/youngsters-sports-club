@@ -4,11 +4,11 @@
     <app-brand-title size="small" />
   </div>
 
-  @if (activeFrame) {
+  @if (showOngoingOnly() && activeFrame; as frame) {
     <div class="active-frame">
       <h2 class="title">🎱 Ongoing Frame</h2>
-      <h3 class="active-frame__table">Table: {{ activeFrame.tableName }}</h3>
-      <p class="active-frame__meta">Frame #{{ activeFrame.id }}</p>
+      <h3 class="active-frame__table">Table: {{ frame.tableName }}</h3>
+      <p class="active-frame__meta">Frame #{{ frame.id }}</p>
 
       <div class="players-card">
         <h4>Players</h4>
@@ -30,7 +30,33 @@
       </div>
     }
 
+    @if (isPrivileged() && ongoingFrames.length > 0) {
+      <div class="running-frames">
+        <div class="running-frames__header">
+          <h2 class="title">Current Running Frames</h2>
+          <button type="button" class="change-table-btn" (click)="goToTableSelection()">← Select Table</button>
+        </div>
+
+        <div class="running-frames__grid">
+          @for (frame of ongoingFrames; track frame.id) {
+            <div class="running-frame-card">
+              <div class="running-frame-card__title">{{ frame.tableName || ('Table #' + frame.tableId) }}</div>
+              <div class="running-frame-card__meta">Frame #{{ frame.id }}</div>
+              <div class="running-frame-card__meta">{{ frame.startTime | date: 'short' }}</div>
+              <div class="running-frame-card__status">{{ frame.status }}</div>
+            </div>
+          }
+        </div>
+      </div>
+    }
+
     <h2 class="title">Select Snooker Table</h2>
+
+    @if (!isPrivileged()) {
+      <p class="auto-assign-note">🎱 You will be assigned the next available table automatically.</p>
+    } @else {
+      <p class="auto-assign-note privileged-note">Choose any available table to start a new frame.</p>
+    }
 
     <div class="tables-grid">
       @for (table of tables; track table.id) {

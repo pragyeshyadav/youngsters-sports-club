@@ -9,9 +9,9 @@ import com.youngstersclub.app.enums.PaymentStatus;
 import com.youngstersclub.app.repository.FrameRepository;
 import com.youngstersclub.app.repository.PaymentRepository;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -78,7 +78,7 @@ public class PaymentService {
             payment.setAmount(paymentAmount);
             payment.setStatus(PaymentStatus.PAID);
             payment.setPaymentMethod(paymentMethod);
-            payment.setPaymentTime(LocalDateTime.now());
+            payment.setPaymentTime(TimeUtil.nowIST());
             paymentRepository.save(payment);
 
             BigDecimal updatedDue = due.subtract(paymentAmount);

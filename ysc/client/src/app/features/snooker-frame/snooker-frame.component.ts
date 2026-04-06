@@ -1,3 +1,4 @@
+import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -9,11 +10,13 @@ import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.c
 interface Table {
   id: number;
   tableName: string;
+  isAvailable?: boolean;
 }
 
 interface BackendUser {
   id: number;
   email: string;
+  role: string;
 }
 
 interface ActiveFrame {
@@ -42,10 +45,18 @@ interface EndFrameResponse {
   tableId: number;
 }
 
+interface OngoingFrameSummary {
+  id: number;
+  tableId: number | null;
+  tableName: string | null;
+  startTime: string;
+  status: string;
+}
+
 @Component({
   selector: 'app-snooker-frame',
   standalone: true,
-  imports: [FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './snooker-frame.component.html',
   styleUrl: './snooker-frame.component.scss',
 })
@@ -55,6 +66,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
 
   tables: Table[] = [];
+  ongoingFrames: OngoingFrameSummary[] = [];
   activeFrame: ActiveFrame | null = null;
   players: ActiveFramePlayer[] = [];
   framePlayers: ActiveFramePlayer[] = [];
@@ -64,6 +76,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   showEndPopup = false;
   winnerId: number | null = null;
   looserId: number | null = null;
+  userRole = '';
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
@@ -126,6 +139,9 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
           this.timerSeconds = 0;
           this.winnerId = null;
           this.looserId = null;
+          if (this.isPrivileged()) {
+            this.loadOngoingFrames();
+          }
           this.loadTables();
         },
         error: (err) => {
@@ -145,6 +161,18 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     return `${mins}:${secs < 10 ? '0' + secs : secs}`;
   }
 
+  isPrivileged(): boolean {
+    return ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(this.userRole);
+  }
+
+  showOngoingOnly(): boolean {
+    return !!this.activeFrame && !this.isPrivileged();
+  }
+
+  goToTableSelection(): void {
+    void this.router.navigate(['/snooker-frame']);
+  }
+
   private loadActiveFrameOrTables(): void {
     const email = this.auth.getSnapshot()?.user.email;
     if (!email) {
@@ -154,6 +182,15 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
 
     this.http.get<BackendUser>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
+        this.userRole = user.role ?? '';
+        if (this.isPrivileged()) {
+          this.activeFrame = null;
+          this.players = [];
+          this.loadOngoingFrames();
+          this.loadTables();
+          return;
+        }
+
         this.http.get<ActiveFrameResponse | null>(`/api/frame/active?userId=${user.id}`).subscribe({
           next: (res) => {
             if (res?.frame) {
@@ -181,10 +218,23 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   private loadTables(): void {
     this.http.get<Table[]>('/api/snooker/tables').subscribe({
       next: (res) => {
-        this.tables = res;
+        const availableTables = res.filter((table) => table.isAvailable !== false);
+        this.tables = this.isPrivileged() ? availableTables : availableTables.slice(0, 1);
       },
       error: (err) => {
         console.error('Failed to fetch tables', err);
+      },
+    });
+  }
+
+  private loadOngoingFrames(): void {
+    this.http.get<OngoingFrameSummary[]>('/api/frame/ongoing/today').subscribe({
+      next: (res) => {
+        this.ongoingFrames = res ?? [];
+      },
+      error: (err) => {
+        console.error('Failed to load ongoing frames', err);
+        this.ongoingFrames = [];
       },
     });
   }
