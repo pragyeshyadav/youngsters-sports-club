@@ -228,6 +228,25 @@ public class FrameService {
         }).toList();
     }
 
+    public List<Map<String, Object>> getUserDueFrames(Integer userId) {
+        if (userId == null) {
+            return List.of();
+        }
+
+        return frameRepository.findDueFramesByUser(userId).stream().map(frame -> {
+            Map<String, Object> frameMap = new HashMap<>();
+            frameMap.put("frameId", frame.getId());
+            frameMap.put("startTime", frame.getStartTime());
+            frameMap.put("endTime", frame.getEndTime());
+            frameMap.put("duration", frame.getDurationMinutes());
+            frameMap.put("amount", frame.getTotalAmount());
+            frameMap.put("paymentDue", frame.getPaymentDue());
+            frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
+            frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
+            return frameMap;
+        }).toList();
+    }
+
     @Transactional
     public Map<String, Object> endFrame(Integer frameId, Integer winnerId, Integer looserId) {
         if (frameId == null) {

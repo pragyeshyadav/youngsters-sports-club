@@ -45,6 +45,11 @@ public class FrameController {
         return ResponseEntity.ok(frameService.getTodayCompletedFrames());
     }
 
+    @GetMapping("/user-due")
+    public ResponseEntity<List<Map<String, Object>>> getUserDueFrames(@RequestParam Integer userId) {
+        return ResponseEntity.ok(frameService.getUserDueFrames(userId));
+    }
+
     @GetMapping("/history")
     public ResponseEntity<List<Map<String, Object>>> getUserFrameHistory(@RequestParam Integer userId) {
         return ResponseEntity.ok(frameService.getUserFrameHistory(userId));
