@@ -122,6 +122,10 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     });
   }
 
+  goToSettlement(): void {
+    void this.router.navigate(['/payment-settlement']);
+  }
+
   getPaymentRowClass(frame: CompletedFrame): string {
     const paymentDue = this.toNumber(frame.paymentDue);
     const totalAmount = this.toNumber(frame.totalAmount);

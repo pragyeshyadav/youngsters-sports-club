@@ -72,4 +72,28 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
     """)
     List<Frame> findTodayCompletedFrames(@Param("startOfDay") java.time.LocalDateTime startOfDay,
                                          @Param("endOfDay") java.time.LocalDateTime endOfDay);
+
+    @Query("""
+        SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.winner
+        LEFT JOIN FETCH f.looser
+        LEFT JOIN f.framePlayers fp
+        WHERE f.paymentDue IS NOT NULL
+        AND f.paymentDue > 0
+        AND (
+            f.looser.id = :userId
+            OR fp.user.id = :userId
+        )
+        ORDER BY f.startTime DESC
+    """)
+    List<Frame> findDueFramesByUser(@Param("userId") Integer userId);
+
+    @Query("""
+        SELECT f FROM Frame f
+        WHERE f.looser.id = :userId
+        AND f.paymentDue IS NOT NULL
+        AND f.paymentDue > 0
+        ORDER BY f.startTime ASC
+    """)
+    List<Frame> findDueFramesByUserOrderByStartTime(@Param("userId") Integer userId);
 }

@@ -46,5 +46,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/managers-portal/managers-portal.component').then((m) => m.ManagersPortalComponent),
   },
+  {
+    path: 'payment-settlement',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/payment-settlement/payment-settlement.component').then((m) => m.PaymentSettlementComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];

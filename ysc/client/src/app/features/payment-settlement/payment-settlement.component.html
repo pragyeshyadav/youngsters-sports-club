@@ -1,0 +1,163 @@
+<div class="settlement-page">
+  <div class="header">
+    <app-club-logo size="md" />
+    <app-brand-title size="small" />
+  </div>
+
+  <div class="page-card">
+    <button type="button" class="back-link" (click)="goBack()">← Back to Manager Portal</button>
+
+    <h2 class="title">Payment Settlement</h2>
+    <p class="subtitle">Search a customer, review unpaid frames, and continue with settlement.</p>
+
+    <div class="search-panel">
+      <label class="search-label" for="customer-search">Search Customer</label>
+      <input
+        id="customer-search"
+        type="text"
+        [(ngModel)]="searchText"
+        (input)="searchUsers()"
+        placeholder="Search customer"
+        autocomplete="off"
+        class="search-input"
+      />
+
+      @if (users.length > 0) {
+        <div class="dropdown">
+          @for (user of users; track user.id) {
+            <button type="button" class="dropdown-item" (click)="selectUser(user)">
+              <span class="user-name">{{ user.name }}</span>
+              <span class="user-email">{{ user.email }}</span>
+            </button>
+          }
+        </div>
+      }
+    </div>
+
+    <button type="button" class="details-btn" [disabled]="!selectedUser" (click)="getPlayerDetails()">
+      Get Player Details
+    </button>
+
+    <button type="button" class="settle-btn" [disabled]="!selectedUser" (click)="openSettlementPopup()">
+      💰 Settle Total Due Amount
+    </button>
+
+    @if (selectedUser) {
+      <div class="selected-user">
+        <strong>{{ selectedUser.name }}</strong>
+        <span>{{ selectedUser.email }}</span>
+      </div>
+    }
+
+    @if (totalDue > 0) {
+      <div class="total-due-card">
+        <span>Total Due</span>
+        <h3>₹{{ totalDue }}</h3>
+      </div>
+    }
+
+    @if (isLoadingFrames) {
+      <p class="empty-state">Loading due frames...</p>
+    } @else if (selectedUser && frames.length === 0) {
+      <p class="empty-state">No due frames found for this customer.</p>
+    }
+
+    @if (frames.length > 0 && !isMobile) {
+      <div class="table-wrap">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Winner</th>
+              <th>Looser</th>
+              <th>Start</th>
+              <th>End</th>
+              <th>Duration</th>
+              <th>Amount</th>
+              <th>Due</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            @for (frame of frames; track frame.frameId) {
+              <tr class="due-row">
+                <td>{{ frame.winnerName || '-' }}</td>
+                <td>{{ frame.looserName || '-' }}</td>
+                <td>{{ frame.startTime | date: 'short' }}</td>
+                <td>{{ frame.endTime ? (frame.endTime | date: 'short') : '-' }}</td>
+                <td>{{ frame.duration ?? '-' }}</td>
+                <td>₹{{ frame.amount ?? 0 }}</td>
+                <td>₹{{ frame.paymentDue ?? 0 }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+
+    @if (frames.length > 0 && isMobile) {
+      <div class="card-container">
+        @for (frame of frames; track frame.frameId) {
+          <div class="history-card due-row">
+            <div class="card-row">
+              <span>🏆 Winner</span>
+              <strong>{{ frame.winnerName || '-' }}</strong>
+            </div>
+            <div class="card-row">
+              <span>❌ Looser</span>
+              <strong>{{ frame.looserName || '-' }}</strong>
+            </div>
+            <div class="card-row">
+              <span>🕒 Start</span>
+              <span>{{ frame.startTime | date: 'short' }}</span>
+            </div>
+            <div class="card-row">
+              <span>⏹ End</span>
+              <span>{{ frame.endTime ? (frame.endTime | date: 'short') : '-' }}</span>
+            </div>
+            <div class="card-row">
+              <span>💰 Amount</span>
+              <strong>₹{{ frame.amount ?? 0 }}</strong>
+            </div>
+            <div class="card-row">
+              <span>💳 Due</span>
+              <strong>₹{{ frame.paymentDue ?? 0 }}</strong>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+
+  @if (showSettlementPopup) {
+    <div class="modal-backdrop" (click)="closeSettlementPopup()">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>💳 Settle Payment</h3>
+
+        <p class="modal-total">Total Due: ₹{{ totalDue }}</p>
+
+        <input
+          type="number"
+          [(ngModel)]="settleAmount"
+          placeholder="Enter amount"
+          min="1"
+          [max]="totalDue"
+        />
+
+        <select [(ngModel)]="paymentMode">
+          <option value="">Select Payment Mode</option>
+          <option value="CASH">Cash</option>
+          <option value="UPI">UPI</option>
+        </select>
+
+        @if (settleAmount && settleAmount > totalDue) {
+          <p class="validation-message">Amount cannot exceed total due.</p>
+        }
+
+        <div class="modal-actions">
+          <button class="save-btn" [disabled]="!canSave()" (click)="saveSettlement()">Save</button>
+          <button class="cancel-btn" (click)="closeSettlementPopup()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>
