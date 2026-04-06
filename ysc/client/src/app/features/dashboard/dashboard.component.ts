@@ -29,6 +29,8 @@ export class DashboardComponent implements OnInit {
   user: any;
   phone: string = '';
   showPhoneInput: boolean = false;
+  totalDue: number = 0;
+  showDueSection: boolean = false;
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -54,6 +56,18 @@ export class DashboardComponent implements OnInit {
           if (!this.user.phone) {
             this.showPhoneInput = true;
           }
+
+          this.http.get(`/api/frame/total-due?userId=${this.user.id}`)
+            .subscribe({
+              next: (due: any) => {
+                this.totalDue = due || 0;
+                this.showDueSection = this.totalDue > 300;
+                this.cdr.markForCheck();
+              },
+              error: (err) => {
+                console.error('Failed to fetch total due:', err);
+              }
+            });
           
           this.cdr.markForCheck();
         },
@@ -107,5 +121,9 @@ export class DashboardComponent implements OnInit {
 
   startFrame() {
     this.router.navigate(['/snooker-frame']);
+  }
+
+  goToGameHistory() {
+    this.router.navigate(['/my-game-history']);
   }
 }

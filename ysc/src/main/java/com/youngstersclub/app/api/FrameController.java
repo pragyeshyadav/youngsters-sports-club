@@ -2,6 +2,7 @@ package com.youngstersclub.app.api;
 
 import com.youngstersclub.app.dto.StartFrameRequest;
 import com.youngstersclub.app.service.FrameService;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +33,16 @@ public class FrameController {
     public ResponseEntity<?> getActiveFrame(@RequestParam Integer userId) {
         Map<String, Object> response = frameService.getActiveFrame(userId);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/history")
+    public ResponseEntity<List<Map<String, Object>>> getUserFrameHistory(@RequestParam Integer userId) {
+        return ResponseEntity.ok(frameService.getUserFrameHistory(userId));
+    }
+
+    @GetMapping("/total-due")
+    public ResponseEntity<BigDecimal> getTotalDue(@RequestParam Integer userId) {
+        return ResponseEntity.ok(frameService.getTotalDue(userId));
     }
 
     @GetMapping("/{frameId}/players")
