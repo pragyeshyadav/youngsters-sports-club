@@ -5,10 +5,16 @@
   </div>
 
   <div class="page-card">
-    <button type="button" class="back-link" (click)="goBack()">← Change Table</button>
+    <button type="button" class="back-link" (click)="goBack()">
+      {{ viewMode === 'manage' ? '← Back to Manager Portal' : '← Change Table' }}
+    </button>
 
-    <h2 class="title">Start Frame - {{ selectedTable?.tableName }}</h2>
-    <p class="subtitle">Search players from club members and add up to 6 players for this frame.</p>
+    <h2 class="title">{{ viewMode === 'manage' ? 'Manage Frame' : 'Start Frame' }} - {{ selectedTable?.tableName }}</h2>
+    <p class="subtitle">
+      {{ viewMode === 'manage'
+        ? 'Review the ongoing frame and end it when play is complete.'
+        : 'Search players from club members and add up to 6 players for this frame.' }}
+    </p>
 
     @if (!frameStarted && billAmount !== null) {
       <div class="bill-summary">
@@ -18,7 +24,7 @@
       </div>
     }
 
-    @if (!frameStarted) {
+    @if (!frameStarted && viewMode === 'start') {
       <div class="search-panel">
         <label class="search-label" for="player-search">Search Player</label>
         <input
@@ -74,8 +80,10 @@
         <div class="frame-meta">Frame #{{ frameId }}</div>
         <button type="button" class="end-btn" (click)="openEndPopup()">🔴 End Frame ({{ formattedTime }})</button>
       </div>
-    } @else {
+    } @else if (viewMode === 'start') {
       <button type="button" class="start-btn" (click)="startFrame()">Start Frame</button>
+    } @else if (!frameStarted && billAmount !== null) {
+      <button type="button" class="start-btn" (click)="goBack()">Back to Manager Portal</button>
     }
   </div>
 
@@ -88,7 +96,7 @@
         <select id="winner-select" [(ngModel)]="winnerId">
           <option [ngValue]="null">Select Winner</option>
           @for (player of framePlayers; track player.id ?? player.userId) {
-            <option [ngValue]="player.id || player.userId">
+            <option [ngValue]="player.userId || player.id">
               {{ player.name || player.playerName }}
             </option>
           }
@@ -98,7 +106,7 @@
         <select id="looser-select" [(ngModel)]="looserId">
           <option [ngValue]="null">Select Loser</option>
           @for (player of framePlayers; track player.id ?? player.userId) {
-            <option [ngValue]="player.id || player.userId">
+            <option [ngValue]="player.userId || player.id">
               {{ player.name || player.playerName }}
             </option>
           }

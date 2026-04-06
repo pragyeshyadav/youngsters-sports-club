@@ -40,4 +40,36 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         AND f.paymentDue > 0
     """)
     BigDecimal getTotalDueForUser(@Param("userId") Integer userId);
+
+    @Query("""
+        SELECT f FROM Frame f
+        LEFT JOIN FETCH f.snookerTable
+        WHERE f.id = :frameId
+    """)
+    Optional<Frame> findDetailedById(@Param("frameId") Integer frameId);
+
+    @Query("""
+        SELECT f FROM Frame f
+        LEFT JOIN FETCH f.snookerTable
+        WHERE f.status = com.youngstersclub.app.enums.FrameStatus.STARTED
+        AND f.endTime IS NULL
+        AND f.startTime >= :startOfDay
+        AND f.startTime < :endOfDay
+        ORDER BY f.startTime DESC
+    """)
+    List<Frame> findTodayOngoingFrames(@Param("startOfDay") java.time.LocalDateTime startOfDay,
+                                       @Param("endOfDay") java.time.LocalDateTime endOfDay);
+
+    @Query("""
+        SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.winner
+        LEFT JOIN FETCH f.looser
+        WHERE f.status = com.youngstersclub.app.enums.FrameStatus.ENDED
+        AND f.endTime IS NOT NULL
+        AND f.startTime >= :startOfDay
+        AND f.startTime < :endOfDay
+        ORDER BY f.startTime DESC
+    """)
+    List<Frame> findTodayCompletedFrames(@Param("startOfDay") java.time.LocalDateTime startOfDay,
+                                         @Param("endOfDay") java.time.LocalDateTime endOfDay);
 }

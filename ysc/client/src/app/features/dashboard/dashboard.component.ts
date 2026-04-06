@@ -31,6 +31,8 @@ export class DashboardComponent implements OnInit {
   showPhoneInput: boolean = false;
   totalDue: number = 0;
   showDueSection: boolean = false;
+  isAdmin: boolean = false;
+  isManagerOrAdmin: boolean = false;
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -52,6 +54,11 @@ export class DashboardComponent implements OnInit {
           console.log('User API response:', res);  // DEBUG
 
           this.user = res;
+          this.isAdmin = this.user?.role === 'ADMIN' || this.user?.role === 'SUPER_ADMIN';
+          this.isManagerOrAdmin =
+            this.user?.role === 'MANAGER' ||
+            this.user?.role === 'ADMIN' ||
+            this.user?.role === 'SUPER_ADMIN';
 
           if (!this.user.phone) {
             this.showPhoneInput = true;
@@ -125,5 +132,13 @@ export class DashboardComponent implements OnInit {
 
   goToGameHistory() {
     this.router.navigate(['/my-game-history']);
+  }
+
+  goToAdminPage() {
+    this.router.navigate(['/admin-page']);
+  }
+
+  goToManagersPortal() {
+    this.router.navigate(['/managers-portal']);
   }
 }
