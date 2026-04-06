@@ -7,15 +7,18 @@ import com.youngstersclub.app.entity.SnookerTable;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.FrameStatus;
 import com.youngstersclub.app.enums.PaymentStatus;
+import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.FramePlayerRepository;
 import com.youngstersclub.app.repository.FrameRepository;
 import com.youngstersclub.app.repository.SnookerTableRepository;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +27,9 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class FrameService {
+
+    private static final EnumSet<UserRole> PRIVILEGED_ROLES =
+            EnumSet.of(UserRole.MANAGER, UserRole.ADMIN, UserRole.SUPER_ADMIN);
 
     private final SnookerTableRepository tableRepository;
     private final FrameRepository frameRepository;
@@ -52,16 +58,42 @@ public class FrameService {
             throw new IllegalArgumentException("At least one player is required");
         }
 
-        SnookerTable table = tableRepository.findById(request.getTableId()).orElseThrow();
+        User startedBy = userRepository.findById(request.getStartedBy()).orElseThrow();
+        List<SnookerTable> availableTables = tableRepository.findByIsAvailableTrueOrderByIdAsc();
+        boolean isPrivileged = PRIVILEGED_ROLES.contains(startedBy.getRole());
+
+        if (availableTables.isEmpty()) {
+            throw new RuntimeException("No table available");
+        }
+
+        Long requestedTableId = request.getTableId();
+        if (!isPrivileged) {
+            boolean userAlreadyHasRunningFrame =
+                    frameRepository.findActiveFrameForUser(startedBy.getId(), FrameStatus.STARTED).isPresent();
+            if (userAlreadyHasRunningFrame) {
+                throw new RuntimeException("You already have an ongoing frame");
+            }
+
+            requestedTableId = availableTables.get(0).getId();
+            request.setTableId(requestedTableId);
+        }
+
+        if (requestedTableId == null) {
+            throw new IllegalArgumentException("Table id is required");
+        }
+
+        SnookerTable table = tableRepository.findById(requestedTableId).orElseThrow();
+        if (!Boolean.TRUE.equals(table.getIsAvailable())) {
+            throw new RuntimeException("Table is not available");
+        }
+
         table.setIsAvailable(false);
         tableRepository.save(table);
-
-        User startedBy = userRepository.findById(request.getStartedBy()).orElseThrow();
 
         Frame frame = new Frame();
         frame.setSnookerTable(table);
         frame.setStartedBy(startedBy);
-        frame.setStartTime(LocalDateTime.now());
+        frame.setStartTime(TimeUtil.nowIST());
         frame.setStatus(FrameStatus.STARTED);
         frame.setPaymentStatus(PaymentStatus.UNPAID);
         frame = frameRepository.save(frame);
@@ -260,7 +292,7 @@ public class FrameService {
             throw new RuntimeException("Frame already ended");
         }
 
-        LocalDateTime endTime = LocalDateTime.now();
+        LocalDateTime endTime = TimeUtil.nowIST();
         frame.setEndTime(endTime);
 
         long duration = Duration.between(frame.getStartTime(), endTime).toMinutes();
@@ -319,7 +351,7 @@ public class FrameService {
         }
 
         frame.setStatus(FrameStatus.REJECTED);
-        frame.setEndTime(LocalDateTime.now());
+        frame.setEndTime(TimeUtil.nowIST());
         frame.setDurationMinutes(0);
         frame.setTotalAmount(BigDecimal.ZERO);
         frame.setPaymentDue(BigDecimal.ZERO);

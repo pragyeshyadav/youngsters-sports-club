@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.youngstersclub.app.enums.FrameStatus;
 import com.youngstersclub.app.enums.PaymentStatus;
+import com.youngstersclub.app.util.TimeUtil;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
@@ -78,7 +79,7 @@ public class Frame {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+            createdAt = TimeUtil.nowIST();
         }
     }
 

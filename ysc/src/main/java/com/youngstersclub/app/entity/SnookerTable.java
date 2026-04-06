@@ -1,6 +1,7 @@
 package com.youngstersclub.app.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.youngstersclub.app.util.TimeUtil;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -37,7 +38,7 @@ public class SnookerTable {
 
     @PrePersist
     public void prePersist() {
-        this.createdAt = LocalDateTime.now();
+        this.createdAt = TimeUtil.nowIST();
     }
 
     public Long getId() { return id; }

@@ -1,4 +1,3 @@
-import { AsyncPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -70,7 +69,7 @@ interface ExistingFrameResponse {
 @Component({
   selector: 'app-start-frame',
   standalone: true,
-  imports: [AsyncPipe, FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './start-frame.component.html',
   styleUrl: './start-frame.component.scss',
 })

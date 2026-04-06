@@ -1,5 +1,6 @@
 package com.youngstersclub.app.entity;
 
+import com.youngstersclub.app.util.TimeUtil;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -30,7 +31,7 @@ public class FramePlayer {
     @PrePersist
     public void prePersist() {
         if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+            createdAt = TimeUtil.nowIST();
         }
     }
 

@@ -20,6 +20,6 @@ public class SnookerTableController {
 
     @GetMapping("/tables")
     public List<SnookerTable> getAvailableTables() {
-        return repository.findByIsAvailable(true);
+        return repository.findAvailableTablesSafe();
     }
 }
