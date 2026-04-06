@@ -59,6 +59,9 @@ public class Frame {
     @Column(name = "total_amount", precision = 10, scale = 2)
     private BigDecimal totalAmount;
 
+    @Column(name = "payment_due", precision = 10, scale = 2)
+    private BigDecimal paymentDue;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -103,6 +106,8 @@ public class Frame {
     public void setDurationMinutes(Integer durationMinutes) { this.durationMinutes = durationMinutes; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public void setTotalAmount(BigDecimal totalAmount) { this.totalAmount = totalAmount; }
+    public BigDecimal getPaymentDue() { return paymentDue; }
+    public void setPaymentDue(BigDecimal paymentDue) { this.paymentDue = paymentDue; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public List<FramePlayer> getFramePlayers() { return framePlayers; }

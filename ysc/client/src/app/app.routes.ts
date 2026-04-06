@@ -28,5 +28,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/start-frame/start-frame.component').then((m) => m.StartFrameComponent),
   },
+  {
+    path: 'my-game-history',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/my-game-history/my-game-history.component').then((m) => m.MyGameHistoryComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];

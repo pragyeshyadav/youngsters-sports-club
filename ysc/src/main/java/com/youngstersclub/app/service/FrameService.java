@@ -129,6 +129,34 @@ public class FrameService {
         }).toList();
     }
 
+    public List<Map<String, Object>> getUserFrameHistory(Integer userId) {
+        if (userId == null) {
+            return List.of();
+        }
+
+        return frameRepository.findUserFrameHistory(userId).stream().map(frame -> {
+            Map<String, Object> frameMap = new HashMap<>();
+            frameMap.put("frameId", frame.getId());
+            frameMap.put("startTime", frame.getStartTime());
+            frameMap.put("endTime", frame.getEndTime());
+            frameMap.put("duration", frame.getDurationMinutes());
+            frameMap.put("amount", frame.getTotalAmount());
+            frameMap.put("paymentDue", frame.getPaymentDue());
+            frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
+            frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
+            return frameMap;
+        }).toList();
+    }
+
+    public BigDecimal getTotalDue(Integer userId) {
+        if (userId == null) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal totalDue = frameRepository.getTotalDueForUser(userId);
+        return totalDue == null ? BigDecimal.ZERO : totalDue;
+    }
+
     @Transactional
     public Map<String, Object> endFrame(Integer frameId, Integer winnerId, Integer looserId) {
         if (frameId == null) {
@@ -171,6 +199,7 @@ public class FrameService {
         }
 
         frame.setTotalAmount(totalAmount);
+        frame.setPaymentDue(totalAmount);
         frame.setStatus(FrameStatus.ENDED);
         frameRepository.save(frame);
 
@@ -182,6 +211,7 @@ public class FrameService {
         response.put("amount", totalAmount);
         response.put("frameId", frame.getId());
         response.put("tableId", table.getId());
+        response.put("paymentDue", frame.getPaymentDue());
         return response;
     }
 }
