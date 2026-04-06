@@ -1,4 +1,4 @@
-import { AsyncPipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
@@ -12,7 +12,7 @@ import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.c
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [AsyncPipe, FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -33,6 +33,11 @@ export class DashboardComponent implements OnInit {
   showDueSection: boolean = false;
   isAdmin: boolean = false;
   isManagerOrAdmin: boolean = false;
+  buttonLabel: string = 'Start Snooker Frame';
+  buttonColor: 'primary' | 'warn' = 'primary';
+  hasOngoingFrame: boolean = false;
+  userRole: string = '';
+  ongoingFrameId: number | null = null;
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -54,6 +59,7 @@ export class DashboardComponent implements OnInit {
           console.log('User API response:', res);  // DEBUG
 
           this.user = res;
+          this.userRole = this.user?.role ?? '';
           this.isAdmin = this.user?.role === 'ADMIN' || this.user?.role === 'SUPER_ADMIN';
           this.isManagerOrAdmin =
             this.user?.role === 'MANAGER' ||
@@ -75,6 +81,10 @@ export class DashboardComponent implements OnInit {
                 console.error('Failed to fetch total due:', err);
               }
             });
+
+          if (this.userRole === 'CUSTOMER') {
+            this.checkOngoingFrame();
+          }
           
           this.cdr.markForCheck();
         },
@@ -126,7 +136,47 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  startFrame() {
+  checkOngoingFrame() {
+    if (!this.user?.id) {
+      return;
+    }
+
+    this.http.get(`/api/frame/user-ongoing?userId=${this.user.id}`)
+      .subscribe({
+        next: (res: any) => {
+          const frame = res?.frame;
+          if (frame?.id) {
+            this.hasOngoingFrame = true;
+            this.ongoingFrameId = frame.id;
+            this.buttonLabel = 'End Snooker Frame';
+            this.buttonColor = 'warn';
+          } else {
+            this.hasOngoingFrame = false;
+            this.ongoingFrameId = null;
+            this.buttonLabel = 'Start Snooker Frame';
+            this.buttonColor = 'primary';
+          }
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('Failed to check ongoing frame:', err);
+          this.hasOngoingFrame = false;
+          this.ongoingFrameId = null;
+          this.buttonLabel = 'Start Snooker Frame';
+          this.buttonColor = 'primary';
+          this.cdr.markForCheck();
+        }
+      });
+  }
+
+  onFrameAction() {
+    if (this.userRole === 'CUSTOMER' && this.hasOngoingFrame && this.ongoingFrameId) {
+      this.router.navigate(['/start-frame'], {
+        state: { frameId: this.ongoingFrameId, source: 'dashboard' }
+      });
+      return;
+    }
+
     this.router.navigate(['/snooker-frame']);
   }
 

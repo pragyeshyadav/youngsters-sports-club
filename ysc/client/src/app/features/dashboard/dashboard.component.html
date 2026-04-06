@@ -31,8 +31,11 @@
 
       @if (!showPhoneInput) {
         <div class="action-container">
-          <button (click)="startFrame()" class="start-btn">
-            🎱 Start Snooker Frame
+          <button
+            (click)="onFrameAction()"
+            class="start-btn"
+            [ngClass]="buttonColor === 'warn' ? 'btn-red' : 'btn-primary'">
+            🎱 {{ buttonLabel }}
           </button>
           <button class="history-btn" (click)="goToGameHistory()">
             📜 My Game History

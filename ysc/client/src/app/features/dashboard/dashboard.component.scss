@@ -102,7 +102,6 @@
 
 .start-btn {
   padding: 12px 24px;
-  background-color: #2c7a7b;
   color: white;
   border: none;
   border-radius: 4px;
@@ -112,8 +111,20 @@
   transition: background-color 0.2s;
 }
 
-.start-btn:hover {
+.btn-primary {
+  background-color: #2c7a7b;
+}
+
+.btn-primary:hover {
   background-color: #235e5d;
+}
+
+.btn-red {
+  background-color: #dc3545;
+}
+
+.btn-red:hover {
+  background-color: #bb2d3b;
 }
 
 .history-btn {

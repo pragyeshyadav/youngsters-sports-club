@@ -81,7 +81,14 @@
         <button type="button" class="end-btn" (click)="openEndPopup()">🔴 End Frame ({{ formattedTime }})</button>
       </div>
     } @else if (viewMode === 'start') {
-      <button type="button" class="start-btn" (click)="startFrame()">Start Frame</button>
+      <button
+        type="button"
+        class="start-btn"
+        (click)="startFrame()"
+        [disabled]="selectedPlayers.length < 2"
+        [ngClass]="{ 'disabled-btn': selectedPlayers.length < 2 }">
+        Start Frame
+      </button>
     } @else if (!frameStarted && billAmount !== null) {
       <button type="button" class="start-btn" (click)="goBack()">Back to Manager Portal</button>
     }

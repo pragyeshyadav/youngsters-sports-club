@@ -1,3 +1,4 @@
+import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -69,7 +70,7 @@ interface ExistingFrameResponse {
 @Component({
   selector: 'app-start-frame',
   standalone: true,
-  imports: [FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './start-frame.component.html',
   styleUrl: './start-frame.component.scss',
 })
@@ -177,8 +178,8 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   }
 
   startFrame(): void {
-    if (this.selectedPlayers.length === 0) {
-      alert('Select at least one player');
+    if (!this.selectedPlayers || this.selectedPlayers.length < 2) {
+      alert('Please select at least 2 players to start a frame');
       return;
     }
 

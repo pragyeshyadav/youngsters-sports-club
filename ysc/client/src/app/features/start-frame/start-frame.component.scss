@@ -175,6 +175,18 @@
   &:hover {
     background: linear-gradient(135deg, #0f3d20 0%, #14532d 100%);
   }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    box-shadow: none;
+    background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+  }
+}
+
+.disabled-btn {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .frame-control {
