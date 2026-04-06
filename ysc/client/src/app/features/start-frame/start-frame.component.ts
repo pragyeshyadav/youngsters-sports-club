@@ -43,6 +43,7 @@ interface FramePlayerOption {
   userId?: number | null;
   name?: string;
   playerName?: string;
+  email?: string;
 }
 
 interface EndFrameResponse {
@@ -50,6 +51,20 @@ interface EndFrameResponse {
   amount: number;
   frameId: number;
   tableId: number;
+}
+
+interface ExistingFrame {
+  id: number;
+  tableId: number | null;
+  tableName: string | null;
+  startTime: string;
+  status: string;
+  endTime?: string | null;
+}
+
+interface ExistingFrameResponse {
+  frame: ExistingFrame;
+  players: FramePlayerOption[];
 }
 
 @Component({
@@ -80,14 +95,25 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   framePlayers: FramePlayerOption[] = [];
   billAmount: number | null = null;
   billDuration: number | null = null;
+  viewMode: 'start' | 'manage' = 'start';
+  backRoute = '/snooker-frame';
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
-    this.selectedTable = (history.state?.table as SnookerTable | undefined) ?? null;
+    const state = history.state as { table?: SnookerTable; frameId?: number; source?: string } | undefined;
+    const frameId = state?.frameId;
+    this.backRoute = state?.source === 'manager-portal' ? '/managers-portal' : '/snooker-frame';
 
-    if (!this.selectedTable) {
-      void this.router.navigate(['/snooker-frame']);
-      return;
+    if (frameId) {
+      this.viewMode = 'manage';
+      this.loadExistingFrame(frameId);
+    } else {
+      this.selectedTable = state?.table ?? null;
+
+      if (!this.selectedTable) {
+        void this.router.navigate(['/snooker-frame']);
+        return;
+      }
     }
 
     this.loadCurrentUser();
@@ -195,7 +221,10 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     this.winnerId = null;
     this.looserId = null;
 
-    if (this.selectedPlayers.length > 0) {
+    if (
+      this.selectedPlayers.length > 0 &&
+      this.selectedPlayers.every((player) => player.id !== null && player.id !== undefined && player.id > 0)
+    ) {
       this.framePlayers = this.selectedPlayers;
       return;
     }
@@ -235,8 +264,10 @@ export class StartFrameComponent implements OnInit, OnDestroy {
           this.frameId = null;
           this.searchText = '';
           this.players = [];
-          this.selectedPlayers = [];
-          this.framePlayers = [];
+          if (this.viewMode === 'start') {
+            this.selectedPlayers = [];
+            this.framePlayers = [];
+          }
           this.winnerId = null;
           this.looserId = null;
         },
@@ -255,7 +286,7 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     if (this.frameStarted) {
       return;
     }
-    void this.router.navigate(['/snooker-frame']);
+    void this.router.navigate([this.backRoute]);
   }
 
   get formattedTime(): string {
@@ -269,6 +300,17 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     this.seconds = 0;
     this.timerInterval = setInterval(() => {
       this.seconds += 1;
+    }, 1000);
+  }
+
+  private startTimerFromServerTime(startTimeValue: string): void {
+    this.clearTimer();
+
+    const startTime = new Date(startTimeValue).getTime();
+    this.seconds = Math.floor((Date.now() - startTime) / 1000);
+
+    this.timerInterval = setInterval(() => {
+      this.seconds = Math.floor((Date.now() - startTime) / 1000);
     }, 1000);
   }
 
@@ -291,6 +333,39 @@ export class StartFrameComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Failed to load current user', err);
+      },
+    });
+  }
+
+  private loadExistingFrame(frameId: number): void {
+    this.http.get<ExistingFrameResponse | null>(`/api/frame/${frameId}`).subscribe({
+      next: (res) => {
+        if (!res?.frame || res.frame.status !== 'STARTED' || res.frame.endTime) {
+          alert('This frame is no longer active');
+          void this.router.navigate(['/managers-portal']);
+          return;
+        }
+
+        this.selectedTable = res.frame.tableId
+          ? {
+              id: res.frame.tableId,
+              tableName: res.frame.tableName ?? `Table #${res.frame.tableId}`,
+            }
+          : null;
+        this.frameId = res.frame.id;
+        this.frameStarted = true;
+        this.selectedPlayers = (res.players ?? []).map((player) => ({
+          id: player.userId ?? player.id ?? 0,
+          name: player.name ?? player.playerName ?? 'Player',
+          email: player.email ?? '',
+        }));
+        this.framePlayers = res.players ?? [];
+        this.startTimerFromServerTime(res.frame.startTime);
+      },
+      error: (err) => {
+        console.error('Failed to load frame details', err);
+        alert('Unable to load frame details right now');
+        void this.router.navigate(['/managers-portal']);
       },
     });
   }

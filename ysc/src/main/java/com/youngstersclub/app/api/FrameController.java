@@ -35,6 +35,16 @@ public class FrameController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/ongoing/today")
+    public ResponseEntity<List<Map<String, Object>>> getTodayOngoingFrames() {
+        return ResponseEntity.ok(frameService.getTodayOngoingFrames());
+    }
+
+    @GetMapping("/completed/today")
+    public ResponseEntity<List<Map<String, Object>>> getTodayCompletedFrames() {
+        return ResponseEntity.ok(frameService.getTodayCompletedFrames());
+    }
+
     @GetMapping("/history")
     public ResponseEntity<List<Map<String, Object>>> getUserFrameHistory(@RequestParam Integer userId) {
         return ResponseEntity.ok(frameService.getUserFrameHistory(userId));
@@ -50,8 +60,19 @@ public class FrameController {
         return ResponseEntity.ok(frameService.getFramePlayers(frameId));
     }
 
+    @GetMapping("/{frameId}")
+    public ResponseEntity<?> getFrameDetails(@PathVariable Integer frameId) {
+        return ResponseEntity.ok(frameService.getFrameDetails(frameId));
+    }
+
     @PostMapping("/end/{frameId}")
     public ResponseEntity<?> endFrame(@PathVariable Integer frameId, @RequestBody Map<String, Integer> request) {
         return ResponseEntity.ok(frameService.endFrame(frameId, request.get("winnerId"), request.get("looserId")));
+    }
+
+    @PostMapping("/reject/{frameId}")
+    public ResponseEntity<Void> rejectFrame(@PathVariable Integer frameId) {
+        frameService.rejectFrame(frameId);
+        return ResponseEntity.ok().build();
     }
 }

@@ -37,6 +37,16 @@
           <button class="history-btn" (click)="goToGameHistory()">
             📜 My Game History
           </button>
+          @if (isAdmin) {
+            <button class="admin-btn" (click)="goToAdminPage()">
+              🛠 Admin Panel
+            </button>
+          }
+          @if (isManagerOrAdmin) {
+            <button class="manager-btn" (click)="goToManagersPortal()">
+              🧑‍💼 Manager's Portal
+            </button>
+          }
         </div>
       }
 

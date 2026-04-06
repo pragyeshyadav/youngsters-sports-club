@@ -34,5 +34,17 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/my-game-history/my-game-history.component').then((m) => m.MyGameHistoryComponent),
   },
+  {
+    path: 'admin-page',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/admin-page/admin-page.component').then((m) => m.AdminPageComponent),
+  },
+  {
+    path: 'managers-portal',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/managers-portal/managers-portal.component').then((m) => m.ManagersPortalComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];
