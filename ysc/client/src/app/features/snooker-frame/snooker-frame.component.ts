@@ -219,7 +219,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     this.http.get<Table[]>('/api/snooker/tables').subscribe({
       next: (res) => {
         const availableTables = res.filter((table) => table.isAvailable !== false);
-        this.tables = this.isPrivileged() ? availableTables : availableTables.slice(0, 1);
+        this.tables = availableTables;
       },
       error: (err) => {
         console.error('Failed to fetch tables', err);

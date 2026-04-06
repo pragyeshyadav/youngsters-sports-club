@@ -35,6 +35,11 @@ public class FrameController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/user-ongoing")
+    public ResponseEntity<?> getUserOngoingFrame(@RequestParam Integer userId) {
+        return ResponseEntity.ok(frameService.getUserOngoingFrame(userId));
+    }
+
     @GetMapping("/ongoing/today")
     public ResponseEntity<List<Map<String, Object>>> getTodayOngoingFrames() {
         return ResponseEntity.ok(frameService.getTodayOngoingFrames());

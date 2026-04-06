@@ -73,9 +73,6 @@ public class FrameService {
             if (userAlreadyHasRunningFrame) {
                 throw new RuntimeException("You already have an ongoing frame");
             }
-
-            requestedTableId = availableTables.get(0).getId();
-            request.setTableId(requestedTableId);
         }
 
         if (requestedTableId == null) {
@@ -146,6 +143,10 @@ public class FrameService {
         response.put("frame", frameDetails);
         response.put("players", playerDetails);
         return response;
+    }
+
+    public Map<String, Object> getUserOngoingFrame(Integer userId) {
+        return getActiveFrame(userId);
     }
 
     public Map<String, Object> getFrameDetails(Integer frameId) {
