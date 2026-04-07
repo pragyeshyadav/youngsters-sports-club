@@ -18,6 +18,10 @@ import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.c
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardComponent implements OnInit {
+  private static readonly CLUB_LATITUDE = 24.5673842;
+  private static readonly CLUB_LONGITUDE = 80.8618234;
+  private static readonly CLUB_RADIUS_METERS = 100;
+
   private readonly auth = inject(AuthService);
   private readonly http = inject(HttpClient);
   private readonly cdr = inject(ChangeDetectorRef);
@@ -41,6 +45,8 @@ export class DashboardComponent implements OnInit {
   showFeedbackForm: boolean = false;
   rating: number = 0;
   feedbackText: string = '';
+  isWithinClubRange: boolean = false;
+  locationChecked: boolean = false;
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -87,6 +93,10 @@ export class DashboardComponent implements OnInit {
 
           if (this.userRole === 'CUSTOMER') {
             this.checkOngoingFrame();
+            this.checkUserLocation();
+          } else {
+            this.locationChecked = true;
+            this.isWithinClubRange = true;
           }
           
           this.cdr.markForCheck();
@@ -181,6 +191,71 @@ export class DashboardComponent implements OnInit {
     }
 
     this.router.navigate(['/snooker-frame']);
+  }
+
+  isCustomer(): boolean {
+    return this.userRole === 'CUSTOMER';
+  }
+
+  isFrameActionDisabled(): boolean {
+    return this.isCustomer() && (!this.locationChecked || !this.isWithinClubRange);
+  }
+
+  getFrameActionLabel(): string {
+    if (this.isCustomer() && this.locationChecked && !this.isWithinClubRange) {
+      return '📍 Reach club to start';
+    }
+
+    return this.buttonLabel;
+  }
+
+  checkUserLocation() {
+    if (!navigator.geolocation) {
+      this.locationChecked = true;
+      this.isWithinClubRange = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const userLat = position.coords.latitude;
+        const userLng = position.coords.longitude;
+
+        const distance = this.calculateDistance(
+          userLat,
+          userLng,
+          DashboardComponent.CLUB_LATITUDE,
+          DashboardComponent.CLUB_LONGITUDE
+        );
+
+        this.isWithinClubRange = distance <= DashboardComponent.CLUB_RADIUS_METERS;
+        this.locationChecked = true;
+        this.cdr.markForCheck();
+      },
+      (error) => {
+        console.error('Location access denied', error);
+        this.locationChecked = true;
+        this.isWithinClubRange = false;
+        this.cdr.markForCheck();
+      }
+    );
+  }
+
+  calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const earthRadius = 6371e3;
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+    const deltaLambda = (lon2 - lon1) * Math.PI / 180;
+
+    const a =
+      Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+      Math.cos(phi1) * Math.cos(phi2) *
+      Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
+
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return earthRadius * c;
   }
 
   goToGameHistory() {

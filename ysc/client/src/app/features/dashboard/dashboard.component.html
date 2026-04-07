@@ -34,9 +34,15 @@
           <button
             (click)="onFrameAction()"
             class="start-btn"
+            [disabled]="isFrameActionDisabled()"
             [ngClass]="buttonColor === 'warn' ? 'btn-red' : 'btn-primary'">
-            🎱 {{ buttonLabel }}
+            🎱 {{ getFrameActionLabel() }}
           </button>
+          @if (isCustomer() && locationChecked && !isWithinClubRange) {
+            <p class="warning">
+              📍 You must be at Youngsters Sports Club to start or end a frame
+            </p>
+          }
           <button class="history-btn" (click)="goToGameHistory()">
             📜 My Game History
           </button>
