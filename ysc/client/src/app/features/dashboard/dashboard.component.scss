@@ -101,6 +101,11 @@
   transition: background-color 0.2s;
 }
 
+.start-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
 .btn-primary {
   background-color: #2c7a7b;
 }
@@ -130,6 +135,14 @@
 
 .history-btn:hover {
   background-color: #e6c200;
+}
+
+.warning {
+  margin: -2px 0 4px;
+  color: #b45309;
+  font-size: 0.92rem;
+  font-weight: 600;
+  max-width: 32rem;
 }
 
 .feedback-section {
