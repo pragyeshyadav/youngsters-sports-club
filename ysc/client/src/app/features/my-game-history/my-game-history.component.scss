@@ -51,6 +51,26 @@
   }
 }
 
+.spinner-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 120px;
+}
+
+.compact-spinner {
+  height: 88px;
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 4px solid #d1d5db;
+  border-top: 4px solid #2e7d32;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -125,4 +145,10 @@
 .mobile-history-card.running-row {
   border-left: 6px solid #fadb14;
   background: #fffbe6;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
 }

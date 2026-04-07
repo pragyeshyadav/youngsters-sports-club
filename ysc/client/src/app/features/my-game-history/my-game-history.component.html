@@ -5,14 +5,24 @@
   </div>
 
   <div class="history-card">
-    <div class="total-due-card">
-      <span>Total Due</span>
-      <h2>₹{{ totalDue }}</h2>
-    </div>
+    @if (isLoadingTotalDue) {
+      <div class="spinner-container compact-spinner">
+        <div class="spinner"></div>
+      </div>
+    } @else {
+      <div class="total-due-card">
+        <span>Total Due</span>
+        <h2>₹{{ totalDue }}</h2>
+      </div>
+    }
 
     <h2>📜 My Game History</h2>
 
-    @if (history.length > 0) {
+    @if (isLoadingHistory) {
+      <div class="spinner-container">
+        <div class="spinner"></div>
+      </div>
+    } @else if (history.length > 0) {
       @if (!isMobile) {
         <div class="table-container">
           <div class="table-wrap">

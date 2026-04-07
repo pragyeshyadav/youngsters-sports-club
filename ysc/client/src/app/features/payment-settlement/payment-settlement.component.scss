@@ -122,6 +122,26 @@
   }
 }
 
+.spinner-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 110px;
+}
+
+.compact-spinner {
+  height: 72px;
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 4px solid #d1d5db;
+  border-top: 4px solid #2e7d32;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
 .settle-btn {
   margin-top: 0.85rem;
   margin-left: 0.85rem;
@@ -310,6 +330,12 @@
 .cancel-btn {
   background: rgba(148, 163, 184, 0.18);
   color: #334155;
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 @media (max-width: 640px) {

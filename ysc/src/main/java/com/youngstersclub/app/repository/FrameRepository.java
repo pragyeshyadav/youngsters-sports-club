@@ -14,17 +14,25 @@ import org.springframework.stereotype.Repository;
 public interface FrameRepository extends JpaRepository<Frame, Integer> {
     @Query("""
         SELECT DISTINCT f FROM Frame f
-        LEFT JOIN f.framePlayers fp
+        LEFT JOIN FETCH f.snookerTable
+        LEFT JOIN FETCH f.framePlayers fp
+        LEFT JOIN FETCH fp.user
         WHERE f.status = :status
         AND (
             f.startedBy.id = :userId
-            OR fp.user.id = :userId
+            OR EXISTS (
+                SELECT 1 FROM FramePlayer participant
+                WHERE participant.frame = f
+                AND participant.user.id = :userId
+            )
         )
     """)
     Optional<Frame> findActiveFrameForUser(@Param("userId") Integer userId, @Param("status") FrameStatus status);
 
     @Query("""
         SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.winner
+        LEFT JOIN FETCH f.looser
         LEFT JOIN f.framePlayers fp
         WHERE f.startedBy.id = :userId
            OR fp.user.id = :userId
