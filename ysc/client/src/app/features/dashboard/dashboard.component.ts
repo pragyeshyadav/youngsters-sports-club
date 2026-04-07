@@ -38,6 +38,9 @@ export class DashboardComponent implements OnInit {
   hasOngoingFrame: boolean = false;
   userRole: string = '';
   ongoingFrameId: number | null = null;
+  showFeedbackForm: boolean = false;
+  rating: number = 0;
+  feedbackText: string = '';
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -182,6 +185,41 @@ export class DashboardComponent implements OnInit {
 
   goToGameHistory() {
     this.router.navigate(['/my-game-history']);
+  }
+
+  toggleFeedback() {
+    this.showFeedbackForm = !this.showFeedbackForm;
+    this.cdr.markForCheck();
+  }
+
+  setRating(star: number) {
+    this.rating = star;
+    this.cdr.markForCheck();
+  }
+
+  submitFeedback() {
+    if (!this.rating || !this.feedbackText.trim() || !this.user?.id) {
+      alert('Please provide rating and feedback');
+      return;
+    }
+
+    this.http.post('/api/feedback', {
+      userId: this.user.id,
+      feedback: this.feedbackText.trim(),
+      starRating: this.rating
+    }, { responseType: 'text' }).subscribe({
+      next: () => {
+        alert('Thank you for your feedback!');
+        this.rating = 0;
+        this.feedbackText = '';
+        this.showFeedbackForm = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to save feedback:', err);
+        alert('Unable to submit feedback right now');
+      }
+    });
   }
 
   goToAdminPage() {
