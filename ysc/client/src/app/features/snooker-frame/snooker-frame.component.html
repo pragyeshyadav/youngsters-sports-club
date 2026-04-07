@@ -42,6 +42,16 @@
             <div class="running-frame-card">
               <div class="running-frame-card__title">{{ frame.tableName || ('Table #' + frame.tableId) }}</div>
               <div class="running-frame-card__meta">Frame #{{ frame.id }}</div>
+              <p class="started-by">
+                Started by: <strong>{{ frame.startedBy || '-' }}</strong>
+              </p>
+              <div class="running-players">
+                @for (player of frame.players; track player) {
+                  <span class="running-player-chip">{{ player }}</span>
+                } @empty {
+                  <span class="running-player-empty">-</span>
+                }
+              </div>
               <div class="running-frame-card__meta">{{ frame.startTime | date: 'short' }}</div>
               <div class="running-frame-card__status">{{ frame.status }}</div>
             </div>

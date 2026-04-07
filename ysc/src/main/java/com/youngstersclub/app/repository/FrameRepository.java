@@ -49,8 +49,11 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
     Optional<Frame> findDetailedById(@Param("frameId") Integer frameId);
 
     @Query("""
-        SELECT f FROM Frame f
+        SELECT DISTINCT f FROM Frame f
         LEFT JOIN FETCH f.snookerTable
+        LEFT JOIN FETCH f.startedBy
+        LEFT JOIN FETCH f.framePlayers fp
+        LEFT JOIN FETCH fp.user
         WHERE f.status = com.youngstersclub.app.enums.FrameStatus.STARTED
         AND f.endTime IS NULL
         AND f.startTime >= :startOfDay
