@@ -51,6 +51,8 @@ interface OngoingFrameSummary {
   tableName: string | null;
   startTime: string;
   status: string;
+  startedBy: string | null;
+  players: string[];
 }
 
 @Component({

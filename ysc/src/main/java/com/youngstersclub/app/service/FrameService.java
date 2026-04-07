@@ -238,6 +238,18 @@ public class FrameService {
             frameMap.put("tableName", frame.getSnookerTable() != null ? frame.getSnookerTable().getTableName() : null);
             frameMap.put("startTime", frame.getStartTime());
             frameMap.put("status", frame.getStatus());
+            frameMap.put("startedBy", frame.getStartedBy() != null ? frame.getStartedBy().getName() : null);
+            frameMap.put(
+                    "players",
+                    frame.getFramePlayers() == null
+                            ? List.of()
+                            : frame.getFramePlayers().stream()
+                                    .map(player -> player.getUser() != null
+                                            ? player.getUser().getName()
+                                            : player.getPlayerName())
+                                    .filter(playerName -> playerName != null && !playerName.isBlank())
+                                    .distinct()
+                                    .toList());
             return frameMap;
         }).toList();
     }

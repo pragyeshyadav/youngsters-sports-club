@@ -90,6 +90,34 @@
   margin-bottom: 0.3rem;
 }
 
+.started-by {
+  font-size: 0.82rem;
+  margin: 0.2rem 0 0.5rem;
+  color: #475569;
+}
+
+.running-players {
+  margin-bottom: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.running-player-chip {
+  display: inline-block;
+  padding: 0.3rem 0.6rem;
+  background-color: #eef6ff;
+  color: #1d4ed8;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.running-player-empty {
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
 .running-frame-card__status {
   display: inline-flex;
   margin-top: 0.35rem;

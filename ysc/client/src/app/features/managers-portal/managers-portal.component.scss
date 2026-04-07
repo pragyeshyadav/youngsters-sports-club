@@ -81,6 +81,10 @@
   overflow-x: auto;
 }
 
+.players-cell {
+  min-width: 220px;
+}
+
 .frames-table {
   width: 100%;
   border-collapse: collapse;
@@ -129,6 +133,36 @@
 .reject-action {
   background: rgba(71, 85, 105, 0.12);
   color: #334155;
+}
+
+.players-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.players-stack {
+  margin-bottom: 0.75rem;
+  text-align: left;
+}
+
+.players-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: #475569;
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.player-chip {
+  display: inline-block;
+  padding: 0.3rem 0.65rem;
+  margin: 0.1rem 0;
+  background-color: #e6f4ea;
+  color: #14532d;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .card-container {

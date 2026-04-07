@@ -11,7 +11,8 @@ interface OngoingFrame {
   tableName: string | null;
   startTime: string;
   status: string;
-  startedById: number | null;
+  startedBy: string | null;
+  players: string[];
 }
 
 interface CompletedFrame {
