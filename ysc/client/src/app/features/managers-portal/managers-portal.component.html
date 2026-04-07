@@ -1,0 +1,196 @@
+<div class="manager-page">
+  <div class="manager-header">
+    <app-club-logo size="md" />
+    <app-brand-title size="small" />
+  </div>
+
+  <div class="manager-card">
+    <h2>🧑‍💼 Manager's Portal</h2>
+    <p>Manage tables, frames, and daily operations.</p>
+
+    <div class="portal-panel">
+      <button type="button" class="panel-header" (click)="toggleOngoing()">
+        <span>📌 Ongoing Frames (Today)</span>
+        <span class="panel-chevron">{{ isOngoingExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isOngoingExpanded) {
+        <div class="panel-body">
+          @if (isLoadingOngoing) {
+            <p class="panel-message">Loading ongoing frames...</p>
+          } @else if (ongoingFrames.length === 0) {
+            <p class="panel-message">No ongoing frames found for today.</p>
+          } @else if (!isMobile) {
+            <div class="table-wrap">
+              <table class="frames-table">
+                <thead>
+                  <tr>
+                    <th>Table</th>
+                    <th>Started By</th>
+                    <th>Players</th>
+                    <th>Start Time</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (frame of ongoingFrames; track frame.id) {
+                    <tr>
+                      <td>{{ frame.tableName || ('Table #' + frame.tableId) }}</td>
+                      <td>{{ frame.startedBy || '-' }}</td>
+                      <td class="players-cell">
+                        <div class="players-wrapper">
+                          @for (player of frame.players; track player) {
+                            <span class="player-chip">{{ player }}</span>
+                          } @empty {
+                            <span>-</span>
+                          }
+                        </div>
+                      </td>
+                      <td>{{ frame.startTime | date: 'short' }}</td>
+                      <td>{{ frame.status }}</td>
+                      <td class="actions-cell">
+                        <button type="button" class="action-btn end-action" (click)="endFrame(frame.id)">
+                          🔴 End Frame
+                        </button>
+                        <button type="button" class="action-btn reject-action" (click)="rejectFrame(frame.id)">
+                          ❌ Reject Frame
+                        </button>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="card-container">
+              @for (frame of ongoingFrames; track frame.id) {
+                <div class="history-card running-row">
+                  <div class="card-row">
+                    <span>🎱 Table</span>
+                    <strong>{{ frame.tableName || ('Table #' + frame.tableId) }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>👤 Started By</span>
+                    <strong>{{ frame.startedBy || '-' }}</strong>
+                  </div>
+                  <div class="players-stack">
+                    <span class="players-label">Players</span>
+                    <div class="players-wrapper">
+                      @for (player of frame.players; track player) {
+                        <span class="player-chip">{{ player }}</span>
+                      } @empty {
+                        <span>-</span>
+                      }
+                    </div>
+                  </div>
+                  <div class="card-row">
+                    <span>🕒 Start</span>
+                    <span>{{ frame.startTime | date: 'short' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>Status</span>
+                    <strong>{{ frame.status }}</strong>
+                  </div>
+                  <div class="actions">
+                    <button type="button" class="action-btn end-action" (click)="endFrame(frame.id)">
+                      🔴 End Frame
+                    </button>
+                    <button type="button" class="action-btn reject-action" (click)="rejectFrame(frame.id)">
+                      ❌ Reject Frame
+                    </button>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="portal-panel">
+      <button type="button" class="panel-header completed-header" (click)="toggleCompleted()">
+        <span>✅ Completed Frames (Today)</span>
+        <span class="panel-chevron">{{ isCompletedExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isCompletedExpanded) {
+        <div class="panel-body">
+          @if (isLoadingCompleted) {
+            <p class="panel-message">Loading completed frames...</p>
+          } @else if (completedFrames.length === 0) {
+            <p class="panel-message">No completed frames found for today.</p>
+          } @else if (!isMobile) {
+            <div class="table-wrap">
+              <table class="frames-table completed-table">
+                <thead>
+                  <tr>
+                    <th>Winner</th>
+                    <th>Looser</th>
+                    <th>Start Time</th>
+                    <th>End Time</th>
+                    <th>Duration</th>
+                    <th>Amount</th>
+                    <th>Payment Due</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (frame of completedFrames; track frame.id) {
+                    <tr [ngClass]="getPaymentRowClass(frame)">
+                      <td>{{ frame.winnerName || '-' }}</td>
+                      <td>{{ frame.looserName || '-' }}</td>
+                      <td>{{ frame.startTime | date: 'short' }}</td>
+                      <td>{{ frame.endTime | date: 'short' }}</td>
+                      <td>{{ frame.durationMinutes ?? '-' }}{{ frame.durationMinutes !== null ? ' min' : '' }}</td>
+                      <td>₹{{ frame.totalAmount ?? 0 }}</td>
+                      <td>₹{{ frame.paymentDue ?? 0 }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="card-container">
+              @for (frame of completedFrames; track frame.id) {
+                <div class="history-card" [ngClass]="getPaymentRowClass(frame)">
+                  <div class="card-row">
+                    <span>🏆 Winner</span>
+                    <strong>{{ frame.winnerName || '-' }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>❌ Looser</span>
+                    <strong>{{ frame.looserName || '-' }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>🕒 Start</span>
+                    <span>{{ frame.startTime | date: 'short' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>⏹ End</span>
+                    <span>{{ frame.endTime | date: 'short' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>⏱ Duration</span>
+                    <span>{{ frame.durationMinutes ?? '-' }}{{ frame.durationMinutes !== null ? ' min' : '' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>💰 Amount</span>
+                    <strong>₹{{ frame.totalAmount ?? 0 }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>💳 Due</span>
+                    <strong>₹{{ frame.paymentDue ?? 0 }}</strong>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <button type="button" class="settle-btn" (click)="goToSettlement()">
+      💳 Settle Customer Payment
+    </button>
+  </div>
+</div>

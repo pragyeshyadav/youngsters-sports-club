@@ -16,5 +16,41 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/dashboard/dashboard.component').then((m) => m.DashboardComponent),
   },
+  {
+    path: 'snooker-frame',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/snooker-frame/snooker-frame.component').then((m) => m.SnookerFrameComponent),
+  },
+  {
+    path: 'start-frame',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/start-frame/start-frame.component').then((m) => m.StartFrameComponent),
+  },
+  {
+    path: 'my-game-history',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/my-game-history/my-game-history.component').then((m) => m.MyGameHistoryComponent),
+  },
+  {
+    path: 'admin-page',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/admin-page/admin-page.component').then((m) => m.AdminPageComponent),
+  },
+  {
+    path: 'managers-portal',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/managers-portal/managers-portal.component').then((m) => m.ManagersPortalComponent),
+  },
+  {
+    path: 'payment-settlement',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/payment-settlement/payment-settlement.component').then((m) => m.PaymentSettlementComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];

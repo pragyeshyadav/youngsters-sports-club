@@ -33,7 +33,7 @@ public class Payment {
     @Column(name = "payment_method")
     private PaymentMethod paymentMethod;
 
-    @Column(name = "payment_time")
+    @Column(name = "paid_at")
     private LocalDateTime paymentTime;
 
     public Payment() {}

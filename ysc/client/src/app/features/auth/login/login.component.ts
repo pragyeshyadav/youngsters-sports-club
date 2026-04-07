@@ -108,6 +108,8 @@ export class LoginComponent implements AfterViewInit {
         return;
       }
 
+      localStorage.setItem('user', JSON.stringify(user));
+
       const payload = {
         name: user.name,
         email: user.email,

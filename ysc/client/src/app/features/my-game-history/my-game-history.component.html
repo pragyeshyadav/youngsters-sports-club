@@ -1,0 +1,94 @@
+<div class="history-page">
+  <div class="history-header">
+    <app-club-logo size="md" />
+    <app-brand-title size="small" />
+  </div>
+
+  <div class="history-card">
+    <div class="total-due-card">
+      <span>Total Due</span>
+      <h2>₹{{ totalDue }}</h2>
+    </div>
+
+    <h2>📜 My Game History</h2>
+
+    @if (history.length > 0) {
+      @if (!isMobile) {
+        <div class="table-container">
+          <div class="table-wrap">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Winner</th>
+                  <th>Looser</th>
+                  <th>Start Time</th>
+                  <th>End Time</th>
+                  <th>Duration</th>
+                  <th>Amount</th>
+                  <th>Payment Due</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                @for (frame of history; track frame.frameId) {
+                  <tr [ngClass]="getRowClass(frame)">
+                    <td>{{ frame.winnerName || '-' }}</td>
+                    <td>{{ frame.looserName || '-' }}</td>
+                    <td>{{ frame.startTime | date: 'short' }}</td>
+                    <td>{{ frame.endTime ? (frame.endTime | date: 'short') : 'Running' }}</td>
+                    <td>{{ frame.duration || '-' }}</td>
+                    <td>₹{{ frame.amount ?? 0 }}</td>
+                    <td>₹{{ frame.paymentDue ?? 0 }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      } @else {
+        <div class="card-container">
+          @for (frame of history; track frame.frameId) {
+            <div class="mobile-history-card" [ngClass]="getRowClass(frame)">
+              <div class="card-row">
+                <span>🏆 Winner:</span>
+                <strong>{{ frame.winnerName || '-' }}</strong>
+              </div>
+
+              <div class="card-row">
+                <span>❌ Looser:</span>
+                <strong>{{ frame.looserName || '-' }}</strong>
+              </div>
+
+              <div class="card-row">
+                <span>🕒 Start:</span>
+                <span>{{ frame.startTime | date: 'short' }}</span>
+              </div>
+
+              <div class="card-row">
+                <span>⏹ End:</span>
+                <span>{{ frame.endTime ? (frame.endTime | date: 'short') : 'Running' }}</span>
+              </div>
+
+              <div class="card-row">
+                <span>⏱ Duration:</span>
+                <span>{{ frame.duration || '-' }} min</span>
+              </div>
+
+              <div class="card-row">
+                <span>💰 Amount:</span>
+                <strong>₹{{ frame.amount ?? 0 }}</strong>
+              </div>
+
+              <div class="card-row highlight">
+                <span>💳 Due:</span>
+                <strong>₹{{ frame.paymentDue ?? 0 }}</strong>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    } @else {
+      <p>No game history available yet.</p>
+    }
+  </div>
+</div>

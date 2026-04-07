@@ -13,10 +13,106 @@
       </div>
       <h1 class="welcome-head">Welcome, {{ user.name }}</h1>
       <p class="email">{{ user.email }}</p>
-      <p class="lead">
-        You are signed in at our <strong>Satna</strong> location. Snooker session tracking and more will
-        appear here in upcoming phases. v2
-      </p>
+
+      @if (showPhoneInput) {
+        <div class="phone-section">
+          <h3>Add Your Phone Number</h3>
+          <input type="text"
+                 [(ngModel)]="phone"
+                 (input)="onPhoneInput($event)"
+                 placeholder="Enter 10 digit phone number"
+                 maxlength="10"
+                 class="phone-input"/>
+          <button (click)="savePhone()" class="btn-save">
+            Save Phone Number
+          </button>
+        </div>
+      }
+
+      @if (!showPhoneInput) {
+        <div class="action-container">
+          <button
+            (click)="onFrameAction()"
+            class="start-btn"
+            [disabled]="isFrameActionDisabled()"
+            [ngClass]="buttonColor === 'warn' ? 'btn-red' : 'btn-primary'">
+            🎱 {{ getFrameActionLabel() }}
+          </button>
+          @if (isCustomer() && locationChecked && !isWithinClubRange) {
+            <p class="warning">
+              📍 You must be at Youngsters Sports Club to start or end a frame
+            </p>
+          }
+          <button class="history-btn" (click)="goToGameHistory()">
+            📜 My Game History
+          </button>
+          <div class="feedback-section">
+            <div class="feedback-header" (click)="toggleFeedback()">
+              ⭐ Help us improve — Share your feedback &amp; suggestions
+            </div>
+
+            @if (showFeedbackForm) {
+              <div class="feedback-body">
+                <div class="stars">
+                  @for (star of [1, 2, 3, 4, 5]; track star) {
+                    <span
+                      (click)="setRating(star)"
+                      [class.active]="star <= rating">
+                      ★
+                    </span>
+                  }
+                </div>
+
+                <textarea
+                  [(ngModel)]="feedbackText"
+                  placeholder="Write your feedback or suggestion..."
+                ></textarea>
+
+                <button
+                  class="feedback-submit"
+                  (click)="submitFeedback()"
+                  [disabled]="!rating || !feedbackText || feedbackText.trim().length === 0">
+                  Submit
+                </button>
+              </div>
+            }
+          </div>
+          @if (isAdmin) {
+            <button class="admin-btn" (click)="goToAdminPage()">
+              🛠 Admin Panel
+            </button>
+          }
+          @if (isManagerOrAdmin) {
+            <button class="manager-btn" (click)="goToManagersPortal()">
+              🧑‍💼 Manager's Portal
+            </button>
+          }
+        </div>
+      }
+
+      <div class="dashboard-footer">
+        <p>Stay connected with us ❤️</p>
+
+        <div class="footer-links">
+          <a href="https://www.instagram.com/youngsters.sportsclub?igsh=bWliamh6dGJ6cGEw" target="_blank">
+            📸 Follow us on Instagram
+          </a>
+
+          <a href="https://g.page/r/CTo24eMe382oEBM/review" target="_blank">
+            ⭐ Rate us on Google
+          </a>
+        </div>
+      </div>
+
+      @if (showDueSection) {
+        <div class="due-warning">
+          <div class="due-content">
+            <span>⚠️ Total Pending Due</span>
+            <h2>₹{{ totalDue }}</h2>
+            <p>Please clear your dues to continue uninterrupted play.</p>
+          </div>
+        </div>
+      }
     </section>
   }
 </div>
