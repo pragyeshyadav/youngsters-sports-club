@@ -18,8 +18,8 @@ import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.c
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardComponent implements OnInit {
-  private static readonly CLUB_LATITUDE = 24.5673842;
-  private static readonly CLUB_LONGITUDE = 80.8618234;
+  private static readonly CLUB_LATITUDE = 24.56744868663567;
+  private static readonly CLUB_LONGITUDE = 80.86184495562104;
   private static readonly CLUB_RADIUS_METERS = 100;
 
   private readonly auth = inject(AuthService);
