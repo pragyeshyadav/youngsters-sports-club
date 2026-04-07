@@ -17,7 +17,9 @@
       @if (isOngoingExpanded) {
         <div class="panel-body">
           @if (isLoadingOngoing) {
-            <p class="panel-message">Loading ongoing frames...</p>
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading ongoing frames"></div>
+            </div>
           } @else if (ongoingFrames.length === 0) {
             <p class="panel-message">No ongoing frames found for today.</p>
           } @else if (!isMobile) {
@@ -117,7 +119,9 @@
       @if (isCompletedExpanded) {
         <div class="panel-body">
           @if (isLoadingCompleted) {
-            <p class="panel-message">Loading completed frames...</p>
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading completed frames"></div>
+            </div>
           } @else if (completedFrames.length === 0) {
             <p class="panel-message">No completed frames found for today.</p>
           } @else if (!isMobile) {

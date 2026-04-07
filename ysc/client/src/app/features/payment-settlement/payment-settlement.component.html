@@ -34,6 +34,12 @@
       }
     </div>
 
+    @if (isLoadingUsers) {
+      <div class="spinner-container compact-spinner">
+        <div class="spinner"></div>
+      </div>
+    }
+
     <button type="button" class="details-btn" [disabled]="!selectedUser" (click)="getPlayerDetails()">
       Get Player Details
     </button>
@@ -49,7 +55,11 @@
       </div>
     }
 
-    @if (totalDue > 0) {
+    @if (isLoadingTotalDue) {
+      <div class="spinner-container compact-spinner">
+        <div class="spinner"></div>
+      </div>
+    } @else if (totalDue > 0) {
       <div class="total-due-card">
         <span>Total Due</span>
         <h3>₹{{ totalDue }}</h3>
@@ -57,7 +67,9 @@
     }
 
     @if (isLoadingFrames) {
-      <p class="empty-state">Loading due frames...</p>
+      <div class="spinner-container">
+        <div class="spinner"></div>
+      </div>
     } @else if (selectedUser && frames.length === 0) {
       <p class="empty-state">No due frames found for this customer.</p>
     }

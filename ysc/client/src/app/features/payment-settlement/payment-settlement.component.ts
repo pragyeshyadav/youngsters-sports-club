@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
@@ -29,10 +29,12 @@ interface DueFrame {
   imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './payment-settlement.component.html',
   styleUrl: './payment-settlement.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PaymentSettlementComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly cdr = inject(ChangeDetectorRef);
   private resizeHandler: (() => void) | null = null;
 
   searchText = '';
@@ -41,6 +43,8 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   frames: DueFrame[] = [];
   isMobile = false;
   isLoadingFrames = false;
+  isLoadingUsers = false;
+  isLoadingTotalDue = false;
   totalDue = 0;
   showSettlementPopup = false;
   settleAmount: number | null = null;
@@ -67,6 +71,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       if (!this.selectedUser || this.selectedUser.name !== this.searchText) {
         this.selectedUser = null;
       }
+      this.isLoadingUsers = false;
       return;
     }
 
@@ -75,13 +80,18 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       this.frames = [];
     }
 
+    this.isLoadingUsers = true;
     this.http.get<SettlementUser[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
       next: (users) => {
         this.users = users;
+        this.isLoadingUsers = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to search users', err);
         this.users = [];
+        this.isLoadingUsers = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -95,6 +105,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.showSettlementPopup = false;
     this.settleAmount = null;
     this.paymentMode = '';
+    this.cdr.markForCheck();
   }
 
   getPlayerDetails(): void {
@@ -107,11 +118,13 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       next: (frames) => {
         this.frames = frames;
         this.isLoadingFrames = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load due frames', err);
         this.frames = [];
         this.isLoadingFrames = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -121,15 +134,20 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.isLoadingTotalDue = true;
     this.http.get<number>(`/api/frame/total-due?userId=${this.selectedUser.id}`).subscribe({
       next: (totalDue) => {
         this.totalDue = totalDue ?? 0;
         this.settleAmount = null;
         this.paymentMode = '';
         this.showSettlementPopup = true;
+        this.isLoadingTotalDue = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load total due', err);
+        this.isLoadingTotalDue = false;
+        this.cdr.markForCheck();
         alert('Unable to load total due right now');
       },
     });
@@ -157,6 +175,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         this.paymentMode = '';
         this.getPlayerDetails();
         this.refreshTotalDue();
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Settlement error:', err);
@@ -167,6 +186,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
 
   closeSettlementPopup(): void {
     this.showSettlementPopup = false;
+    this.cdr.markForCheck();
   }
 
   goBack(): void {
@@ -175,6 +195,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
 
   private updateViewportState(): void {
     this.isMobile = window.innerWidth < 768;
+    this.cdr.markForCheck();
   }
 
   private refreshTotalDue(): void {
@@ -186,6 +207,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.http.get<number>(`/api/frame/total-due?userId=${this.selectedUser.id}`).subscribe({
       next: (totalDue) => {
         this.totalDue = totalDue ?? 0;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to refresh total due', err);

@@ -122,7 +122,7 @@ public class FrameService {
         }
 
         Frame frame = frameOpt.get();
-        List<FramePlayer> players = framePlayerRepository.findByFrame_Id(frame.getId());
+        List<FramePlayer> players = frame.getFramePlayers() == null ? List.of() : frame.getFramePlayers();
 
         Map<String, Object> frameDetails = new HashMap<>();
         frameDetails.put("id", frame.getId());
