@@ -175,6 +175,7 @@ POST /api/feedback                  - Saves customer feedback
 5. **Partial Payments**: Fully automated iterative matching. A bulk payment spans multiple unpaid frames linearly (by oldest `startTime`) adjusting `paymentStatus` to `PARTIAL` if exact change isn't met.
 6. **Player Requirement**: At least one player must be associated within `players[]` array under `StartFrameRequest`.
 7. **Geo-Fencing Restriction**: Managed client-side natively. App refuses to call `Start Frame` if coordinates mismatch backend acceptable distance ranges.
+8. **Dynamic Pricing for Extra Players**: Base table rate applies up to 2 players. Any additional player beyond 2 adds ₹0.5 per minute to the effective rate before calculating the final amount.
 
 ---
 

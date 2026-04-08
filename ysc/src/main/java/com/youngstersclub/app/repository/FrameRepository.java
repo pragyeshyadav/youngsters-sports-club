@@ -17,6 +17,15 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         LEFT JOIN FETCH f.snookerTable
         LEFT JOIN FETCH f.framePlayers fp
         LEFT JOIN FETCH fp.user
+        WHERE f.status = com.youngstersclub.app.enums.FrameStatus.STARTED
+        AND f.endTime IS NULL
+    """)
+    List<Frame> findAllOngoingFrames();
+    @Query("""
+        SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.snookerTable
+        LEFT JOIN FETCH f.framePlayers fp
+        LEFT JOIN FETCH fp.user
         WHERE f.status = :status
         AND (
             f.startedBy.id = :userId

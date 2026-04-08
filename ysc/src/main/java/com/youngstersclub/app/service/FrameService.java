@@ -320,8 +320,19 @@ public class FrameService {
             throw new RuntimeException("Table not found");
         }
 
-        BigDecimal rate = table.getRatePerMinute();
-        BigDecimal totalAmount = rate.multiply(BigDecimal.valueOf(duration));
+        List<FramePlayer> framePlayers = framePlayerRepository.findByFrame_Id(frameId);
+        int playerCount = framePlayers != null ? framePlayers.size() : 0;
+
+        BigDecimal baseRate = table.getRatePerMinute();
+        BigDecimal effectiveRate = baseRate;
+
+        if (playerCount > 2) {
+            BigDecimal extraPlayers = BigDecimal.valueOf(playerCount - 2);
+            BigDecimal extraCharge = extraPlayers.multiply(BigDecimal.valueOf(0.5));
+            effectiveRate = baseRate.add(extraCharge);
+        }
+
+        BigDecimal totalAmount = effectiveRate.multiply(BigDecimal.valueOf(duration));
 
         if (winnerId != null) {
             User winner = userRepository.findById(winnerId).orElse(null);
@@ -375,5 +386,39 @@ public class FrameService {
             table.setIsAvailable(true);
             tableRepository.save(table);
         }
+    }
+
+    public List<Map<String, Object>> getAllTableStatuses() {
+        List<SnookerTable> allTables = tableRepository.findAll();
+        List<Frame> activeFrames = frameRepository.findAllOngoingFrames();
+        
+        Map<Long, Frame> tableActiveFrameMap = new HashMap<>();
+        if (activeFrames != null) {
+            for (Frame f : activeFrames) {
+                if (f.getSnookerTable() != null) {
+                    tableActiveFrameMap.put(f.getSnookerTable().getId(), f);
+                }
+            }
+        }
+        
+        List<Map<String, Object>> statuses = new java.util.ArrayList<>();
+        for (SnookerTable table : allTables) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("tableName", table.getTableName());
+            map.put("isAvailable", table.getIsAvailable());
+            
+            List<String> players = new java.util.ArrayList<>();
+            if (!Boolean.TRUE.equals(table.getIsAvailable()) && tableActiveFrameMap.containsKey(table.getId())) {
+                Frame f = tableActiveFrameMap.get(table.getId());
+                if (f.getFramePlayers() != null) {
+                    for(FramePlayer fp : f.getFramePlayers()) {
+                       players.add(fp.getUser() != null ? fp.getUser().getName() : fp.getPlayerName());
+                    }
+                }
+            }
+            map.put("players", players);
+            statuses.add(map);
+        }
+        return statuses;
     }
 }
