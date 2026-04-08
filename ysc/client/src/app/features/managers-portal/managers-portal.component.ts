@@ -26,6 +26,14 @@ interface CompletedFrame {
   paymentDue: number | string | null;
 }
 
+interface PlayerSummary {
+  userId: number;
+  name: string;
+  email: string;
+  framesPlayed: number;
+  totalDue: number;
+}
+
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
@@ -45,6 +53,12 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   isMobile = false;
   isLoadingOngoing = false;
   isLoadingCompleted = false;
+
+  isPlayersExpanded = false;
+  isLoadingPlayers = false;
+  players: PlayerSummary[] = [];
+  playersPage = 0;
+  hasMorePlayers = true;
 
   ngOnInit(): void {
     this.updateViewportState();
@@ -105,6 +119,45 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.isLoadingCompleted = false;
       },
     });
+  }
+
+  togglePlayers(): void {
+    this.isPlayersExpanded = !this.isPlayersExpanded;
+
+    if (this.isPlayersExpanded && this.players.length === 0) {
+      this.loadPlayers();
+    }
+  }
+
+  loadPlayers(): void {
+    if (this.isLoadingPlayers || !this.hasMorePlayers) return;
+    this.isLoadingPlayers = true;
+
+    this.http.get<any>(`/api/users/player-summary?page=${this.playersPage}&size=20`).subscribe({
+      next: (response) => {
+        const content = response.content || [];
+        this.players = [...this.players, ...content];
+        this.isLoadingPlayers = false;
+
+        if (content.length < 20 || response.last) {
+          this.hasMorePlayers = false;
+        } else {
+          this.playersPage++;
+        }
+      },
+      error: (err) => {
+        console.error('Failed to load players', err);
+        this.isLoadingPlayers = false;
+      },
+    });
+  }
+
+  onPlayersScroll(event: Event): void {
+    if (!this.isPlayersExpanded) return;
+    const target = event.target as HTMLElement;
+    if (target.scrollHeight - target.scrollTop <= target.clientHeight + 100) {
+      this.loadPlayers();
+    }
   }
 
   endFrame(frameId: number): void {

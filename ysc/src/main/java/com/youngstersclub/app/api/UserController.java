@@ -59,4 +59,12 @@ public class UserController {
         log.info("Phone number saved successfully for user: {}", request.getEmail());
         return ResponseEntity.ok("Phone number saved successfully");
     }
+
+    @GetMapping("/api/users/player-summary")
+    public ResponseEntity<org.springframework.data.domain.Page<com.youngstersclub.app.dto.PlayerSummaryProjection>> getPlayerSummary(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        return ResponseEntity.ok(userRepository.getPlayerSummaries(pageable));
+    }
 }
