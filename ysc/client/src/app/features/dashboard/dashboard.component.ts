@@ -8,11 +8,12 @@ import { AuthUser } from '../../core/models/auth.models';
 import { AuthService } from '../../core/services/auth.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
+import { AvailableTablesComponent } from './available-tables/available-tables.component';
 
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, AvailableTablesComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
