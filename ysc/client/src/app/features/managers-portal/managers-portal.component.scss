@@ -281,3 +281,20 @@
     transform: rotate(360deg);
   }
 }
+
+.players-header {
+  background: #334155;
+}
+
+.scrollable-panel {
+  max-height: 450px;
+  overflow-y: auto;
+}
+
+.text-red {
+  color: #dc2626 !important;
+}
+
+.player-card {
+  border-left-color: #3b82f6; 
+}
