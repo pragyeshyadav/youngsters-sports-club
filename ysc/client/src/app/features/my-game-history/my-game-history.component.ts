@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 import { AuthService } from '../../core/services/auth.service';
@@ -27,17 +27,22 @@ interface GameHistoryRow {
   imports: [CommonModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './my-game-history.component.html',
   styleUrl: './my-game-history.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MyGameHistoryComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly handleResize = () => {
     this.isMobile = window.innerWidth < 768;
+    this.cdr.markForCheck();
   };
 
   history: GameHistoryRow[] = [];
   isMobile = false;
   totalDue = 0;
+  isLoadingHistory = false;
+  isLoadingTotalDue = false;
 
   ngOnInit(): void {
     this.isMobile = window.innerWidth < 768;
@@ -50,28 +55,41 @@ export class MyGameHistoryComponent implements OnInit, OnDestroy {
 
     this.http.get<BackendUser>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
+        this.isLoadingTotalDue = true;
         this.http.get<number>(`/api/frame/total-due?userId=${user.id}`).subscribe({
           next: (res) => {
             this.totalDue = res || 0;
+            this.isLoadingTotalDue = false;
+            this.cdr.markForCheck();
           },
           error: (err) => {
             console.error('Failed to load total due', err);
             this.totalDue = 0;
+            this.isLoadingTotalDue = false;
+            this.cdr.markForCheck();
           },
         });
 
+        this.isLoadingHistory = true;
         this.http.get<GameHistoryRow[]>(`/api/frame/history?userId=${user.id}`).subscribe({
           next: (res) => {
             this.history = res;
+            this.isLoadingHistory = false;
+            this.cdr.markForCheck();
           },
           error: (err) => {
             console.error('Failed to load game history', err);
             this.history = [];
+            this.isLoadingHistory = false;
+            this.cdr.markForCheck();
           },
         });
       },
       error: (err) => {
         console.error('Failed to load current user', err);
+        this.isLoadingHistory = false;
+        this.isLoadingTotalDue = false;
+        this.cdr.markForCheck();
       },
     });
   }

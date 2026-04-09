@@ -19,7 +19,7 @@
   <properties>
     <java.version>17</java.version>
     <frontend.skip>false</frontend.skip>
-    <angular.dist.dir>${project.basedir}/dist/youngsters-sports-club/browser</angular.dist.dir>
+    <angular.dist.dir>${project.basedir}/dist/youngsters-sports-club</angular.dist.dir>
     <angular.static.dir>${project.basedir}/src/main/resources/static</angular.static.dir>
     <lombok.version>1.18.30</lombok.version>
   </properties>

@@ -37,11 +37,11 @@
       "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@angular-devkit/build-angular:browser",
           "options": {
             "outputPath": "dist/youngsters-sports-club",
             "index": "client/src/index.html",
-            "browser": "client/src/main.ts",
+            "main": "client/src/main.ts",
             "polyfills": [
               "zone.js"
             ],

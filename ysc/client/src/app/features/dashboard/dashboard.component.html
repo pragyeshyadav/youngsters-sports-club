@@ -12,7 +12,6 @@
         <img [src]="user.profileImageUrl" width="96" height="96" alt="" class="avatar" />
       </div>
       <h1 class="welcome-head">Welcome, {{ user.name }}</h1>
-      <p class="email">{{ user.email }}</p>
 
       @if (showPhoneInput) {
         <div class="phone-section">
@@ -30,6 +29,9 @@
       }
 
       @if (!showPhoneInput) {
+        <app-top-rankers></app-top-rankers>
+        <app-available-tables></app-available-tables>
+        
         <div class="action-container">
           <button
             (click)="onFrameAction()"

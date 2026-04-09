@@ -17,7 +17,9 @@
       @if (isOngoingExpanded) {
         <div class="panel-body">
           @if (isLoadingOngoing) {
-            <p class="panel-message">Loading ongoing frames...</p>
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading ongoing frames"></div>
+            </div>
           } @else if (ongoingFrames.length === 0) {
             <p class="panel-message">No ongoing frames found for today.</p>
           } @else if (!isMobile) {
@@ -117,7 +119,9 @@
       @if (isCompletedExpanded) {
         <div class="panel-body">
           @if (isLoadingCompleted) {
-            <p class="panel-message">Loading completed frames...</p>
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading completed frames"></div>
+            </div>
           } @else if (completedFrames.length === 0) {
             <p class="panel-message">No completed frames found for today.</p>
           } @else if (!isMobile) {
@@ -183,6 +187,73 @@
                   </div>
                 </div>
               }
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="portal-panel players-panel">
+      <button type="button" class="panel-header players-header" (click)="togglePlayers()">
+        <span>👥 Show All Players</span>
+        <span class="panel-chevron">{{ isPlayersExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isPlayersExpanded) {
+        <div class="panel-body scrollable-panel" (scroll)="onPlayersScroll($event)">
+          @if (players.length === 0 && !isLoadingPlayers) {
+            <p class="panel-message">No players found.</p>
+          } @else if (!isMobile) {
+            <div class="table-wrap">
+              <table class="frames-table players-table">
+                <thead>
+                  <tr>
+                    <th>Player Name</th>
+                    <th>Email</th>
+                    <th>Total Frames Played</th>
+                    <th>Total Payment Due</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (player of players; track player.userId) {
+                    <tr>
+                      <td>{{ player.name || '-' }}</td>
+                      <td>{{ player.email || '-' }}</td>
+                      <td>{{ player.framesPlayed }}</td>
+                      <td [class.text-red]="player.totalDue > 0">₹{{ player.totalDue }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="card-container">
+              @for (player of players; track player.userId) {
+                <div class="history-card player-card">
+                  <div class="card-row">
+                    <span>👤 Name</span>
+                    <strong>{{ player.name || '-' }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>✉️ Email</span>
+                    <span>{{ player.email || '-' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>🎱 Frames Played</span>
+                    <strong>{{ player.framesPlayed }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>💳 Due Amount</span>
+                    <strong [class.text-red]="player.totalDue > 0">₹{{ player.totalDue }}</strong>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          @if (isLoadingPlayers) {
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading players"></div>
             </div>
           }
         </div>

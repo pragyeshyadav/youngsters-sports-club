@@ -14,17 +14,34 @@ import org.springframework.stereotype.Repository;
 public interface FrameRepository extends JpaRepository<Frame, Integer> {
     @Query("""
         SELECT DISTINCT f FROM Frame f
-        LEFT JOIN f.framePlayers fp
+        LEFT JOIN FETCH f.snookerTable
+        LEFT JOIN FETCH f.framePlayers fp
+        LEFT JOIN FETCH fp.user
+        WHERE f.status = com.youngstersclub.app.enums.FrameStatus.STARTED
+        AND f.endTime IS NULL
+    """)
+    List<Frame> findAllOngoingFrames();
+    @Query("""
+        SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.snookerTable
+        LEFT JOIN FETCH f.framePlayers fp
+        LEFT JOIN FETCH fp.user
         WHERE f.status = :status
         AND (
             f.startedBy.id = :userId
-            OR fp.user.id = :userId
+            OR EXISTS (
+                SELECT 1 FROM FramePlayer participant
+                WHERE participant.frame = f
+                AND participant.user.id = :userId
+            )
         )
     """)
     Optional<Frame> findActiveFrameForUser(@Param("userId") Integer userId, @Param("status") FrameStatus status);
 
     @Query("""
         SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.winner
+        LEFT JOIN FETCH f.looser
         LEFT JOIN f.framePlayers fp
         WHERE f.startedBy.id = :userId
            OR fp.user.id = :userId
@@ -99,4 +116,24 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ORDER BY f.startTime ASC
     """)
     List<Frame> findDueFramesByUserOrderByStartTime(@Param("userId") Integer userId);
+
+    interface TopPlayerProjection {
+        String getName();
+        Long getWins();
+    }
+
+    @Query(value = """
+        SELECT 
+            u.name AS name,
+            COUNT(f.id) AS wins
+        FROM frames f
+        JOIN users u ON f.winner = u.id
+        WHERE 
+            f.winner IS NOT NULL
+            AND DATE_TRUNC('month', f.start_time) = DATE_TRUNC('month', CURRENT_DATE)
+        GROUP BY u.id, u.name
+        ORDER BY wins DESC
+        LIMIT 3
+    """, nativeQuery = true)
+    List<TopPlayerProjection> findTopPlayersOfCurrentMonth();
 }
