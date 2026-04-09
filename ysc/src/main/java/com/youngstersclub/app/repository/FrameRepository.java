@@ -116,4 +116,24 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ORDER BY f.startTime ASC
     """)
     List<Frame> findDueFramesByUserOrderByStartTime(@Param("userId") Integer userId);
+
+    interface TopPlayerProjection {
+        String getName();
+        Long getWins();
+    }
+
+    @Query(value = """
+        SELECT 
+            u.name AS name,
+            COUNT(f.id) AS wins
+        FROM frames f
+        JOIN users u ON f.winner = u.id
+        WHERE 
+            f.winner IS NOT NULL
+            AND DATE_TRUNC('month', f.start_time) = DATE_TRUNC('month', CURRENT_DATE)
+        GROUP BY u.id, u.name
+        ORDER BY wins DESC
+        LIMIT 3
+    """, nativeQuery = true)
+    List<TopPlayerProjection> findTopPlayersOfCurrentMonth();
 }
