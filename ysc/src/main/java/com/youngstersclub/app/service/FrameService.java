@@ -421,4 +421,13 @@ public class FrameService {
         }
         return statuses;
     }
+
+    public List<Map<String, Object>> getTopPlayers() {
+        return frameRepository.findTopPlayersOfCurrentMonth().stream().map(projection -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("name", projection.getName());
+            map.put("wins", projection.getWins());
+            return map;
+        }).toList();
+    }
 }
