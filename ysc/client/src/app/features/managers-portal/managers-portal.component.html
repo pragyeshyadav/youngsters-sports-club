@@ -8,6 +8,58 @@
     <h2>🧑‍💼 Manager's Portal</h2>
     <p>Manage tables, frames, and daily operations.</p>
 
+    @if (canViewTodayEarnings) {
+      <div class="portal-panel earnings-panel">
+        <button type="button" class="panel-header earnings-header" (click)="toggleEarnings()">
+          <span>💰 Today's Total Earnings</span>
+          <span class="panel-chevron">{{ isEarningsExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isEarningsExpanded) {
+          <div class="panel-body earnings-body">
+            @if (isLoadingEarnings) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading today's earnings"></div>
+              </div>
+            } @else {
+              <div class="earnings-summary">
+                <div class="earnings-metric earnings-total-card">
+                  <span class="metric-label">Total Earnings Today</span>
+                  <strong class="metric-value text-green">₹{{ todayEarnings.totalEarnings ?? 0 }}</strong>
+                </div>
+
+                <div class="earnings-metric earnings-due-card">
+                  <span class="metric-label">Total Payment Due Today</span>
+                  <strong class="metric-value text-red">₹{{ todayEarnings.totalDue ?? 0 }}</strong>
+                </div>
+              </div>
+
+              <div class="due-breakdown-card">
+                <div class="due-breakdown-header">
+                  <span>⚠️ Pending Payments</span>
+                </div>
+
+                @if (todayEarnings.duePlayers.length === 0) {
+                  <p class="panel-message due-breakdown-empty">No pending payments for today's frames.</p>
+                } @else {
+                  <div class="due-player-list">
+                    @for (player of todayEarnings.duePlayers; track player.name) {
+                      <div class="due-player-item">
+                        <div>
+                          <span class="due-player-name">{{ player.name }}</span>
+                        </div>
+                        <strong class="text-red">₹{{ player.due ?? 0 }}</strong>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+
     <div class="portal-panel">
       <button type="button" class="panel-header" (click)="toggleOngoing()">
         <span>📌 Ongoing Frames (Today)</span>

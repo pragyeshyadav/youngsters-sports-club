@@ -122,6 +122,13 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         Long getWins();
     }
 
+    interface TodayEarningsProjection {
+        BigDecimal getTotalEarnings();
+        BigDecimal getTotalDue();
+        String getPlayerName();
+        BigDecimal getDueAmount();
+    }
+
     @Query(value = """
         SELECT 
             u.name AS name,
@@ -136,4 +143,42 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         LIMIT 3
     """, nativeQuery = true)
     List<TopPlayerProjection> findTopPlayersOfCurrentMonth();
+
+    @Query(value = """
+        WITH today_frames AS (
+            SELECT
+                f.id,
+                f.looser,
+                f.status,
+                COALESCE(f.total_amount, 0) AS total_amount,
+                COALESCE(f.payment_due, 0) AS payment_due
+            FROM frames f
+            WHERE f.start_time >= CURRENT_DATE
+              AND f.start_time < CURRENT_DATE + INTERVAL '1 day'
+        ),
+        totals AS (
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'ENDED' THEN total_amount ELSE 0 END), 0) AS total_earnings,
+                COALESCE(SUM(payment_due), 0) AS total_due
+            FROM today_frames
+        ),
+        due_players AS (
+            SELECT
+                u.name AS player_name,
+                SUM(tf.payment_due) AS due_amount
+            FROM today_frames tf
+            JOIN users u ON tf.looser = u.id
+            WHERE tf.payment_due > 0
+            GROUP BY u.name
+        )
+        SELECT
+            t.total_earnings AS totalEarnings,
+            t.total_due AS totalDue,
+            dp.player_name AS playerName,
+            dp.due_amount AS dueAmount
+        FROM totals t
+        LEFT JOIN due_players dp ON TRUE
+        ORDER BY dp.due_amount DESC NULLS LAST
+    """, nativeQuery = true)
+    List<TodayEarningsProjection> findTodayEarningsAnalytics();
 }
