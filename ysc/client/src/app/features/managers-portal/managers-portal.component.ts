@@ -34,6 +34,17 @@ interface PlayerSummary {
   totalDue: number;
 }
 
+interface DuePlayer {
+  name: string;
+  due: number | string | null;
+}
+
+interface TodayEarnings {
+  totalEarnings: number | string | null;
+  totalDue: number | string | null;
+  duePlayers: DuePlayer[];
+}
+
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
@@ -53,6 +64,15 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   isMobile = false;
   isLoadingOngoing = false;
   isLoadingCompleted = false;
+  isEarningsExpanded = false;
+  isLoadingEarnings = false;
+  hasLoadedEarnings = false;
+  canViewTodayEarnings = false;
+  todayEarnings: TodayEarnings = {
+    totalEarnings: 0,
+    totalDue: 0,
+    duePlayers: [],
+  };
 
   isPlayersExpanded = false;
   isLoadingPlayers = false;
@@ -64,6 +84,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.updateViewportState();
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
+    this.loadViewerAccess();
   }
 
   ngOnDestroy(): void {
@@ -79,6 +100,44 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     if (this.isOngoingExpanded && this.ongoingFrames.length === 0) {
       this.loadOngoingFrames();
     }
+  }
+
+  toggleEarnings(): void {
+    if (!this.canViewTodayEarnings) {
+      return;
+    }
+
+    this.isEarningsExpanded = !this.isEarningsExpanded;
+
+    if (this.isEarningsExpanded && !this.isLoadingEarnings && !this.hasLoadedEarnings) {
+      this.loadTodayEarnings();
+    }
+  }
+
+  loadTodayEarnings(): void {
+    this.isLoadingEarnings = true;
+
+    this.http.get<TodayEarnings>('/api/analytics/today-earnings').subscribe({
+      next: (earnings) => {
+        this.todayEarnings = {
+          totalEarnings: earnings?.totalEarnings ?? 0,
+          totalDue: earnings?.totalDue ?? 0,
+          duePlayers: earnings?.duePlayers ?? [],
+        };
+        this.hasLoadedEarnings = true;
+        this.isLoadingEarnings = false;
+      },
+      error: (err) => {
+        console.error('Failed to load today earnings', err);
+        this.todayEarnings = {
+          totalEarnings: 0,
+          totalDue: 0,
+          duePlayers: [],
+        };
+        this.hasLoadedEarnings = false;
+        this.isLoadingEarnings = false;
+      },
+    });
   }
 
   loadOngoingFrames(): void {
@@ -197,6 +256,35 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   private updateViewportState(): void {
     this.isMobile = window.innerWidth < 768;
+  }
+
+  private loadViewerAccess(): void {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      this.canViewTodayEarnings = false;
+      return;
+    }
+
+    try {
+      const authUser = JSON.parse(storedUser) as { email?: string };
+      if (!authUser.email) {
+        this.canViewTodayEarnings = false;
+        return;
+      }
+
+      this.http.get<{ role?: string }>(`/api/user?email=${encodeURIComponent(authUser.email)}`).subscribe({
+        next: (user) => {
+          this.canViewTodayEarnings = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role ?? '');
+        },
+        error: (err) => {
+          console.error('Failed to load viewer role', err);
+          this.canViewTodayEarnings = false;
+        },
+      });
+    } catch (error) {
+      console.error('Failed to parse stored user', error);
+      this.canViewTodayEarnings = false;
+    }
   }
 
   private toNumber(value: number | string | null): number {
