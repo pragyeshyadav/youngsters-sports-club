@@ -49,15 +49,33 @@
             📜 My Game History
           </button>
           <div class="feedback-section">
-            <div class="feedback-header" (click)="toggleFeedback()">
-              ⭐ Help us improve — Share your feedback &amp; suggestions
+            <div
+              class="feedback-header"
+              [class.feedback-header--open]="showFeedbackForm"
+              (click)="toggleFeedback()">
+              <div class="feedback-copy">
+                <span class="feedback-badge">💬 Player Voice</span>
+                <h3>Love your experience? Tell us!</h3>
+                <p>🎁 Your feedback helps us make the club even better!</p>
+                <small>Takes less than 10 seconds ⏱️</small>
+              </div>
+              <div class="feedback-toggle" aria-hidden="true">
+                <span class="feedback-toggle__cta">✨ Share Your Thoughts</span>
+                <span class="feedback-toggle__arrow">{{ showFeedbackForm ? '▲' : '▼' }}</span>
+              </div>
             </div>
 
-            @if (showFeedbackForm) {
+            <div class="feedback-panel" [class.feedback-panel--open]="showFeedbackForm">
               <div class="feedback-body">
+                <div class="feedback-body__intro">
+                  <span class="feedback-body__label">Rate your experience</span>
+                  <p>Pick a rating and tell us what made your visit great or what we can improve next.</p>
+                </div>
+
                 <div class="stars">
                   @for (star of [1, 2, 3, 4, 5]; track star) {
                     <span
+                      class="feedback-star"
                       (click)="setRating(star)"
                       [class.active]="star <= rating">
                       ★
@@ -66,18 +84,19 @@
                 </div>
 
                 <textarea
+                  class="feedback-textarea"
                   [(ngModel)]="feedbackText"
-                  placeholder="Write your feedback or suggestion..."
+                  placeholder="Tell us what you loved, what felt smooth, or what you'd like us to improve..."
                 ></textarea>
 
                 <button
                   class="feedback-submit"
                   (click)="submitFeedback()"
                   [disabled]="!rating || !feedbackText || feedbackText.trim().length === 0">
-                  Submit
+                  🚀 Submit Feedback
                 </button>
               </div>
-            }
+            </div>
           </div>
           @if (isAdmin) {
             <button class="admin-btn" (click)="goToAdminPage()">
