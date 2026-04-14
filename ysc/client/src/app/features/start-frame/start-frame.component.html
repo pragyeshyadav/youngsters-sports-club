@@ -5,7 +5,7 @@
   </div>
 
   <div class="page-card">
-    <button type="button" class="back-link" (click)="goBack()">
+    <button type="button" class="back-link" (click)="goBack()" [disabled]="isStartingFrame || isEndingFrame">
       {{ viewMode === 'manage' ? '← Back to Manager Portal' : '← Change Table' }}
     </button>
 
@@ -85,9 +85,14 @@
         type="button"
         class="start-btn"
         (click)="startFrame()"
-        [disabled]="selectedPlayers.length < 2"
-        [ngClass]="{ 'disabled-btn': selectedPlayers.length < 2 }">
-        Start Frame
+        [disabled]="selectedPlayers.length < 2 || isStartingFrame"
+        [ngClass]="{ 'disabled-btn': selectedPlayers.length < 2 || isStartingFrame }">
+        @if (isStartingFrame) {
+          <span class="btn-spinner" aria-hidden="true"></span>
+          <span>Starting Frame...</span>
+        } @else {
+          <span>Start Frame</span>
+        }
       </button>
     } @else if (!frameStarted && billAmount !== null) {
       <button type="button" class="start-btn" (click)="goBack()">Back to Manager Portal</button>
@@ -120,10 +125,15 @@
         </select>
 
         <div class="modal-actions">
-          <button class="confirm-btn" [disabled]="!canEndFrame()" (click)="confirmEndFrame()">
-            Confirm End Frame
+          <button class="confirm-btn" [disabled]="!canEndFrame() || isEndingFrame" (click)="confirmEndFrame()">
+            @if (isEndingFrame) {
+              <span class="btn-spinner btn-spinner--light" aria-hidden="true"></span>
+              <span>Ending Frame...</span>
+            } @else {
+              <span>Confirm End Frame</span>
+            }
           </button>
-          <button class="cancel-btn" (click)="closeEndPopup()">Cancel</button>
+          <button class="cancel-btn" [disabled]="isEndingFrame" (click)="closeEndPopup()">Cancel</button>
         </div>
       </div>
     </div>
