@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
@@ -34,6 +35,12 @@ interface PlayerSummary {
   totalDue: number;
 }
 
+interface SettlementUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
 interface DuePlayer {
   name: string;
   due: number | string | null;
@@ -45,10 +52,24 @@ interface TodayEarnings {
   duePlayers: DuePlayer[];
 }
 
+interface ConsumableItemOption {
+  id: number;
+  name: string;
+  price: number | string | null;
+}
+
+interface SelectedConsumableItem {
+  itemId: number;
+  name: string;
+  price: number;
+  quantity: number;
+  totalCost: number;
+}
+
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
-  imports: [CommonModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './managers-portal.component.html',
   styleUrl: './managers-portal.component.scss',
 })
@@ -73,6 +94,18 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     totalDue: 0,
     duePlayers: [],
   };
+  isConsumablesExpanded = false;
+  consumableUserSearchText = '';
+  consumableUsers: SettlementUser[] = [];
+  selectedConsumableUser: SettlementUser | null = null;
+  consumableItemSearchText = '';
+  consumableItems: ConsumableItemOption[] = [];
+  selectedConsumableItem: ConsumableItemOption | null = null;
+  selectedConsumableQuantity = 1;
+  selectedConsumableOrderItems: SelectedConsumableItem[] = [];
+  isLoadingConsumableUsers = false;
+  isLoadingConsumableItems = false;
+  isSubmittingConsumableOrder = false;
 
   isPlayersExpanded = false;
   isLoadingPlayers = false;
@@ -176,6 +209,165 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         console.error('Failed to load completed frames', err);
         this.completedFrames = [];
         this.isLoadingCompleted = false;
+      },
+    });
+  }
+
+  toggleConsumables(): void {
+    this.isConsumablesExpanded = !this.isConsumablesExpanded;
+  }
+
+  searchConsumableUsers(): void {
+    const query = this.consumableUserSearchText.trim();
+
+    if (query.length < 3) {
+      this.consumableUsers = [];
+      this.isLoadingConsumableUsers = false;
+      if (!this.selectedConsumableUser || this.selectedConsumableUser.name !== this.consumableUserSearchText) {
+        this.selectedConsumableUser = null;
+        this.selectedConsumableOrderItems = [];
+      }
+      return;
+    }
+
+    if (this.selectedConsumableUser && this.selectedConsumableUser.name !== query) {
+      this.selectedConsumableUser = null;
+      this.selectedConsumableOrderItems = [];
+    }
+
+    this.isLoadingConsumableUsers = true;
+    this.http.get<SettlementUser[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+      next: (users) => {
+        this.consumableUsers = users;
+        this.isLoadingConsumableUsers = false;
+      },
+      error: (err) => {
+        console.error('Failed to search consumable users', err);
+        this.consumableUsers = [];
+        this.isLoadingConsumableUsers = false;
+      },
+    });
+  }
+
+  selectConsumableUser(user: SettlementUser): void {
+    this.selectedConsumableUser = user;
+    this.consumableUserSearchText = user.name;
+    this.consumableUsers = [];
+    this.selectedConsumableOrderItems = [];
+    this.selectedConsumableItem = null;
+    this.consumableItemSearchText = '';
+    this.consumableItems = [];
+    this.selectedConsumableQuantity = 1;
+  }
+
+  searchConsumableItems(): void {
+    const query = this.consumableItemSearchText.trim();
+
+    if (query.length < 3) {
+      this.consumableItems = [];
+      this.isLoadingConsumableItems = false;
+      if (!this.selectedConsumableItem || this.selectedConsumableItem.name !== this.consumableItemSearchText) {
+        this.selectedConsumableItem = null;
+      }
+      return;
+    }
+
+    if (this.selectedConsumableItem && this.selectedConsumableItem.name !== query) {
+      this.selectedConsumableItem = null;
+    }
+
+    this.isLoadingConsumableItems = true;
+    this.http.get<ConsumableItemOption[]>(`/api/consumables/items/search?query=${encodeURIComponent(query)}`).subscribe({
+      next: (items) => {
+        this.consumableItems = items;
+        this.isLoadingConsumableItems = false;
+      },
+      error: (err) => {
+        console.error('Failed to search consumable items', err);
+        this.consumableItems = [];
+        this.isLoadingConsumableItems = false;
+      },
+    });
+  }
+
+  selectConsumableItem(item: ConsumableItemOption): void {
+    this.selectedConsumableItem = item;
+    this.consumableItemSearchText = item.name;
+    this.consumableItems = [];
+  }
+
+  addConsumableItem(): void {
+    if (!this.selectedConsumableUser || !this.selectedConsumableItem) {
+      return;
+    }
+
+    const price = this.toNumber(this.selectedConsumableItem.price);
+    const existingIndex = this.selectedConsumableOrderItems.findIndex(
+      (selected) => selected.itemId === this.selectedConsumableItem?.id,
+    );
+
+    if (existingIndex >= 0) {
+      const updated = [...this.selectedConsumableOrderItems];
+      const existing = updated[existingIndex];
+      existing.quantity += this.selectedConsumableQuantity;
+      existing.totalCost = existing.price * existing.quantity;
+      this.selectedConsumableOrderItems = updated;
+    } else {
+      this.selectedConsumableOrderItems = [
+        ...this.selectedConsumableOrderItems,
+        {
+          itemId: this.selectedConsumableItem.id,
+          name: this.selectedConsumableItem.name,
+          price,
+          quantity: this.selectedConsumableQuantity,
+          totalCost: price * this.selectedConsumableQuantity,
+        },
+      ];
+    }
+
+    this.selectedConsumableItem = null;
+    this.consumableItemSearchText = '';
+    this.consumableItems = [];
+    this.selectedConsumableQuantity = 1;
+  }
+
+  removeConsumableItem(itemId: number): void {
+    this.selectedConsumableOrderItems = this.selectedConsumableOrderItems.filter((item) => item.itemId !== itemId);
+  }
+
+  getConsumableOrderTotal(): number {
+    return this.selectedConsumableOrderItems.reduce((sum, item) => sum + item.totalCost, 0);
+  }
+
+  submitConsumableOrder(): void {
+    if (!this.selectedConsumableUser || this.selectedConsumableOrderItems.length === 0 || this.isSubmittingConsumableOrder) {
+      return;
+    }
+
+    this.isSubmittingConsumableOrder = true;
+    this.http.post<{ orderId: number; totalAmount: number }>('/api/consumables/order', {
+      userId: this.selectedConsumableUser.id,
+      items: this.selectedConsumableOrderItems.map((item) => ({
+        itemId: item.itemId,
+        quantity: item.quantity,
+      })),
+    }).subscribe({
+      next: () => {
+        alert('Consumable order saved successfully');
+        this.selectedConsumableOrderItems = [];
+        this.selectedConsumableItem = null;
+        this.consumableItemSearchText = '';
+        this.consumableItems = [];
+        this.selectedConsumableQuantity = 1;
+        this.selectedConsumableUser = null;
+        this.consumableUserSearchText = '';
+        this.consumableUsers = [];
+        this.isSubmittingConsumableOrder = false;
+      },
+      error: (err) => {
+        console.error('Failed to submit consumable order', err);
+        this.isSubmittingConsumableOrder = false;
+        alert('Unable to save consumable order right now');
       },
     });
   }
