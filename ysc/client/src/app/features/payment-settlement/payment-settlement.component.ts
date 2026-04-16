@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 
@@ -23,6 +24,21 @@ interface DueFrame {
   looserName: string | null;
 }
 
+interface ConsumableDueRow {
+  orderId: number;
+  itemName: string;
+  quantity: number;
+  price: number | string | null;
+  totalCost: number | string | null;
+  createdAt: string;
+}
+
+interface PaymentSummary {
+  frameDue: number | string | null;
+  consumableDue: number | string | null;
+  totalDue: number | string | null;
+}
+
 @Component({
   selector: 'app-payment-settlement',
   standalone: true,
@@ -41,10 +57,14 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   users: SettlementUser[] = [];
   selectedUser: SettlementUser | null = null;
   frames: DueFrame[] = [];
+  consumables: ConsumableDueRow[] = [];
   isMobile = false;
   isLoadingFrames = false;
   isLoadingUsers = false;
   isLoadingTotalDue = false;
+  isSavingSettlement = false;
+  frameDue = 0;
+  consumableDue = 0;
   totalDue = 0;
   showSettlementPopup = false;
   settleAmount: number | null = null;
@@ -66,7 +86,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   searchUsers(): void {
     const query = this.searchText.trim();
 
-    if (!query) {
+    if (query.length < 3) {
       this.users = [];
       if (!this.selectedUser || this.selectedUser.name !== this.searchText) {
         this.selectedUser = null;
@@ -78,6 +98,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     if (this.selectedUser && this.selectedUser.name !== query) {
       this.selectedUser = null;
       this.frames = [];
+      this.consumables = [];
     }
 
     this.isLoadingUsers = true;
@@ -101,6 +122,9 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.searchText = user.name;
     this.users = [];
     this.frames = [];
+    this.consumables = [];
+    this.frameDue = 0;
+    this.consumableDue = 0;
     this.totalDue = 0;
     this.showSettlementPopup = false;
     this.settleAmount = null;
@@ -114,15 +138,36 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingFrames = true;
-    this.http.get<DueFrame[]>(`/api/frame/user-due?userId=${this.selectedUser.id}`).subscribe({
-      next: (frames) => {
+    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+      next: (summary) => {
+        this.frameDue = this.toNumber(summary?.frameDue);
+        this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.totalDue = this.toNumber(summary?.totalDue);
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load payment summary', err);
+        this.frameDue = 0;
+        this.consumableDue = 0;
+        this.totalDue = 0;
+        this.cdr.markForCheck();
+      },
+    });
+
+    forkJoin({
+      frames: this.http.get<DueFrame[]>(`/api/frame/user-due?userId=${this.selectedUser.id}`),
+      consumables: this.http.get<ConsumableDueRow[]>(`/api/consumables/orders/due?userId=${this.selectedUser.id}`),
+    }).subscribe({
+      next: ({ frames, consumables }) => {
         this.frames = frames;
+        this.consumables = consumables;
         this.isLoadingFrames = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
-        console.error('Failed to load due frames', err);
+        console.error('Failed to load due details', err);
         this.frames = [];
+        this.consumables = [];
         this.isLoadingFrames = false;
         this.cdr.markForCheck();
       },
@@ -135,9 +180,11 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingTotalDue = true;
-    this.http.get<number>(`/api/frame/total-due?userId=${this.selectedUser.id}`).subscribe({
-      next: (totalDue) => {
-        this.totalDue = totalDue ?? 0;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+      next: (summary) => {
+        this.frameDue = this.toNumber(summary?.frameDue);
+        this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.totalDue = this.toNumber(summary?.totalDue);
         this.settleAmount = null;
         this.paymentMode = '';
         this.showSettlementPopup = true;
@@ -154,7 +201,11 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   }
 
   canSave(): boolean {
-    return !!this.settleAmount && this.settleAmount > 0 && this.settleAmount <= this.totalDue && !!this.paymentMode;
+    return !!this.settleAmount
+      && this.settleAmount > 0
+      && this.settleAmount <= this.totalDue
+      && !!this.paymentMode
+      && !this.isSavingSettlement;
   }
 
   saveSettlement(): void {
@@ -162,6 +213,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.isSavingSettlement = true;
     this.http.post('/api/payment/settle', {
       userId: this.selectedUser.id,
       amount: this.settleAmount,
@@ -173,12 +225,14 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         this.showSettlementPopup = false;
         this.settleAmount = null;
         this.paymentMode = '';
+        this.isSavingSettlement = false;
         this.getPlayerDetails();
         this.refreshTotalDue();
         this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Settlement error:', err);
+        this.isSavingSettlement = false;
         alert('Unable to settle payment right now');
       },
     });
@@ -200,18 +254,30 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
 
   private refreshTotalDue(): void {
     if (!this.selectedUser) {
+      this.frameDue = 0;
+      this.consumableDue = 0;
       this.totalDue = 0;
       return;
     }
 
-    this.http.get<number>(`/api/frame/total-due?userId=${this.selectedUser.id}`).subscribe({
-      next: (totalDue) => {
-        this.totalDue = totalDue ?? 0;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+      next: (summary) => {
+        this.frameDue = this.toNumber(summary?.frameDue);
+        this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.totalDue = this.toNumber(summary?.totalDue);
         this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to refresh total due', err);
       },
     });
+  }
+
+  private toNumber(value: number | string | null | undefined): number {
+    if (value === null || value === undefined || value === '') {
+      return 0;
+    }
+
+    return typeof value === 'number' ? value : Number(value);
   }
 }

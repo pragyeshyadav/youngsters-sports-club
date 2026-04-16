@@ -60,6 +60,141 @@
       </div>
     }
 
+    <div class="portal-panel consumables-panel">
+      <button type="button" class="panel-header consumables-header" (click)="toggleConsumables()">
+        <span>🧾 Consumable Items</span>
+        <span class="panel-chevron">{{ isConsumablesExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isConsumablesExpanded) {
+        <div class="panel-body consumables-body">
+          <div class="consumables-grid">
+            <div class="consumable-card">
+              <label class="search-label" for="consumable-user-search">Select User</label>
+              <input
+                id="consumable-user-search"
+                type="text"
+                [(ngModel)]="consumableUserSearchText"
+                (input)="searchConsumableUsers()"
+                placeholder="Search user (min 3 characters)"
+                autocomplete="off"
+                class="search-input"
+              />
+
+              @if (isLoadingConsumableUsers) {
+                <div class="spinner-container compact-spinner">
+                  <div class="spinner" aria-label="Loading users"></div>
+                </div>
+              } @else if (consumableUsers.length > 0) {
+                <div class="dropdown">
+                  @for (user of consumableUsers; track user.id) {
+                    <button type="button" class="dropdown-item" (click)="selectConsumableUser(user)">
+                      <span class="dropdown-title">{{ user.name }}</span>
+                      <span class="dropdown-subtitle">{{ user.email }}</span>
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="consumable-card">
+              <label class="search-label" for="consumable-item-search">Add Item</label>
+              <input
+                id="consumable-item-search"
+                type="text"
+                [(ngModel)]="consumableItemSearchText"
+                (input)="searchConsumableItems()"
+                [disabled]="!selectedConsumableUser"
+                placeholder="Search item (min 3 characters)"
+                autocomplete="off"
+                class="search-input"
+              />
+
+              @if (isLoadingConsumableItems) {
+                <div class="spinner-container compact-spinner">
+                  <div class="spinner" aria-label="Loading items"></div>
+                </div>
+              } @else if (consumableItems.length > 0) {
+                <div class="dropdown">
+                  @for (item of consumableItems; track item.id) {
+                    <button type="button" class="dropdown-item" (click)="selectConsumableItem(item)">
+                      <span class="dropdown-title">{{ item.name }}</span>
+                      <span class="dropdown-subtitle">₹{{ item.price ?? 0 }}</span>
+                    </button>
+                  }
+                </div>
+              }
+
+              <div class="consumable-actions">
+                <select [(ngModel)]="selectedConsumableQuantity" [disabled]="!selectedConsumableUser">
+                  @for (qty of [1,2,3,4,5,6,7,8,9,10]; track qty) {
+                    <option [ngValue]="qty">{{ qty }}</option>
+                  }
+                </select>
+                <button
+                  type="button"
+                  class="action-btn add-item-action"
+                  [disabled]="!selectedConsumableUser || !selectedConsumableItem"
+                  (click)="addConsumableItem()">
+                  Add Item
+                </button>
+              </div>
+            </div>
+          </div>
+
+          @if (selectedConsumableUser) {
+            <div class="selected-user-card">
+              <strong>{{ selectedConsumableUser.name }}</strong>
+              <span>{{ selectedConsumableUser.email }}</span>
+            </div>
+          }
+
+          <div class="consumable-card">
+            <div class="selected-header">
+              <h3>Selected Items</h3>
+              <span class="count">{{ selectedConsumableOrderItems.length }}</span>
+            </div>
+
+            @if (selectedConsumableOrderItems.length === 0) {
+              <p class="panel-message">No consumable items added yet.</p>
+            } @else {
+              <div class="card-container">
+                @for (item of selectedConsumableOrderItems; track item.itemId) {
+                  <div class="selected-consumable-item">
+                    <div>
+                      <strong>{{ item.name }} × {{ item.quantity }}</strong>
+                      <div class="dropdown-subtitle">₹{{ item.totalCost }}</div>
+                    </div>
+                    <button type="button" class="action-btn reject-action" (click)="removeConsumableItem(item.itemId)">
+                      Remove
+                    </button>
+                  </div>
+                }
+              </div>
+
+              <div class="consumable-total-row">
+                <span>Order Total</span>
+                <strong>₹{{ getConsumableOrderTotal() }}</strong>
+              </div>
+            }
+          </div>
+
+          <button
+            type="button"
+            class="settle-btn consumable-submit-btn"
+            [disabled]="!selectedConsumableUser || selectedConsumableOrderItems.length === 0 || isSubmittingConsumableOrder"
+            (click)="submitConsumableOrder()">
+            @if (isSubmittingConsumableOrder) {
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span>Submitting Order...</span>
+            } @else {
+              <span>Submit Order</span>
+            }
+          </button>
+        </div>
+      }
+    </div>
+
     <div class="portal-panel">
       <button type="button" class="panel-header" (click)="toggleOngoing()">
         <span>📌 Ongoing Frames (Today)</span>

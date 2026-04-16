@@ -1,0 +1,77 @@
+package com.youngstersclub.app.repository;
+
+import com.youngstersclub.app.entity.ConsumableOrder;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder, Long> {
+
+    @Query("""
+        SELECT co FROM ConsumableOrder co
+        WHERE co.user.id = :userId
+        AND co.paymentStatus = :paymentStatus
+        ORDER BY co.createdAt ASC
+    """)
+    List<ConsumableOrder> findByUserIdAndPaymentStatus(@Param("userId") Integer userId, @Param("paymentStatus") String paymentStatus);
+
+    @Query("""
+        SELECT COALESCE(SUM(co.totalAmount), 0)
+        FROM ConsumableOrder co
+        WHERE co.user.id = :userId
+        AND co.paymentStatus = 'UNPAID'
+    """)
+    BigDecimal getTotalUnpaidDueByUserId(@Param("userId") Integer userId);
+
+    interface DueOrderItemProjection {
+        Long getOrderId();
+        String getItemName();
+        Integer getQuantity();
+        BigDecimal getPrice();
+        BigDecimal getTotalCost();
+        LocalDateTime getCreatedAt();
+    }
+
+    @Query("""
+        SELECT
+            co.id AS orderId,
+            coi.item.name AS itemName,
+            coi.quantity AS quantity,
+            coi.price AS price,
+            coi.totalCost AS totalCost,
+            co.createdAt AS createdAt
+        FROM ConsumableOrder co
+        JOIN co.items coi
+        WHERE co.user.id = :userId
+        AND co.paymentStatus = 'UNPAID'
+        ORDER BY co.createdAt ASC, coi.id ASC
+    """)
+    List<DueOrderItemProjection> findUnpaidOrderItemsByUserId(@Param("userId") Integer userId);
+
+    interface ConsumableHistoryProjection {
+        String getItemName();
+        Integer getQuantity();
+        LocalDateTime getDate();
+        BigDecimal getAmount();
+        String getPaymentStatus();
+    }
+
+    @Query("""
+        SELECT
+            coi.item.name AS itemName,
+            coi.quantity AS quantity,
+            co.createdAt AS date,
+            coi.totalCost AS amount,
+            co.paymentStatus AS paymentStatus
+        FROM ConsumableOrderItem coi
+        JOIN coi.order co
+        WHERE co.user.id = :userId
+        ORDER BY co.createdAt DESC, coi.id DESC
+    """)
+    List<ConsumableHistoryProjection> findConsumableHistoryByUserId(@Param("userId") Integer userId);
+}

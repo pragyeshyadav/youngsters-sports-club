@@ -21,6 +21,7 @@
         autocomplete="off"
         class="search-input"
       />
+      <p class="search-hint">Type at least 3 characters to search.</p>
 
       @if (users.length > 0) {
         <div class="dropdown">
@@ -59,10 +60,20 @@
       <div class="spinner-container compact-spinner">
         <div class="spinner"></div>
       </div>
-    } @else if (totalDue > 0) {
-      <div class="total-due-card">
-        <span>Total Due</span>
-        <h3>₹{{ totalDue }}</h3>
+    } @else if (selectedUser) {
+      <div class="summary-grid">
+        <div class="summary-card frame-summary-card">
+          <span>Frame Due</span>
+          <h3>₹{{ frameDue }}</h3>
+        </div>
+        <div class="summary-card consumable-summary-card">
+          <span>Consumable Due</span>
+          <h3>₹{{ consumableDue }}</h3>
+        </div>
+        <div class="total-due-card">
+          <span>Total Due</span>
+          <h3>₹{{ totalDue }}</h3>
+        </div>
       </div>
     }
 
@@ -70,8 +81,8 @@
       <div class="spinner-container">
         <div class="spinner"></div>
       </div>
-    } @else if (selectedUser && frames.length === 0) {
-      <p class="empty-state">No due frames found for this customer.</p>
+    } @else if (selectedUser && frames.length === 0 && consumables.length === 0) {
+      <p class="empty-state">No due records found for this customer.</p>
     }
 
     @if (frames.length > 0 && !isMobile) {
@@ -138,6 +149,72 @@
         }
       </div>
     }
+
+    @if (consumables.length > 0) {
+      <div class="consumables-section">
+        <h3>🧾 Consumable Dues</h3>
+
+        @if (!isMobile) {
+          <div class="table-wrap">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Item</th>
+                  <th>Quantity</th>
+                  <th>Price</th>
+                  <th>Total</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (item of consumables; track item.orderId + '-' + item.itemName + '-' + item.createdAt) {
+                  <tr class="due-row">
+                    <td>#{{ item.orderId }}</td>
+                    <td>{{ item.itemName }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>₹{{ item.price ?? 0 }}</td>
+                    <td>₹{{ item.totalCost ?? 0 }}</td>
+                    <td>{{ item.createdAt | date: 'short' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="card-container">
+            @for (item of consumables; track item.orderId + '-' + item.itemName + '-' + item.createdAt) {
+              <div class="history-card due-row">
+                <div class="card-row">
+                  <span>🧾 Order</span>
+                  <strong>#{{ item.orderId }}</strong>
+                </div>
+                <div class="card-row">
+                  <span>Item</span>
+                  <strong>{{ item.itemName }}</strong>
+                </div>
+                <div class="card-row">
+                  <span>Quantity</span>
+                  <span>{{ item.quantity }}</span>
+                </div>
+                <div class="card-row">
+                  <span>Price</span>
+                  <span>₹{{ item.price ?? 0 }}</span>
+                </div>
+                <div class="card-row">
+                  <span>Total</span>
+                  <strong>₹{{ item.totalCost ?? 0 }}</strong>
+                </div>
+                <div class="card-row">
+                  <span>Created</span>
+                  <span>{{ item.createdAt | date: 'short' }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
   </div>
 
   @if (showSettlementPopup) {
@@ -145,7 +222,11 @@
       <div class="modal" (click)="$event.stopPropagation()">
         <h3>💳 Settle Payment</h3>
 
-        <p class="modal-total">Total Due: ₹{{ totalDue }}</p>
+        <div class="modal-summary">
+          <p class="modal-total">Frame Due: ₹{{ frameDue }}</p>
+          <p class="modal-total">Consumable Due: ₹{{ consumableDue }}</p>
+          <p class="modal-total modal-total--highlight">Total Due: ₹{{ totalDue }}</p>
+        </div>
 
         <input
           type="number"
@@ -166,7 +247,9 @@
         }
 
         <div class="modal-actions">
-          <button class="save-btn" [disabled]="!canSave()" (click)="saveSettlement()">Save</button>
+          <button class="save-btn" [disabled]="!canSave()" (click)="saveSettlement()">
+            {{ isSavingSettlement ? 'Saving...' : 'Save' }}
+          </button>
           <button class="cancel-btn" (click)="closeSettlementPopup()">Cancel</button>
         </div>
       </div>
