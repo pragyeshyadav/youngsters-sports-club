@@ -24,16 +24,19 @@ public class PaymentService {
     private final ConsumableOrderRepository consumableOrderRepository;
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
+    private final KidsPlayService kidsPlayService;
 
     public PaymentService(
             FrameRepository frameRepository,
             ConsumableOrderRepository consumableOrderRepository,
             PaymentRepository paymentRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            KidsPlayService kidsPlayService) {
         this.frameRepository = frameRepository;
         this.consumableOrderRepository = consumableOrderRepository;
         this.paymentRepository = paymentRepository;
         this.userRepository = userRepository;
+        this.kidsPlayService = kidsPlayService;
     }
 
     @Transactional
@@ -65,7 +68,8 @@ public class PaymentService {
                 .map(ConsumableOrder::getTotalAmount)
                 .filter(due -> due != null && due.compareTo(BigDecimal.ZERO) > 0)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal totalOutstanding = totalFrameOutstanding.add(totalConsumableOutstanding);
+        BigDecimal totalKidsOutstanding = kidsPlayService.getKidsDue(request.getUserId());
+        BigDecimal totalOutstanding = totalFrameOutstanding.add(totalConsumableOutstanding).add(totalKidsOutstanding);
 
         if (request.getAmount().compareTo(totalOutstanding) > 0) {
             throw new IllegalArgumentException("Payment amount exceeds total due");
@@ -131,6 +135,10 @@ public class PaymentService {
             consumableOrderRepository.save(order);
 
             remaining = remaining.subtract(paymentAmount);
+        }
+
+        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
+            kidsPlayService.settleKidsSessions(request.getUserId(), remaining, user, paymentMethod);
         }
     }
 }

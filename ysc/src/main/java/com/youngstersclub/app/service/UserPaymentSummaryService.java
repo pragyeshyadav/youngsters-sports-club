@@ -10,15 +10,21 @@ public class UserPaymentSummaryService {
 
     private final FrameRepository frameRepository;
     private final ConsumableService consumableService;
+    private final KidsPlayService kidsPlayService;
 
-    public UserPaymentSummaryService(FrameRepository frameRepository, ConsumableService consumableService) {
+    public UserPaymentSummaryService(
+            FrameRepository frameRepository,
+            ConsumableService consumableService,
+            KidsPlayService kidsPlayService) {
         this.frameRepository = frameRepository;
         this.consumableService = consumableService;
+        this.kidsPlayService = kidsPlayService;
     }
 
     public UserPaymentSummaryDto getPaymentSummary(Integer userId) {
         BigDecimal frameDue = userId == null ? BigDecimal.ZERO : frameRepository.getTotalDueForUser(userId);
         BigDecimal consumableDue = consumableService.getConsumableDue(userId);
-        return new UserPaymentSummaryDto(frameDue, consumableDue);
+        BigDecimal kidsDue = kidsPlayService.getKidsDue(userId);
+        return new UserPaymentSummaryDto(frameDue, consumableDue, kidsDue);
     }
 }

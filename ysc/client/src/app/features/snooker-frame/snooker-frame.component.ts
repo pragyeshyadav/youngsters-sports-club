@@ -238,7 +238,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     this.isLoadingTables = true;
     this.http.get<Table[]>('/api/snooker/tables').subscribe({
       next: (res) => {
-        const availableTables = res.filter((table) => table.isAvailable !== false);
+        const availableTables = res.filter((table) => table.isAvailable !== false && table.tableName !== 'Kids Ocean Dream Land');
         this.tables = availableTables;
         this.isLoadingTables = false;
         this.cdr.markForCheck();

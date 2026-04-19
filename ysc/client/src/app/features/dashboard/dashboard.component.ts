@@ -11,6 +11,10 @@ import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.c
 import { AvailableTablesComponent } from './available-tables/available-tables.component';
 import { TopRankersComponent } from './top-rankers/top-rankers.component';
 
+interface PaymentSummary {
+  totalDue: number | string | null;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -81,10 +85,10 @@ export class DashboardComponent implements OnInit {
             this.showPhoneInput = true;
           }
 
-          this.http.get(`/api/frame/total-due?userId=${this.user.id}`)
+          this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.user.id}`)
             .subscribe({
-              next: (due: any) => {
-                this.totalDue = due || 0;
+              next: (summary) => {
+                this.totalDue = typeof summary?.totalDue === 'number' ? summary.totalDue : Number(summary?.totalDue ?? 0);
                 this.showDueSection = this.totalDue > 300;
                 this.cdr.markForCheck();
               },
@@ -305,5 +309,9 @@ export class DashboardComponent implements OnInit {
 
   goToManagersPortal() {
     this.router.navigate(['/managers-portal']);
+  }
+
+  goToKidsPlay() {
+    this.router.navigate(['/kids-play']);
   }
 }

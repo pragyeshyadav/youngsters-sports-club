@@ -52,5 +52,11 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/payment-settlement/payment-settlement.component').then((m) => m.PaymentSettlementComponent),
   },
+  {
+    path: 'kids-play',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/kids-play/kids-play.component').then((m) => m.KidsPlayComponent),
+  },
   { path: '**', redirectTo: 'dashboard' },
 ];

@@ -32,7 +32,7 @@ export class AvailableTablesComponent implements OnInit {
     this.isLoading = true;
     this.http.get<TableStatus[]>('/api/snooker/tables/status').subscribe({
       next: (res) => {
-        this.tables = res;
+        this.tables = res.filter((table) => table.tableName !== 'Kids Ocean Dream Land');
         this.isLoading = false;
         this.cdr.markForCheck();
       },

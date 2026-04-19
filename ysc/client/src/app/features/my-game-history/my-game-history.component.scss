@@ -38,7 +38,7 @@
 .summary-grid {
   margin-bottom: 15px;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -104,6 +104,10 @@
 
 .consumable-due-card {
   background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%);
+}
+
+.kids-due-card {
+  background: linear-gradient(135deg, #2563eb 0%, #60a5fa 100%);
 }
 
 .total-due-card {

@@ -24,6 +24,7 @@ interface GameHistoryRow {
 interface PaymentSummary {
   frameDue: number | string | null;
   consumableDue: number | string | null;
+  kidsDue: number | string | null;
   totalDue: number | string | null;
 }
 
@@ -57,6 +58,7 @@ export class MyGameHistoryComponent implements OnInit, OnDestroy {
   isMobile = false;
   frameDue = 0;
   consumableDue = 0;
+  kidsDue = 0;
   totalDue = 0;
   isLoadingHistory = false;
   isLoadingTotalDue = false;
@@ -82,6 +84,7 @@ export class MyGameHistoryComponent implements OnInit, OnDestroy {
           next: (res) => {
             this.frameDue = this.toNumber(res?.frameDue);
             this.consumableDue = this.toNumber(res?.consumableDue);
+            this.kidsDue = this.toNumber(res?.kidsDue);
             this.totalDue = this.toNumber(res?.totalDue);
             this.isLoadingTotalDue = false;
             this.cdr.markForCheck();
@@ -90,6 +93,7 @@ export class MyGameHistoryComponent implements OnInit, OnDestroy {
             console.error('Failed to load total due', err);
             this.frameDue = 0;
             this.consumableDue = 0;
+            this.kidsDue = 0;
             this.totalDue = 0;
             this.isLoadingTotalDue = false;
             this.cdr.markForCheck();
