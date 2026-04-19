@@ -52,8 +52,8 @@ public class KidsPlayService {
             throw new IllegalArgumentException("Parent and child are required");
         }
 
-        if (kidsPlaySessionRepository.findActiveByParentUserId(request.getParentUserId()).isPresent()) {
-            throw new IllegalArgumentException("An active kids play session already exists");
+        if (kidsPlaySessionRepository.findActiveByChildId(request.getChildId()).isPresent()) {
+            throw new IllegalArgumentException("An active play session for this child already exists");
         }
 
         User parent = userRepository.findById(request.getParentUserId()).orElseThrow();
@@ -67,6 +67,7 @@ public class KidsPlayService {
         session.setStartTime(TimeUtil.nowIST());
         session.setRatePerMinute(kidsTable.getRatePerMinute());
         session.setPaymentStatus("UNPAID");
+        session.setStatus("STARTED");
 
         return toDto(kidsPlaySessionRepository.save(session));
     }
@@ -95,17 +96,44 @@ public class KidsPlayService {
         session.setDurationMinutes((int) duration);
         session.setTotalAmount(totalAmount);
         session.setPaymentStatus("UNPAID");
+        session.setStatus("ENDED");
 
         return toDto(kidsPlaySessionRepository.save(session));
     }
 
-    public KidsSessionResponseDto getActiveSession(Integer parentUserId) {
-        if (parentUserId == null) {
-            return null;
+    @Transactional
+    public KidsSessionResponseDto rejectSession(Long sessionId) {
+        if (sessionId == null) {
+            throw new IllegalArgumentException("Session ID is required");
         }
-        return kidsPlaySessionRepository.findActiveByParentUserId(parentUserId)
+
+        KidsPlaySession session = kidsPlaySessionRepository.findById(sessionId).orElseThrow();
+        if (session.getEndTime() != null) {
+            throw new IllegalArgumentException("Session already ended");
+        }
+
+        session.setEndTime(TimeUtil.nowIST());
+        session.setDurationMinutes(0);
+        session.setTotalAmount(BigDecimal.ZERO);
+        session.setPaymentStatus("CANCELLED");
+        session.setStatus("CANCELLED");
+
+        return toDto(kidsPlaySessionRepository.save(session));
+    }
+
+    public List<KidsSessionResponseDto> getActiveSessions(Integer parentUserId) {
+        if (parentUserId == null) {
+            return List.of();
+        }
+        return kidsPlaySessionRepository.findActiveByParentUserId(parentUserId).stream()
                 .map(this::toDto)
-                .orElse(null);
+                .toList();
+    }
+
+    public List<KidsSessionResponseDto> getAllActiveSessions() {
+        return kidsPlaySessionRepository.findAllActiveSessions().stream()
+                .map(this::toDto)
+                .toList();
     }
 
     public BigDecimal getKidsDue(Integer parentUserId) {
@@ -172,11 +200,14 @@ public class KidsPlayService {
                 session.getId(),
                 session.getChild() != null ? session.getChild().getId() : null,
                 session.getChild() != null ? session.getChild().getName() : null,
+                session.getParentUser() != null ? session.getParentUser().getId() : null,
+                session.getParentUser() != null ? session.getParentUser().getName() : null,
                 session.getStartTime(),
                 session.getEndTime(),
                 session.getDurationMinutes(),
                 session.getRatePerMinute(),
                 session.getTotalAmount(),
-                session.getPaymentStatus());
+                session.getPaymentStatus(),
+                session.getStatus());
     }
 }

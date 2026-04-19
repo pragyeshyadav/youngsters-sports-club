@@ -5,9 +5,11 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
 
-interface BackendUser {
+interface SettlementUser {
   id: number;
+  name: string;
   email: string;
+  role?: string;
 }
 
 interface ChildProfile {
@@ -22,12 +24,15 @@ interface KidsSession {
   sessionId: number;
   childId: number;
   childName: string;
+  parentUserId?: number;
+  parentName?: string;
   startTime: string;
   endTime?: string | null;
   durationMinutes?: number | null;
   ratePerMinute?: number | string | null;
   totalAmount?: number | string | null;
   paymentStatus?: string;
+  status?: string;
 }
 
 @Component({
@@ -43,20 +48,25 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly router = inject(Router);
-  private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   currentUserId: number | null = null;
-  children: ChildProfile[] = [];
-  activeSession: KidsSession | null = null;
-  selectedChildId: number | null = null;
-  isLoadingChildren = false;
-  isLoadingActiveSession = false;
-  isSubmittingChild = false;
-  isStartingSession = false;
-  isEndingSession = false;
-  showAddChildForm = false;
-  secondsElapsed = 0;
+  isManagerOrAdmin = false;
 
+  parentSearchText = '';
+  searchedParents: SettlementUser[] = [];
+  selectedParent: SettlementUser | null = null;
+  isLoadingParents = false;
+
+  children: ChildProfile[] = [];
+  isLoadingChildren = false;
+
+  allActiveSessions: KidsSession[] = [];
+  parentActiveSessions: KidsSession[] = [];
+  isGlobalPanelExpanded = false;
+
+  isSubmittingChild = false;
+  showAddChildForm = false;
+  
   childForm = {
     name: '',
     dateOfBirth: '',
@@ -64,17 +74,26 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
     school: '',
   };
 
+  currentTime = Date.now();
+  private timerInterval: any = null;
+
   ngOnInit(): void {
     const email = this.auth.getSnapshot()?.user.email;
-    if (!email) {
-      return;
-    }
+    if (!email) return;
 
-    this.http.get<BackendUser>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
+    this.http.get<any>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
         this.currentUserId = user.id;
-        this.loadChildren();
-        this.loadActiveSession();
+        this.isManagerOrAdmin = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role);
+        
+        if (this.isManagerOrAdmin) {
+          this.loadAllActiveSessions();
+        } else {
+          this.loadChildren();
+          this.loadParentActiveSessions(this.currentUserId!);
+        }
+        this.startGlobalTimer();
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load current user', err);
@@ -83,17 +102,29 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.clearTimer();
+    if (this.timerInterval) {
+      clearInterval(this.timerInterval);
+    }
+  }
+
+  startGlobalTimer() {
+    this.timerInterval = setInterval(() => {
+      this.currentTime = Date.now();
+      this.cdr.markForCheck();
+    }, 1000);
+  }
+
+  getElapsedTimer(startTime: string): string {
+    if (!startTime) return '0:00';
+    const start = new Date(startTime).getTime();
+    const secondsElapsed = Math.max(0, Math.floor((this.currentTime - start) / 1000));
+    const mins = Math.floor(secondsElapsed / 60);
+    const secs = secondsElapsed % 60;
+    return `${mins}:${secs < 10 ? '0' + secs : secs}`;
   }
 
   get canAddMoreChildren(): boolean {
     return this.children.length < 10;
-  }
-
-  get formattedTimer(): string {
-    const mins = Math.floor(this.secondsElapsed / 60);
-    const secs = this.secondsElapsed % 60;
-    return `${mins}:${secs < 10 ? '0' + secs : secs}`;
   }
 
   toggleAddChildForm(): void {
@@ -109,9 +140,8 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
   }
 
   saveChild(): void {
-    if (!this.currentUserId) {
-      return;
-    }
+    const parentId = this.isManagerOrAdmin ? this.selectedParent?.id : this.currentUserId;
+    if (!parentId) return;
 
     if (!this.childForm.name.trim() || !this.childForm.dateOfBirth) {
       alert('Name and date of birth are required');
@@ -125,7 +155,7 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
 
     this.isSubmittingChild = true;
     this.http.post<ChildProfile>('/api/children', {
-      parentUserId: this.currentUserId,
+      parentUserId: parentId,
       name: this.childForm.name.trim(),
       dateOfBirth: this.childForm.dateOfBirth,
       address: this.childForm.address.trim(),
@@ -133,7 +163,6 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
     }).subscribe({
       next: (child) => {
         this.children = [child, ...this.children];
-        this.selectedChildId ??= child.id;
         this.isSubmittingChild = false;
         this.showAddChildForm = false;
         this.resetChildForm();
@@ -148,129 +177,159 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
     });
   }
 
-  startPlayTime(): void {
-    if (!this.currentUserId || !this.selectedChildId || this.isStartingSession) {
+  searchParents(): void {
+    const query = this.parentSearchText.trim();
+    if (query.length < 3) {
+      this.searchedParents = [];
       return;
     }
-
-    this.isStartingSession = true;
-    this.http.post<KidsSession>('/api/kids-session/start', {
-      parentUserId: this.currentUserId,
-      childId: this.selectedChildId,
-    }).subscribe({
-      next: (session) => {
-        this.activeSession = session;
-        this.isStartingSession = false;
-        this.startTimer(session.startTime);
-        void this.router.navigate(['/kids-play']);
+    
+    this.isLoadingParents = true;
+    this.http.get<SettlementUser[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+      next: (users) => {
+        this.searchedParents = users.filter((u: any) => !u.role || u.role === 'CUSTOMER');
+        this.isLoadingParents = false;
         this.cdr.markForCheck();
       },
-      error: (err) => {
-        console.error('Failed to start kids play session', err);
-        this.isStartingSession = false;
-        alert('Unable to start play time right now');
+      error: () => {
+        this.searchedParents = [];
+        this.isLoadingParents = false;
         this.cdr.markForCheck();
-      },
+      }
     });
   }
 
-  endPlayTime(): void {
-    if (!this.currentUserId || !this.activeSession?.sessionId || this.isEndingSession) {
-      return;
-    }
-
-    this.isEndingSession = true;
-    this.http.post<KidsSession>('/api/kids-session/end', {
-      parentUserId: this.currentUserId,
-      sessionId: this.activeSession.sessionId,
-    }).subscribe({
-      next: (session) => {
-        this.activeSession = session;
-        this.isEndingSession = false;
-        this.clearTimer();
-        alert(`Play session ended. Total amount: ₹${session.totalAmount ?? 0}`);
-        this.loadActiveSession();
-        this.cdr.markForCheck();
-      },
-      error: (err) => {
-        console.error('Failed to end kids play session', err);
-        this.isEndingSession = false;
-        alert('Unable to end play time right now');
-        this.cdr.markForCheck();
-      },
-    });
+  selectParent(user: SettlementUser): void {
+    this.selectedParent = user;
+    this.parentSearchText = user.name;
+    this.searchedParents = [];
+    this.loadChildren();
+    this.loadParentActiveSessions(user.id);
   }
 
-  goBack(): void {
-    void this.router.navigate(['/dashboard']);
+  clearSelectedParent(): void {
+    this.selectedParent = null;
+    this.parentSearchText = '';
+    this.children = [];
+    this.parentActiveSessions = [];
+    this.searchedParents = [];
+  }
+
+  toggleGlobalPanel(): void {
+    this.isGlobalPanelExpanded = !this.isGlobalPanelExpanded;
+    if (this.isGlobalPanelExpanded) {
+      this.loadAllActiveSessions();
+    }
   }
 
   private loadChildren(): void {
-    if (!this.currentUserId) {
-      return;
-    }
+    const parentId = this.isManagerOrAdmin ? this.selectedParent?.id : this.currentUserId;
+    if (!parentId) return;
 
     this.isLoadingChildren = true;
-    this.http.get<ChildProfile[]>(`/api/children/by-parent?parentUserId=${this.currentUserId}`).subscribe({
+    this.http.get<ChildProfile[]>(`/api/children/by-parent?parentUserId=${parentId}`).subscribe({
       next: (children) => {
         this.children = children ?? [];
-        this.selectedChildId = this.children[0]?.id ?? null;
         this.isLoadingChildren = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load children', err);
         this.children = [];
-        this.selectedChildId = null;
         this.isLoadingChildren = false;
         this.cdr.markForCheck();
       },
     });
   }
 
-  private loadActiveSession(): void {
-    if (!this.currentUserId) {
-      return;
-    }
+  private loadParentActiveSessions(parentId: number): void {
+    this.http.get<KidsSession[]>(`/api/kids-session/active?parentUserId=${parentId}`).subscribe({
+      next: (sessions) => {
+        this.parentActiveSessions = sessions || [];
+        this.cdr.markForCheck();
+      },
+      error: (err) => console.error('Failed to load parent sessions', err)
+    });
+  }
 
-    this.isLoadingActiveSession = true;
-    this.http.get<KidsSession | null>(`/api/kids-session/active?parentUserId=${this.currentUserId}`).subscribe({
+  private loadAllActiveSessions(): void {
+    this.http.get<KidsSession[]>(`/api/kids-session/active`).subscribe({
+      next: (sessions) => {
+        this.allActiveSessions = sessions || [];
+        this.cdr.markForCheck();
+      },
+      error: (err) => console.error('Failed to load global sessions', err)
+    });
+  }
+
+  getChildSession(childId: number): KidsSession | undefined {
+    return this.parentActiveSessions.find(s => s.childId === childId);
+  }
+
+  startPlayTime(childId: number): void {
+    const parentId = this.isManagerOrAdmin ? this.selectedParent?.id : this.currentUserId;
+    if (!parentId || !childId) return;
+
+    this.http.post<KidsSession>('/api/kids-session/start', {
+      parentUserId: parentId,
+      childId: childId,
+    }).subscribe({
       next: (session) => {
-        this.activeSession = session;
-        this.isLoadingActiveSession = false;
-        if (session?.startTime && !session?.endTime) {
-          this.startTimer(session.startTime);
-        } else {
-          this.clearTimer();
+        this.parentActiveSessions = [session, ...this.parentActiveSessions];
+        if (this.isManagerOrAdmin) {
+          this.loadAllActiveSessions();
         }
         this.cdr.markForCheck();
       },
       error: (err) => {
-        console.error('Failed to load active session', err);
-        this.activeSession = null;
-        this.isLoadingActiveSession = false;
-        this.clearTimer();
-        this.cdr.markForCheck();
+        alert(err.error?.message || 'Unable to start play time right now');
       },
     });
   }
 
-  private startTimer(startTime: string): void {
-    this.clearTimer();
-    const start = new Date(startTime).getTime();
-    this.secondsElapsed = Math.max(0, Math.floor((Date.now() - start) / 1000));
-    this.timerInterval = setInterval(() => {
-      this.secondsElapsed = Math.max(0, Math.floor((Date.now() - start) / 1000));
-      this.cdr.markForCheck();
-    }, 1000);
+  endPlayTime(sessionId: number): void {
+    const session = this.parentActiveSessions.find(s => s.sessionId === sessionId) || this.allActiveSessions.find(s => s.sessionId === sessionId);
+    if (!session) return;
+
+    this.http.post<KidsSession>('/api/kids-session/end', {
+      parentUserId: session.parentUserId,
+      sessionId: sessionId,
+    }).subscribe({
+      next: (resultSession) => {
+        this.parentActiveSessions = this.parentActiveSessions.filter(s => s.sessionId !== sessionId);
+        if (this.isManagerOrAdmin) {
+          this.loadAllActiveSessions();
+        }
+        alert(`Play session ended. Total amount: ₹${resultSession.totalAmount ?? 0}`);
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        alert(err.error?.message || 'Unable to end play time right now');
+      },
+    });
   }
 
-  private clearTimer(): void {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
-    }
-    this.secondsElapsed = 0;
+  rejectPlayTime(sessionId: number): void {
+    if (!confirm('Are you sure you want to reject and cancel this session? This will not incur any charges.')) return;
+    
+    this.http.post<KidsSession>('/api/kids-session/reject', {
+      sessionId: sessionId,
+    }).subscribe({
+      next: () => {
+        this.parentActiveSessions = this.parentActiveSessions.filter(s => s.sessionId !== sessionId);
+        if (this.isManagerOrAdmin) {
+          this.loadAllActiveSessions();
+        }
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        alert(err.error?.message || 'Unable to reject play time right now');
+      },
+    });
+  }
+
+  goBack(): void {
+    void this.router.navigate(['/dashboard']);
   }
 
   private resetChildForm(): void {

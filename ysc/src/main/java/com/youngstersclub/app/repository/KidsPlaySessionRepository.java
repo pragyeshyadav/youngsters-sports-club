@@ -19,7 +19,24 @@ public interface KidsPlaySessionRepository extends JpaRepository<KidsPlaySession
         AND k.endTime IS NULL
         ORDER BY k.startTime DESC
     """)
-    Optional<KidsPlaySession> findActiveByParentUserId(@Param("parentUserId") Integer parentUserId);
+    List<KidsPlaySession> findActiveByParentUserId(@Param("parentUserId") Integer parentUserId);
+
+    @Query("""
+        SELECT k FROM KidsPlaySession k
+        JOIN FETCH k.child c
+        WHERE k.child.id = :childId
+        AND k.endTime IS NULL
+    """)
+    Optional<KidsPlaySession> findActiveByChildId(@Param("childId") Long childId);
+
+    @Query("""
+        SELECT k FROM KidsPlaySession k
+        JOIN FETCH k.child c
+        JOIN FETCH k.parentUser p
+        WHERE k.endTime IS NULL
+        ORDER BY k.startTime DESC
+    """)
+    List<KidsPlaySession> findAllActiveSessions();
 
     @Query("""
         SELECT k FROM KidsPlaySession k

@@ -48,6 +48,9 @@ public class KidsPlaySession {
     @Column(name = "payment_status", length = 20)
     private String paymentStatus = "UNPAID";
 
+    @Column(name = "status", length = 20)
+    private String status = "STARTED";
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -128,6 +131,14 @@ public class KidsPlaySession {
 
     public void setPaymentStatus(String paymentStatus) {
         this.paymentStatus = paymentStatus;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     public LocalDateTime getCreatedAt() {

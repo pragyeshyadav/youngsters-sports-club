@@ -21,128 +21,163 @@
       <img src="/images/kodl-logo.png" alt="Kids Ocean Dreamland" class="hero-logo" />
     </section>
 
-    <section class="panel-card">
-      <div class="panel-title-row">
-        <div>
-          <h2>👧 My Children</h2>
-          <p>Manage the children linked to your account.</p>
-        </div>
-        <button type="button" class="add-child-btn" [disabled]="!canAddMoreChildren" (click)="toggleAddChildForm()">
-          Add Child
-        </button>
-      </div>
-
-      @if (!canAddMoreChildren) {
-        <p class="limit-message">Maximum 10 children allowed per parent.</p>
-      }
-
-      @if (showAddChildForm) {
-        <div class="child-form-card">
-          <div class="form-grid">
-            <label>
-              <span>Name</span>
-              <input type="text" [(ngModel)]="childForm.name" placeholder="Child name" />
-            </label>
-            <label>
-              <span>Date of Birth</span>
-              <input type="date" [(ngModel)]="childForm.dateOfBirth" />
-            </label>
-            <label>
-              <span>Address</span>
-              <textarea [(ngModel)]="childForm.address" placeholder="Address (optional)"></textarea>
-            </label>
-            <label>
-              <span>School</span>
-              <input type="text" [(ngModel)]="childForm.school" placeholder="School (optional)" />
-            </label>
+    @if (isManagerOrAdmin) {
+      <section class="panel-card playing-children-panel">
+        <div class="panel-title-row cursor-pointer" (click)="toggleGlobalPanel()">
+          <div>
+            <h2>🌐 Playing Children</h2>
+            <p>Monitor all active sessions globally.</p>
           </div>
-
-          <div class="form-actions">
-            <button type="button" class="primary-btn" [disabled]="isSubmittingChild" (click)="saveChild()">
-              {{ isSubmittingChild ? 'Saving...' : 'Save Child' }}
-            </button>
-            <button type="button" class="secondary-btn" [disabled]="isSubmittingChild" (click)="toggleAddChildForm()">
-              Cancel
-            </button>
-          </div>
+          <button class="icon-toggle">{{ isGlobalPanelExpanded ? '▲' : '▼' }}</button>
         </div>
-      }
 
-      @if (isLoadingChildren) {
-        <div class="spinner-container compact-spinner">
-          <div class="spinner"></div>
-        </div>
-      } @else if (children.length === 0) {
-        <p class="empty-state">No children added yet.</p>
-      } @else {
-        <div class="children-grid">
-          @for (child of children; track child.id) {
-            <article class="child-card" [class.child-card--selected]="selectedChildId === child.id">
-              <div class="child-card__top">
-                <div>
-                  <h3>{{ child.name }}</h3>
-                  <p>{{ child.dateOfBirth | date: 'd MMM y' }}</p>
-                </div>
-                <input type="radio" name="selected-child" [checked]="selectedChildId === child.id" (change)="selectedChildId = child.id" />
+        @if (isGlobalPanelExpanded) {
+          <div class="global-sessions-list">
+            @if (allActiveSessions.length === 0) {
+              <p class="empty-state">No active play sessions right now.</p>
+            } @else {
+              <div class="sessions-grid">
+                @for (session of allActiveSessions; track session.sessionId) {
+                  <div class="session-stat-card">
+                    <div class="session-info">
+                      <strong>{{ session.childName }}</strong>
+                      <span class="parent-name">via {{ session.parentName }}</span>
+                      <span class="start-time">{{ session.startTime | date: 'shortTime' }}</span>
+                    </div>
+                    <div class="session-timer">{{ getElapsedTimer(session.startTime) }}</div>
+                    <div class="session-actions">
+                      <button class="end-play-btn" (click)="endPlayTime(session.sessionId)">🔴 End Play</button>
+                      <button class="reject-btn" (click)="rejectPlayTime(session.sessionId)">❌ Reject</button>
+                    </div>
+                  </div>
+                }
               </div>
-              @if (child.school) {
-                <div class="child-meta">🏫 {{ child.school }}</div>
-              }
-              @if (child.address) {
-                <div class="child-meta">📍 {{ child.address }}</div>
-              }
-            </article>
+            }
+          </div>
+        }
+      </section>
+
+      <section class="panel-card">
+        <div class="panel-title-row">
+          <div>
+            <h2>🔍 Select Parent</h2>
+            <p>Manage children on behalf of a parent.</p>
+          </div>
+        </div>
+        <div class="search-container">
+          <input type="text" [(ngModel)]="parentSearchText" (input)="searchParents()" placeholder="Search parent by name..." class="search-input" autocomplete="off" />
+          @if (isLoadingParents) {
+            <span class="search-loader">⌛</span>
           }
         </div>
-      }
-    </section>
-
-    <section class="panel-card">
-      <div class="panel-title-row">
-        <div>
-          <h2>🎠 Start Play</h2>
-          <p>Select a child and begin playtime.</p>
-        </div>
-      </div>
-
-      @if (isLoadingActiveSession) {
-        <div class="spinner-container compact-spinner">
-          <div class="spinner"></div>
-        </div>
-      } @else if (activeSession && !activeSession.endTime) {
-        <div class="active-session-card">
-          <div class="active-session-row">
-            <span>👦 Child</span>
-            <strong>{{ activeSession.childName }}</strong>
+        @if (searchedParents.length > 0) {
+          <ul class="dropdown-list">
+            @for (user of searchedParents; track user.id) {
+              <li (click)="selectParent(user)">
+                {{ user.name }} <span class="email-hint">({{ user.email }})</span>
+              </li>
+            }
+          </ul>
+        }
+        @if (selectedParent) {
+          <div class="selected-user-card">
+            <div>
+              <strong>Selected Parent:</strong> {{ selectedParent.name }}
+            </div>
+            <button class="clear-btn" (click)="clearSelectedParent()">✕ Clear</button>
           </div>
-          <div class="active-session-row">
-            <span>🕒 Start Time</span>
-            <span>{{ activeSession.startTime | date: 'd MMM, h:mm a' }}</span>
+        }
+      </section>
+    }
+
+    <!-- Hide children management if Manager has not selected a parent -->
+    @if (!isManagerOrAdmin || selectedParent) {
+      <section class="panel-card">
+        <div class="panel-title-row">
+          <div>
+            <h2>👧 {{ isManagerOrAdmin ? "Parent's Children" : "My Children" }}</h2>
+            <p>Manage children and start independent play sessions.</p>
           </div>
-          <div class="active-session-timer">⏱ {{ formattedTimer }}</div>
-          <button type="button" class="end-play-btn" [disabled]="isEndingSession" (click)="endPlayTime()">
-            {{ isEndingSession ? 'Ending...' : 'End Play Time' }}
+          <button type="button" class="add-child-btn" [disabled]="!canAddMoreChildren" (click)="toggleAddChildForm()">
+            Add Child
           </button>
         </div>
-      } @else if (children.length > 0) {
-        <div class="start-play-card">
-          <label>
-            <span>Select Child</span>
-            <select [(ngModel)]="selectedChildId">
-              <option [ngValue]="null">Choose child</option>
-              @for (child of children; track child.id) {
-                <option [ngValue]="child.id">{{ child.name }}</option>
-              }
-            </select>
-          </label>
 
-          <button type="button" class="primary-btn start-play-btn" [disabled]="!selectedChildId || isStartingSession" (click)="startPlayTime()">
-            {{ isStartingSession ? 'Starting...' : 'Start Play Time' }}
-          </button>
-        </div>
-      } @else {
-        <p class="empty-state">Add at least one child to start a play session.</p>
-      }
-    </section>
+        @if (!canAddMoreChildren) {
+          <p class="limit-message">Maximum 10 children allowed per parent.</p>
+        }
+
+        @if (showAddChildForm) {
+          <div class="child-form-card">
+            <div class="form-grid">
+              <label>
+                <span>Name</span>
+                <input type="text" [(ngModel)]="childForm.name" placeholder="Child name" />
+              </label>
+              <label>
+                <span>Date of Birth</span>
+                <input type="date" [(ngModel)]="childForm.dateOfBirth" />
+              </label>
+              <label>
+                <span>Address</span>
+                <textarea [(ngModel)]="childForm.address" placeholder="Address (optional)"></textarea>
+              </label>
+              <label>
+                <span>School</span>
+                <input type="text" [(ngModel)]="childForm.school" placeholder="School (optional)" />
+              </label>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="primary-btn" [disabled]="isSubmittingChild" (click)="saveChild()">
+                {{ isSubmittingChild ? 'Saving...' : 'Save Child' }}
+              </button>
+              <button type="button" class="secondary-btn" [disabled]="isSubmittingChild" (click)="toggleAddChildForm()">
+                Cancel
+              </button>
+            </div>
+          </div>
+        }
+
+        @if (isLoadingChildren) {
+          <div class="spinner-container compact-spinner">
+            <div class="spinner"></div>
+          </div>
+        } @else if (children.length === 0) {
+          <p class="empty-state">No children added yet.</p>
+        } @else {
+          <div class="children-grid">
+            @for (child of children; track child.id) {
+              <article class="child-card" [class.child-card--active]="getChildSession(child.id)">
+                <div class="child-card__top">
+                  <div>
+                    <h3>{{ child.name }}</h3>
+                    <p>{{ child.dateOfBirth | date: 'd MMM y' }}</p>
+                  </div>
+                </div>
+                
+                <div class="child-actions">
+                  @if (getChildSession(child.id)) {
+                    <div class="child-session-banner">
+                      <div class="timer">⏱ {{ getElapsedTimer(getChildSession(child.id)!.startTime) }}</div>
+                      <button class="end-play-btn" (click)="endPlayTime(getChildSession(child.id)!.sessionId)">🔴 End</button>
+                    </div>
+                  } @else {
+                    <button class="start-play-btn" (click)="startPlayTime(child.id)">▶ Start Play Time</button>
+                  }
+                </div>
+
+                @if (child.school) {
+                  <div class="child-meta mt">🏫 {{ child.school }}</div>
+                }
+                @if (child.address) {
+                  <div class="child-meta">📍 {{ child.address }}</div>
+                }
+              </article>
+            }
+          </div>
+        }
+      </section>
+    }
   </div>
 </div>
