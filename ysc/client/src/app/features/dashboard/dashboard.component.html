@@ -13,6 +13,17 @@
       </div>
       <h1 class="welcome-head">Welcome, {{ user.name }}</h1>
 
+      @if (!showPhoneInput) {
+        <button type="button" class="kids-entry-card" (click)="goToKidsPlay()">
+          <div class="kids-entry-copy">
+            <span class="kids-entry-badge">🌈 Family Fun</span>
+            <strong>Kids Ocean Dreamland</strong>
+            <span>Tap to manage your child's playtime experience</span>
+          </div>
+          <img src="/images/kodl-logo.png" alt="Kids Ocean Dreamland" class="kids-entry-logo" />
+        </button>
+      }
+
       @if (showPhoneInput) {
         <div class="phone-section">
           <h3>Add Your Phone Number</h3>

@@ -1,0 +1,373 @@
+.kids-play-page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.kids-play-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.kids-brand-logo {
+  width: 112px;
+  height: 112px;
+  object-fit: contain;
+  border-radius: 1.5rem;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 16px 30px rgba(15, 23, 42, 0.1),
+    inset 0 0 0 1px rgba(13, 148, 136, 0.12);
+}
+
+.kids-brand-title {
+  margin-top: 0.9rem;
+  font-family: 'Anton', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
+  -webkit-text-stroke: 1px #000;
+  paint-order: stroke fill;
+  line-height: 1.12;
+  text-align: center;
+  font-size: 2rem;
+  word-break: break-word;
+}
+
+.kids-brand-title__kids {
+  color: #ffffff;
+}
+
+.kids-brand-title__ocean {
+  color: #38bdf8;
+}
+
+.kids-brand-title__dream {
+  color: #f472b6;
+}
+
+.kids-brand-title__land {
+  color: #facc15;
+}
+
+.kids-shell {
+  max-width: 860px;
+  margin: 0 auto;
+}
+
+.back-link {
+  border: none;
+  background: transparent;
+  color: #0f766e;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 1rem;
+}
+
+.hero-card,
+.panel-card {
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 1.4rem;
+  box-shadow:
+    0 20px 40px rgba(15, 23, 42, 0.09),
+    inset 0 0 0 1px rgba(13, 148, 136, 0.08);
+}
+
+.hero-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  background:
+    radial-gradient(circle at top right, rgba(251, 191, 36, 0.24), transparent 30%),
+    radial-gradient(circle at bottom left, rgba(56, 189, 248, 0.18), transparent 28%),
+    linear-gradient(135deg, #ecfeff 0%, #eff6ff 50%, #fef3c7 100%);
+}
+
+.hero-badge {
+  display: inline-flex;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  background: rgba(13, 148, 136, 0.12);
+  color: #0f766e;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.hero-copy h1 {
+  margin: 0.8rem 0 0.35rem;
+  color: #0f172a;
+  font-size: 2rem;
+}
+
+.hero-copy p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.hero-logo {
+  width: 92px;
+  height: 92px;
+  object-fit: contain;
+  border-radius: 1.25rem;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.1);
+}
+
+.panel-card {
+  margin-top: 1.25rem;
+  padding: 1.4rem;
+}
+
+.panel-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+
+  h2 {
+    margin: 0;
+    color: #14532d;
+  }
+
+  p {
+    margin: 0.35rem 0 0;
+    color: #64748b;
+  }
+}
+
+.add-child-btn,
+.primary-btn,
+.secondary-btn,
+.end-play-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 0.85rem 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.add-child-btn,
+.primary-btn {
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%);
+  color: white;
+}
+
+.secondary-btn {
+  background: rgba(148, 163, 184, 0.18);
+  color: #334155;
+}
+
+.end-play-btn {
+  background: linear-gradient(135deg, #dc2626 0%, #f97316 100%);
+  color: white;
+  width: 100%;
+}
+
+.add-child-btn:disabled,
+.primary-btn:disabled,
+.secondary-btn:disabled,
+.end-play-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.limit-message,
+.empty-state {
+  margin: 1rem 0 0;
+  color: #b45309;
+  font-weight: 600;
+}
+
+.child-form-card,
+.start-play-card,
+.active-session-card {
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    color: #0f172a;
+    font-weight: 700;
+  }
+
+  textarea,
+  input {
+    padding: 0.85rem 1rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.85rem;
+    font: inherit;
+    background: white;
+  }
+
+  textarea {
+    min-height: 92px;
+    resize: vertical;
+  }
+}
+
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.children-grid {
+  margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.child-card {
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 1px solid #dbe4ee;
+  background: white;
+}
+
+.child-card--selected {
+  border-color: #0d9488;
+  box-shadow: 0 10px 24px rgba(13, 148, 136, 0.12);
+}
+
+.child-card__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+
+  h3 {
+    margin: 0;
+    color: #0f172a;
+  }
+
+  p {
+    margin: 0.25rem 0 0;
+    color: #64748b;
+  }
+}
+
+.child-meta {
+  margin-top: 0.7rem;
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.start-play-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.start-play-card select {
+  margin-top: 0.35rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.85rem;
+  font: inherit;
+  background: white;
+}
+
+.start-play-btn {
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.active-session-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  color: #0f172a;
+}
+
+.active-session-timer {
+  margin: 0.5rem 0 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #cffafe 0%, #dbeafe 100%);
+  color: #0f172a;
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.spinner-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 96px;
+}
+
+.compact-spinner {
+  min-height: 80px;
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 4px solid #d1d5db;
+  border-top: 4px solid #2e7d32;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@media (max-width: 640px) {
+  .kids-play-page {
+    padding: 1.5rem 1rem 2.5rem;
+  }
+
+  .kids-brand-logo {
+    width: 92px;
+    height: 92px;
+  }
+
+  .kids-brand-title {
+    font-size: 1.5rem;
+    letter-spacing: 1px;
+  }
+
+  .hero-card,
+  .panel-title-row,
+  .children-grid,
+  .form-grid,
+  .form-actions,
+  .active-session-row {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .hero-logo,
+  .add-child-btn,
+  .primary-btn,
+  .secondary-btn {
+    width: 100%;
+  }
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}

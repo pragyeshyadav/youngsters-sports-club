@@ -36,6 +36,7 @@ interface ConsumableDueRow {
 interface PaymentSummary {
   frameDue: number | string | null;
   consumableDue: number | string | null;
+  kidsDue: number | string | null;
   totalDue: number | string | null;
 }
 
@@ -65,6 +66,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   isSavingSettlement = false;
   frameDue = 0;
   consumableDue = 0;
+  kidsDue = 0;
   totalDue = 0;
   showSettlementPopup = false;
   settleAmount: number | null = null;
@@ -142,6 +144,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       next: (summary) => {
         this.frameDue = this.toNumber(summary?.frameDue);
         this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.kidsDue = this.toNumber(summary?.kidsDue);
         this.totalDue = this.toNumber(summary?.totalDue);
         this.cdr.markForCheck();
       },
@@ -149,6 +152,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         console.error('Failed to load payment summary', err);
         this.frameDue = 0;
         this.consumableDue = 0;
+        this.kidsDue = 0;
         this.totalDue = 0;
         this.cdr.markForCheck();
       },
@@ -184,6 +188,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       next: (summary) => {
         this.frameDue = this.toNumber(summary?.frameDue);
         this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.kidsDue = this.toNumber(summary?.kidsDue);
         this.totalDue = this.toNumber(summary?.totalDue);
         this.settleAmount = null;
         this.paymentMode = '';
@@ -256,6 +261,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     if (!this.selectedUser) {
       this.frameDue = 0;
       this.consumableDue = 0;
+      this.kidsDue = 0;
       this.totalDue = 0;
       return;
     }
@@ -264,6 +270,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       next: (summary) => {
         this.frameDue = this.toNumber(summary?.frameDue);
         this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.kidsDue = this.toNumber(summary?.kidsDue);
         this.totalDue = this.toNumber(summary?.totalDue);
         this.cdr.markForCheck();
       },
