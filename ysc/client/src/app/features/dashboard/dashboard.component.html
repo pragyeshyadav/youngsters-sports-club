@@ -22,6 +22,17 @@
           </div>
           <img src="/images/kodl-logo.png" alt="Kids Ocean Dreamland" class="kids-entry-logo" />
         </button>
+
+        @if (isCustomer()) {
+          <button type="button" class="kids-entry-card olympics-card" (click)="goToSummerOlympicsRegistration()">
+            <div class="kids-entry-copy">
+              <span class="kids-entry-badge" style="background: linear-gradient(135deg, #FFD700, #FDB931); color: #000; box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);">🏆 Premier Event</span>
+              <strong>Summer Olympics 2K26</strong>
+              <span>Register for your favorite sporting events</span>
+            </div>
+            <img src="/images/summer-olympics-logo.png" alt="Summer Olympics 2K26" class="kids-entry-logo" style="border-radius: 12px; transform: scale(1.1);" />
+          </button>
+        }
       }
 
       @if (showPhoneInput) {

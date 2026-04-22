@@ -67,6 +67,14 @@ This `agents.md` serves as the ultimate source of truth for AI agents or develop
 * **Purpose**: User reviews.
 * **Flow**: Simple `CustomerFeedback` model accepting a star rating (1-5) and text payload.
 
+### 10. Kids Play Module (Ocean Dream Land)
+* **Purpose**: Manage standalone children's real-time play sessions.
+* **Flow**: Distinct from table management; tracks a `Child` linked to a `User` (Customer). Manager dashboards overlay specific "Parent Contexts" to initiate sessions dynamically without disrupting the user token context.
+
+### 11. Tournament Registration (Summer Olympics)
+* **Purpose**: Gamified event subscriptions and bracket structures.
+* **Flow**: Renders an engaging dashboard UI for Customers. Handles deduplication gracefully via a parsed `{ successfullyRegistered, alreadyRegistered }` JSON payload feeding back into a styled success modal rather than generic exceptions.
+
 ---
 
 ## Data Flow
@@ -91,6 +99,18 @@ This `agents.md` serves as the ultimate source of truth for AI agents or develop
 3. **Logic**: Iterates over chronologically ordered unpaid frames for user. Deducts amount until `0`.
 4. **DB**: Inserts `payments`. Updates `frames.payment_due` and `payment_status`.
 
+### 4. Kids Play Session Flow
+1. **Request**: `POST /api/kids-session/start`
+2. **Payload**: `childId`, `durationMinutes` (optional).
+3. **DB**: Inserts `kids_play_sessions` (`status = STARTED`).
+4. **Response**: DTO containing session boundaries.
+
+### 5. Tournament Registration Flow
+1. **Request**: `POST /api/tournaments/register`
+2. **Payload**: `userId`, `tournamentIds[]`.
+3. **Logic**: Executes deterministic pre-checks via `existsByTournamentIdAndUserId` to bypass hard JPA constraint faults natively.
+4. **DB**: Generates unique `tournament_registrations`.
+
 ---
 
 ## Database
@@ -113,6 +133,10 @@ This `agents.md` serves as the ultimate source of truth for AI agents or develop
 * **`customer_feedback`**
     * Columns: `id`, `user_id` (FK), `star_rating`, `feedback`.
     * Meaning: Basic review auditing.
+* **`tournaments`, `tournament_registrations`, `tournament_matches`, `tournament_updates`**
+    * Meaning: Encapsulates bracket configurations, pricing, and active linkage tracking for large scale snooker/pool event operations.
+* **`children`, `kids_play_sessions`**
+    * Meaning: A distinct sub-module independent of core `snooker_tables`. Tracks secondary demographic behaviors (play zone sessions over physical tables).
 
 ---
 
@@ -151,6 +175,15 @@ POST /api/payment/settle            - Submits a monetary settlement toward dues
 
 # FEEDBACK API
 POST /api/feedback                  - Saves customer feedback
+
+# KIDS PLAY API
+POST /api/kids-session/start                    - Starts playtime tracking
+POST /api/kids-session/end                      - Computes playtime amounts
+GET  /api/kids-session/active                   - Contextual dashboard session loading
+
+# TOURNAMENT API
+GET  /api/tournaments/active                    - Pulls active event definitions
+POST /api/tournaments/register                  - Submits and differentiates arrays for deduplication
 ```
 
 ---
@@ -192,6 +225,8 @@ POST /api/feedback                  - Saves customer feedback
   * `snooker-frame/` & `start-frame/`: Real-time session handling mechanisms and initiation forms.
   * `managers-portal/`: Administrative dashboard for overview.
   * `my-game-history/`, `payment-settlement/`: Deep dives into individual ledger paths.
+  * `kids-play/`: Session and child addition interfaces, isolated logic module allowing Managers to trigger via Parent Identity lookup.
+  * `summer-olympics-registration/`: Multi-select grid parsing array registrations dynamically and displaying custom structural Modals.
 * **Patterns**: Lazy-loaded feature routing via `app.routes.ts`. Emphasis on structured RxJs streaming for REST updates.
 
 ---
