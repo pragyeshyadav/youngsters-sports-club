@@ -314,4 +314,8 @@ export class DashboardComponent implements OnInit {
   goToKidsPlay() {
     this.router.navigate(['/kids-play']);
   }
+
+  goToSummerOlympicsRegistration() {
+    this.router.navigate(['/tournament-registration']);
+  }
 }
