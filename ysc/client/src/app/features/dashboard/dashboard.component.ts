@@ -8,6 +8,7 @@ import { AuthUser } from '../../core/models/auth.models';
 import { AuthService } from '../../core/services/auth.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
+import { ConsumableItemsComponent } from '../../shared/components/consumable-items/consumable-items.component';
 import { AvailableTablesComponent } from './available-tables/available-tables.component';
 import { TopRankersComponent } from './top-rankers/top-rankers.component';
 
@@ -18,7 +19,7 @@ interface PaymentSummary {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, AvailableTablesComponent, TopRankersComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, ConsumableItemsComponent, AvailableTablesComponent, TopRankersComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

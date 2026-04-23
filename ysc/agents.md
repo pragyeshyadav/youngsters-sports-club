@@ -1,250 +1,531 @@
 # agents.md
 
 ## Overview
-Youngsters Sports Club (YSC) is a full-stack platform designed to handle the core operations of a snooker club. It integrates table management, live game tracking (frames), partial and full payment settlements, user feedback, and role-based permissions (Customers, Managers, Admins). 
+Youngsters Sports Club (YSC) is a full-stack Angular + Spring Boot + PostgreSQL platform for running the day-to-day operations of a snooker club and its adjacent businesses. The application now covers:
 
-This `agents.md` serves as the ultimate source of truth for AI agents or developers navigating the codebase.
+* snooker table booking and live frame tracking
+* partial and full payment settlement
+* manager/admin operational dashboards
+* customer feedback
+* consumable ordering and billing
+* Kids Ocean Dreamland child session management
+* Summer Olympics tournament registration
+
+This file is intended to be the primary onboarding document for any AI agent or developer working in this repository. It should be read together with the live code when making changes.
 
 ---
 
 ## Architecture
 
 **1. Frontend (Angular)**
-* **Structure**: Modern component-based architecture organized into `core`, `shared`, and `features`.
-* **State Management & Logic**: Heavy lifting is handled by Angular Services built around reactive principles (`rxjs`).
-* **Communication**: HTTP interceptors attach authorization (JWTs) and handle common error flows.
+* Standalone-component Angular app using lazy-loaded routes from `client/src/app/app.routes.ts`.
+* Feature-first structure under `client/src/app/features/`.
+* Shared UI primitives live in `client/src/app/shared/components/`.
+* Global auth state and token handling live under `client/src/app/core/`.
+* HTTP calls are made directly from feature components for most screens; there is limited centralized API abstraction.
 
 **2. Backend (Spring Boot)**
-* **Structure**: Layered architecture -> `api` (Controllers) -> `service` (Business Logic) -> `repository` (Data Access) -> `entity` (Database Mapping).
-* **Security**: Google OAuth handles the initial login `/api/auth/google-login`, and issues a stateless JWT for subsequent requests.
+* Standard layered architecture:
+  * `api` -> controllers
+  * `service` -> business logic
+  * `repository` -> Spring Data / query layer
+  * `entity` -> JPA models
+  * `dto` -> request/response payloads
+* JWT-based authenticated flow after Google login.
 
 **3. Database**
-* **Provider**: PostgreSQL (hosted on Supabase).
-* **ORM**: Hibernate/JPA.
-* **Migrations/Schema**: Entities tightly mapped via standard JPA annotations (`@Entity`).
+* PostgreSQL hosted on Supabase.
+* JPA/Hibernate entities mirror the DB tables directly.
+* Current codebase relies on explicit query methods and native projections rather than a migration framework in-repo.
 
 **4. Deployment**
-* The application runs on **Render**. Environment variables control secrets, database URIs, and Google API keys.
+* Deployed on Render.
+* Frontend is built from the Angular workspace inside `client/`.
+* Backend and frontend builds are often verified independently:
+  * backend: `./mvnw -Dfrontend.skip=true test`
+  * frontend type check: `./node_modules/.bin/tsc -p tsconfig.app.json --noEmit`
+
+**5. Runtime / Tooling Notes**
+* The project currently avoids Lombok in the new consumables entities because it caused compiler/runtime issues with newer Java toolchains (`TypeTag :: UNKNOWN` on Java 24 in this repo context).
+* Monetary values are handled with `BigDecimal` in the backend and displayed as numbers on the frontend.
 
 ---
 
-## Features
+## Major Features
 
-### 1. User Login (Google OAuth)
-* **Purpose**: frictionless onboarding.
-* **Flow**: User clicks Google Sign-In -> Google returns user payload -> Angular calls `/api/auth/google-login` -> Backend registers/fetches `User` and returns JWT.
+### 1. Authentication and User Bootstrap
+* Google OAuth login is the entry point.
+* Angular posts the Google payload to `/api/auth/google-login`.
+* Backend creates or resolves a `User`, returns a JWT, and the frontend stores user details locally.
+* Many screens then resolve the current backend user through `/api/user?email={email}`.
 
-### 2. Phone Number Update
-* **Purpose**: Essential for club communication.
-* **Flow**: Angular prompts users lacking a phone number. Backend `/api/user/phone` updates the user entity. It prevents overriding an already set phone number.
+### 2. Phone Number Collection
+* Dashboard prompts users without a phone number.
+* `/api/user/phone` only saves a phone number when one is not already present.
+* Existing phone values are intentionally not overwritten.
 
 ### 3. Dashboard
-* **Purpose**: Landing experience post-login.
-* **Flow**: Fetches currently active frames `getActiveFrame`, pending dues `getTotalDue`, and recent history. Highlights actionable items.
+* Main landing screen after login.
+* Displays:
+  * greeting / identity block
+  * due summary banner when total due crosses the configured threshold
+  * start/end snooker CTA
+  * feedback card with upgraded collapsible UI
+  * available tables / leaderboard sections
+  * role-specific navigation such as Manager Portal / Admin Page
+  * Kids Ocean Dreamland entry card
+  * Summer Olympics registration card
+* CUSTOMER users are geofenced before being allowed to start a frame.
 
 ### 4. Snooker Frame Lifecycle
-* **Start Frame**: User selects a table. Auto-suggest API `/api/users/search` populates player names. Backend creates `Frame` and `FramePlayer` entries. Table marked as unavailable.
-* **Track Timer**: Application calculates running duration based on `startTime`.
-* **End Frame**: Manager/User specifies `winner` and `loser`. Backend calculates `duration * ratePerMinute = totalAmount`. Status updates to `ENDED`, table is freed, the debt is loaded onto the loser.
+* Start frame flow is initiated from `/snooker-frame` and executed on `/start-frame`.
+* Users select a table, search/select players, and call `POST /api/frame/start`.
+* Ending a frame happens from the same `/start-frame` screen by opening an end-frame popup and calling `POST /api/frame/end/{frameId}`.
+* Rejected frames call `POST /api/frame/reject/{frameId}`.
+* Frontend now guards against duplicate submission with button-level loading states:
+  * `isStartingFrame`
+  * `isOpeningEndPopup`
+  * `isEndingFrame`
 
-### 5. Table Availability Management
-* **Purpose**: Prevent double booking. 
-* **Flow**: `/api/snooker/tables` returns tables where `isAvailable = true`. Started frames lock the table (`isAvailable = false`), and ended/rejected frames unlock it.
+### 5. Manager Portal
+* Operational oversight screen for MANAGER / ADMIN / SUPER_ADMIN roles.
+* Includes collapsible sections for:
+  * today’s total earnings
+  * today’s ongoing frames
+  * today’s completed frames
+  * consumable item ordering
+  * paginated player summary / dues overview
+* Today’s earnings uses a dedicated backend analytics endpoint and shows total earnings, total due, and due-player breakdown.
 
-### 6. Payment & Due Tracking (Partial Payments)
-* **Purpose**: Settlement of loser dues.
-* **Flow**: `/api/payment/settle` accepts an amount. Backend fetches all unpaid frames for the user and iteratively subtracts the payment until depleted. Supports `PARTIAL` and `PAID` statuses.
+### 6. Consumable Ordering and Billing
+* New business flow built on:
+  * `consumable_items`
+  * `consumable_orders`
+  * `consumable_order_items`
+* Manager Portal can create consumable orders for a selected user with multiple items in one submission.
+* Backend calculates all line totals server-side from item prices.
+* Consumable dues are integrated into:
+  * `/api/user/payment-summary`
+  * manager payment settlement
+  * My Game History due summary
+  * consumable history panel on My Game History
 
-### 7. Manager & Admin Portals
-* **Purpose**: Oversight of operations.
-* **Flow**: Dedicated Angular feature modules retrieve today’s ongoing frames, completed frames, and manipulate table statuses. Can reject frames. Also includes a paginated overview of all players with their aggregated activity (Total Frames Played, Total Due).
+### 7. Payment Settlement
+* Existing payment flow still centers on `/api/payment/settle`.
+* Settlement now spans multiple business modules in oldest-first order:
+  * frame dues
+  * consumable dues
+  * kids play dues
+* Payment records are still stored in `payments`.
+* Frame payments update `frames.payment_due` and `frames.payment_status`.
+* Consumable and kids-play payments reduce their outstanding `total_amount` and update their payment status.
 
-### 8. Geo-Fencing Restriction
-* **Purpose**: Ensuring players are physically at the club to start a match.
-* **Flow**: Handled via browser geolocation API interacting with the frontend to enforce a vicinity boundary before the 'Start Frame' POST request can fire.
+### 8. My Game History
+* `/my-game-history` still shows core frame history.
+* It now also shows:
+  * `Frame Due`
+  * `Consumable Due`
+  * `Kids Due`
+  * `Total Due`
+* A collapsible `My Consumable History` section loads separately and is optimized not to block the full page.
 
 ### 9. Feedback System
-* **Purpose**: User reviews.
-* **Flow**: Simple `CustomerFeedback` model accepting a star rating (1-5) and text payload.
+* Dashboard contains a collapsible, premium-styled feedback card.
+* Existing submission API remains `/api/feedback`.
+* Logic still requires both star rating and text feedback.
 
-### 10. Kids Play Module (Ocean Dream Land)
-* **Purpose**: Manage standalone children's real-time play sessions.
-* **Flow**: Distinct from table management; tracks a `Child` linked to a `User` (Customer). Manager dashboards overlay specific "Parent Contexts" to initiate sessions dynamically without disrupting the user token context.
+### 10. Kids Ocean Dreamland Module
+* Separate play-session module under `/kids-play`.
+* Uses the shared auth/user system but remains operationally independent from snooker tables, except that pricing is read from a `snooker_tables` row named `Kids Ocean Dream Land`.
+* CUSTOMER flow:
+  * manage own children
+  * add children (max 10)
+  * start/end sessions per child independently
+* MANAGER / ADMIN / SUPER_ADMIN flow:
+  * search/select a parent
+  * manage children in that selected parent context
+  * start sessions for multiple children independently
+  * monitor all active sessions in a collapsible `Playing Children` panel
+  * end or reject sessions
+* Branding is customized for this module with Kids Ocean Dreamland assets and styling.
 
-### 11. Tournament Registration (Summer Olympics)
-* **Purpose**: Gamified event subscriptions and bracket structures.
-* **Flow**: Renders an engaging dashboard UI for Customers. Handles deduplication gracefully via a parsed `{ successfullyRegistered, alreadyRegistered }` JSON payload feeding back into a styled success modal rather than generic exceptions.
+### 11. Summer Olympics Registration
+* Dedicated `/tournament-registration` feature.
+* Supports registration against active tournaments.
+* Backend distinguishes already-registered vs newly-registered entries and returns structured feedback for the UI.
+
+### 12. Leaderboard / Admin Utilities
+* Leaderboard data is served from `/api/leaderboard/top-players`.
+* Admin and manager routes are present as standalone Angular screens, protected by the shared auth guard.
 
 ---
 
-## Data Flow
+## Current Data Flow
 
 ### 1. Start Frame Flow
-1. **Request**: `POST /api/frame/start`
-2. **Payload**: `tableId`, `startedBy`, list of `players[]`.
-3. **Logic**: Verifies table availability. Checks role limits (Customer: 1 frame).
-4. **DB**: Sets `snooker_tables.is_available = false`. Inserts `frames` (`status = STARTED`). Inserts `frame_players`.
-5. **Response**: Frame ID.
+1. `POST /api/frame/start`
+2. Payload: `tableId`, `startedBy`, `players[]`
+3. Backend validates table/user constraints, creates `Frame` + `FramePlayer`
+4. Table is marked unavailable
+5. Frontend locks the CTA while request is in flight
 
 ### 2. End Frame Flow
-1. **Request**: `POST /api/frame/end/{frameId}`
-2. **Payload**: `winnerId`, `looserId`.
-3. **Logic**: `duration = endTime - startTime`. `totalAmount = duration * rate`. Assigns `paymentDue`.
-4. **DB**: Updates `frames` (`status = ENDED`). Updates `snooker_tables` (`is_available = true`).
-5. **Response**: Calculation summary (duration, amount, due).
+1. `POST /api/frame/end/{frameId}`
+2. Payload: `winnerId`, `looserId`
+3. Backend computes duration and billable amount
+4. Loser receives the due amount
+5. Table is unlocked
 
 ### 3. Payment Settlement Flow
-1. **Request**: `POST /api/payment/settle`
-2. **Payload**: `userId`, `amount`, `mode` (CASH/UPI etc).
-3. **Logic**: Iterates over chronologically ordered unpaid frames for user. Deducts amount until `0`.
-4. **DB**: Inserts `payments`. Updates `frames.payment_due` and `payment_status`.
+1. `POST /api/payment/settle`
+2. Payload: `userId`, `amount`, `mode`
+3. Backend totals outstanding dues across frames, consumables, and kids sessions
+4. Payment is allocated oldest-first
+5. `payments` records are created during allocation
 
-### 4. Kids Play Session Flow
-1. **Request**: `POST /api/kids-session/start`
-2. **Payload**: `childId`, `durationMinutes` (optional).
-3. **DB**: Inserts `kids_play_sessions` (`status = STARTED`).
-4. **Response**: DTO containing session boundaries.
+### 4. Consumable Order Flow
+1. Manager Portal builds a multi-line item request
+2. `POST /api/consumables/order`
+3. Backend loads active items, calculates totals from DB prices, creates order + order items transactionally
+4. Order is saved as `UNPAID`
 
-### 5. Tournament Registration Flow
-1. **Request**: `POST /api/tournaments/register`
-2. **Payload**: `userId`, `tournamentIds[]`.
-3. **Logic**: Executes deterministic pre-checks via `existsByTournamentIdAndUserId` to bypass hard JPA constraint faults natively.
-4. **DB**: Generates unique `tournament_registrations`.
+### 5. User Payment Summary Flow
+1. `GET /api/user/payment-summary?userId={id}`
+2. Backend aggregates:
+  * frame due
+  * consumable due
+  * kids due
+3. DTO returns module-specific values plus combined `totalDue`
+
+### 6. My Consumable History Flow
+1. User opens the collapsible panel on `/my-game-history`
+2. `GET /api/consumables/my-history?userId={id}`
+3. Backend joins orders, order items, and items
+4. Frontend renders desktop table or mobile cards with status colors
+
+### 7. Today’s Earnings Flow
+1. Manager opens the earnings panel
+2. `GET /api/analytics/today-earnings`
+3. Backend returns:
+  * total earnings today
+  * total due today
+  * loser breakdown for due amounts
+
+### 8. Kids Play Session Flow
+1. Parent or privileged staff selects child context
+2. `POST /api/kids-session/start`
+3. Backend saves `start_time`, `rate_per_minute`, `status = STARTED`, `payment_status = UNPAID`
+4. Active sessions are surfaced through `GET /api/kids-session/active`
+5. `POST /api/kids-session/end` computes duration and amount
+6. `POST /api/kids-session/reject` marks the session cancelled with zero charge
+
+### 9. Tournament Registration Flow
+1. `GET /api/tournaments/active`
+2. User submits selected tournaments to `POST /api/tournaments/register`
+3. Backend deduplicates and returns structured registration results
 
 ---
 
-## Database
+## Database Model
 
+### Core Tables
 * **`users`**
-    * Columns: `id`, `name`, `email`, `google_id`, `phone`, `role`, `is_active`
-    * Meaning: Core identity entity. `role` defines permissions.
+  * Core identity table
+  * Stores role, Google identity, contact details, active flag
+
 * **`snooker_tables`**
-    * Columns: `id`, `table_name`, `rate_per_minute`, `is_active`, `is_available`
-    * Meaning: Physical resources. `rate_per_minute` drives billing.
+  * Physical snooker resources
+  * Also reused for Kids Ocean Dreamland pricing by looking up table name `Kids Ocean Dream Land`
+
 * **`frames`**
-    * Columns: `id`, `table_id` (FK), `started_by` (FK: users), `winner` (FK), `looser` (FK), `status` (STARTED/ENDED/REJECTED), `payment_status` (UNPAID/PARTIAL/PAID), `start_time`, `end_time`, `duration_minutes`, `total_amount`, `payment_due`.
-    * Meaning: The core transactional record tying a game session to a billable amount.
+  * Main snooker billing transaction
+  * Tracks started by, winner, looser, timing, amount, and payment status
+
 * **`frame_players`**
-    * Columns: `id`, `frame_id` (FK), `user_id` (FK - nullable), `player_name`.
-    * Meaning: The roster of participants linked to a given match.
+  * Roster entries for a frame
+  * Supports named players and user-linked players
+
 * **`payments`**
-    * Columns: `id`, `frame_id` (FK), `user_id` (FK), `amount`, `payment_method`, `payment_time`.
-    * Meaning: Ledger for all transaction receipts to clear `frames` dues.
+  * Ledger-style table used during settlement
+  * Payments may correspond to frame dues or non-frame dues, so `frame_id` can be null
+
 * **`customer_feedback`**
-    * Columns: `id`, `user_id` (FK), `star_rating`, `feedback`.
-    * Meaning: Basic review auditing.
-* **`tournaments`, `tournament_registrations`, `tournament_matches`, `tournament_updates`**
-    * Meaning: Encapsulates bracket configurations, pricing, and active linkage tracking for large scale snooker/pool event operations.
-* **`children`, `kids_play_sessions`**
-    * Meaning: A distinct sub-module independent of core `snooker_tables`. Tracks secondary demographic behaviors (play zone sessions over physical tables).
+  * Stores star rating and written feedback
+
+### Consumables
+* **`consumable_items`**
+  * Master data for items, price, active status, created timestamp
+
+* **`consumable_orders`**
+  * Order header for a user
+  * Stores total outstanding amount and payment status
+
+* **`consumable_order_items`**
+  * Order lines
+  * Stores quantity, unit price, and line total
+
+### Kids Play
+* **`children`**
+  * Child profile linked to a parent user
+  * Holds name, DOB, address, school
+
+* **`kids_play_sessions`**
+  * Stores child, parent, start/end times, duration, rate, total amount, payment status, lifecycle status
+
+### Tournaments
+* **`tournaments`**
+* **`tournament_registrations`**
+* **`tournament_matches`**
+* **`tournament_updates`**
 
 ---
 
 ## APIs
 
 ```text
+# HEALTH / MISC
+GET  /api/health                               - Basic health check
+
 # USER API
-GET  /api/user?email={email}                  - Fetch user by email
-GET  /api/users/search?query={q}              - Auto-suggest/Search active users
-GET  /api/users/player-summary?page=X&size=Y  - Paginated list of all users w/ frames played and due
-POST /api/user/phone                          - Update user phone number
+GET  /api/user?email={email}                   - Fetch current backend user by email
+POST /api/user/phone                           - Save phone number if not already set
+GET  /api/user/payment-summary?userId={id}     - Frame + consumable + kids due summary
+GET  /api/users/search?query={q}               - Search users by name
+GET  /api/users/player-summary?page=X&size=Y   - Paginated player summary for managers
 
 # AUTH API
-POST /api/auth/google               - Basic Google payload reception (Sends Mail)
-POST /api/auth/google-login         - Real login issuing JWT from token
+POST /api/auth/google                          - Google payload entrypoint
+POST /api/auth/google-login                    - Google login issuing JWT
 
-# SNOOKER API
-GET  /api/snooker/tables            - Fetch available tables
+# SNOOKER TABLE API
+GET  /api/snooker/tables                       - Available active tables
 
 # FRAME API
-POST /api/frame/start                           - Starts new match on a Table
-GET  /api/frame/active?userId={id}              - Fetch actively running frame info
-GET  /api/frame/user-ongoing?userId={id}        - Alias for Active Frame
-GET  /api/frame/ongoing/today                   - All active frames for managers
-GET  /api/frame/completed/today                 - All ended frames for today
-GET  /api/frame/user-due?userId={id}            - Frames where user represents an outstanding debt
-GET  /api/frame/history?userId={id}             - User's historical games
-GET  /api/frame/total-due?userId={id}           - Returns aggregate outstanding BigDecimal
-GET  /api/frame/{frameId}/players               - Roster of players for a frame
-GET  /api/frame/{frameId}                       - Deep frame details
-POST /api/frame/end/{frameId}                   - Settles an active frame
-POST /api/frame/reject/{frameId}                - Aborts frame with zero payload/billing
+POST /api/frame/start                          - Start a frame
+GET  /api/frame/active?userId={id}             - Active frame response
+GET  /api/frame/user-ongoing?userId={id}       - Alternate active-frame lookup
+GET  /api/frame/ongoing/today                  - Today’s ongoing frames
+GET  /api/frame/completed/today                - Today’s completed frames
+GET  /api/frame/user-due?userId={id}           - Due frames for a user
+GET  /api/frame/history?userId={id}            - Historical frames
+GET  /api/frame/total-due?userId={id}          - Frame-only due total
+GET  /api/frame/{frameId}/players              - Player roster for a frame
+GET  /api/frame/{frameId}                      - Frame details
+POST /api/frame/end/{frameId}                  - End frame and compute billing
+POST /api/frame/reject/{frameId}               - Reject frame
 
 # PAYMENT API
-POST /api/payment/settle            - Submits a monetary settlement toward dues
+POST /api/payment/settle                       - Settle frame/consumable/kids dues
 
 # FEEDBACK API
-POST /api/feedback                  - Saves customer feedback
+POST /api/feedback                             - Submit customer feedback
+
+# ANALYTICS API
+GET  /api/analytics/today-earnings             - Today’s earnings + due breakdown
+
+# CONSUMABLE API
+GET  /api/consumables/items/search?query={q}   - Search active consumable items
+POST /api/consumables/order                    - Create consumable order
+GET  /api/consumables/orders/due?userId={id}   - Unpaid consumable order lines
+GET  /api/consumables/my-history?userId={id}   - Consumable history for a user
+
+# CHILD API
+POST /api/children                             - Add child profile
+GET  /api/children/by-parent?parentUserId={id} - List children for a parent
 
 # KIDS PLAY API
-POST /api/kids-session/start                    - Starts playtime tracking
-POST /api/kids-session/end                      - Computes playtime amounts
-GET  /api/kids-session/active                   - Contextual dashboard session loading
+POST /api/kids-session/start                   - Start kids play session
+POST /api/kids-session/end                     - End kids play session
+POST /api/kids-session/reject                  - Cancel kids play session
+GET  /api/kids-session/active                  - All active sessions or by parent via parentUserId
+
+# LEADERBOARD API
+GET  /api/leaderboard/top-players              - Top players leaderboard
 
 # TOURNAMENT API
-GET  /api/tournaments/active                    - Pulls active event definitions
-POST /api/tournaments/register                  - Submits and differentiates arrays for deduplication
+GET  /api/tournaments/active                   - Active tournaments
+POST /api/tournaments/register                 - Register user for tournaments
 ```
 
 ---
 
-## Roles & Permissions
+## Roles and Permissions
 
-| Role | Permissions |
+| Role | Current Effective Capabilities |
 | :--- | :--- |
-| **CUSTOMER** | Limited. Can start exactly 1 frame. Cannot approve own frames or reject frames. |
-| **MANAGER** | Extended. Can start multiple simultaneous frames, manage operations, override table states, end frames on behalf of others. |
-| **ADMIN** | Full. Standard administrative oversight logic. |
-| **SUPER_ADMIN** | Full Control. Unrestricted access across database mapping. |
+| **CUSTOMER** | Can manage own phone number, start one snooker frame at a time, manage own kids-play children and sessions, submit feedback, view own dues/history, register for tournaments. |
+| **MANAGER** | Can start multiple snooker frames, use Manager Portal, settle payments for users, create consumable orders, view today’s analytics, manage kids-play across parent contexts, end/reject sessions and frames. |
+| **ADMIN** | Same operational capabilities as manager plus admin screens and elevated oversight. |
+| **SUPER_ADMIN** | Full unrestricted admin behavior across all modules. |
+
+Important frontend convention:
+* Most privileged UI checks are performed client-side with role checks such as:
+  * `MANAGER`
+  * `ADMIN`
+  * `SUPER_ADMIN`
+* CUSTOMER-only restrictions still need to be respected in backend logic where applicable.
 
 ---
 
 ## Business Rules
 
-1. **Max Active Frames**: A `CUSTOMER` can only initiate 1 active frame at any given time. Exceeding this limit throws an exception unless the user role is within `PRIVILEGED_ROLES` (Manager+).
-2. **Table Locking**: `SnookerTable.isAvailable` acts as a distributed lock. No two frames can utilize the same table.
-3. **Minimum Billing / Duration**: Backend guarantees at least a 1-minute duration for any completed frame (`if (duration <= 0) duration = 1;`).
-4. **Payment Responsibility**: The `looser` parameter explicitly tracks the debt. The payment due logic cascades off this assigned entity.
-5. **Partial Payments**: Fully automated iterative matching. A bulk payment spans multiple unpaid frames linearly (by oldest `startTime`) adjusting `paymentStatus` to `PARTIAL` if exact change isn't met.
-6. **Player Requirement**: At least one player must be associated within `players[]` array under `StartFrameRequest`.
-7. **Geo-Fencing Restriction**: Managed client-side natively. App refuses to call `Start Frame` if coordinates mismatch backend acceptable distance ranges.
-8. **Dynamic Pricing for Extra Players**: Base table rate applies up to 2 players. Any additional player beyond 2 adds ₹0.5 per minute to the effective rate before calculating the final amount.
+1. **Customer snooker concurrency limit**
+   * A `CUSTOMER` can only initiate one active snooker frame at a time.
+   * Manager+ roles are exempt.
+
+2. **Table availability is the snooker lock**
+   * `snooker_tables.is_available` controls snooker table booking.
+   * Ending or rejecting a frame must unlock the table.
+
+3. **Minimum frame billing duration**
+   * Completed snooker frames are billed for at least 1 minute.
+
+4. **Dynamic snooker rate for extra players**
+   * Base rate applies up to 2 players.
+   * Every player after 2 adds `₹0.5/minute` before final total calculation.
+
+5. **Payment responsibility**
+   * `frames.looser` is the debtor for snooker frame dues.
+
+6. **Partial settlements are oldest-first**
+   * Frame dues are settled in chronological order.
+   * Consumable and kids dues are then reduced in sequence.
+
+7. **Consumable pricing must come from DB**
+   * Frontend-selected prices are not trusted.
+   * Backend recalculates every line item from `consumable_items.price`.
+
+8. **Consumable orders start unpaid**
+   * New orders are created with `payment_status = UNPAID`.
+
+9. **Kids pricing comes from the configured table row**
+   * `Kids Ocean Dream Land` in `snooker_tables` is the source of `rate_per_minute`.
+   * Missing configuration should be treated as an application error.
+
+10. **One active kids session per child**
+   * A child cannot have multiple active kids-play sessions simultaneously.
+
+11. **Child ownership validation**
+   * Child and kids-session operations validate against the parent user context.
+
+12. **Maximum children per parent**
+   * Frontend and service logic enforce a limit of 10 child profiles per parent.
+
+13. **Kids session reject behavior**
+   * Rejecting a kids session sets zero duration/amount and marks it cancelled.
+
+14. **Geo-fencing is frontend-enforced**
+   * CUSTOMER start-frame access is blocked when browser geolocation shows the user outside the club radius.
+
+15. **Feedback requires both rating and text**
+   * Empty feedback or missing stars should not be submitted.
+
+16. **Duplicate-click protection exists in key snooker actions**
+   * Start-frame and end-frame actions intentionally disable repeated submission while in flight.
 
 ---
 
-## Frontend Structure (Angular)
+## Frontend Structure
 
-* `core/`: 
-  * Identifies global abstractions (`constants`, `services`, `utils`).
-  * Enforces state context via `guards` (e.g. `AuthGuard`) and `interceptors` (Token injection).
-* `shared/`:
-  * Presentational `components` re-used universally (e.g., buttons, modals, table elements).
-* `features/`:
-  * `auth/`: Login mechanics.
-  * `dashboard/`: Overview landing page.
-  * `snooker-frame/` & `start-frame/`: Real-time session handling mechanisms and initiation forms.
-  * `managers-portal/`: Administrative dashboard for overview.
-  * `my-game-history/`, `payment-settlement/`: Deep dives into individual ledger paths.
-  * `kids-play/`: Session and child addition interfaces, isolated logic module allowing Managers to trigger via Parent Identity lookup.
-  * `summer-olympics-registration/`: Multi-select grid parsing array registrations dynamically and displaying custom structural Modals.
-* **Patterns**: Lazy-loaded feature routing via `app.routes.ts`. Emphasis on structured RxJs streaming for REST updates.
+* `client/src/app/core/`
+  * auth models, services, guards, interceptors, constants
+
+* `client/src/app/shared/`
+  * reusable UI such as brand title, club logo, and common presentational pieces
+
+* `client/src/app/features/auth/`
+  * login screen
+
+* `client/src/app/features/dashboard/`
+  * landing page
+  * available tables
+  * leaderboard
+  * feedback card
+  * Kids Ocean Dreamland and tournament CTAs
+
+* `client/src/app/features/snooker-frame/`
+  * table selection / route into frame start flow
+
+* `client/src/app/features/start-frame/`
+  * player selection
+  * start frame
+  * manage/end current frame
+
+* `client/src/app/features/managers-portal/`
+  * today’s earnings
+  * ongoing/completed frames
+  * consumables ordering
+  * player summary
+
+* `client/src/app/features/payment-settlement/`
+  * user search
+  * aggregated due summary
+  * frame + consumable dues
+  * settlement popup
+
+* `client/src/app/features/my-game-history/`
+  * frame history
+  * due summary
+  * consumable history panel
+
+* `client/src/app/features/kids-play/`
+  * children management
+  * active sessions
+  * manager parent-selection flow
+  * branded Kids Ocean Dreamland UI
+
+* `client/src/app/features/summer-olympics-registration/`
+  * tournament registration UX
 
 ---
 
-## Deployment
+## Backend Hotspots
 
-* **Platform**: Application is configured and deployed on **Render**.
-* **Process**: CI/CD pipeline attaches to the Git repository.
-* **Variables Needed**:
-  * Spring Boot properties (`SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` pointing to Supabase PostgreSQL).
-  * Google OAuth Client ID & Secret (`GOOGLE_CLIENT_ID`).
-  * JWT Secret for standard signing (`JWT_SECRET`).
-* **Connection Type**: Uses standard JDBC bindings over a secure PostgreSQL protocol.
+Agents usually need these files first:
+
+* `src/main/java/com/youngstersclub/app/service/FrameService.java`
+  * snooker lifecycle, dues, leaderboard, history
+
+* `src/main/java/com/youngstersclub/app/service/PaymentService.java`
+  * multi-module settlement orchestration
+
+* `src/main/java/com/youngstersclub/app/service/UserPaymentSummaryService.java`
+  * unified due aggregation
+
+* `src/main/java/com/youngstersclub/app/service/ConsumableService.java`
+  * item search, order creation, due/history projection mapping
+
+* `src/main/java/com/youngstersclub/app/service/KidsPlayService.java`
+  * kids-session lifecycle, active session queries, due settlement
+
+* `src/main/java/com/youngstersclub/app/service/ChildService.java`
+  * child ownership and add/list flows
+
+* `src/main/java/com/youngstersclub/app/service/AnalyticsService.java`
+  * today’s earnings computation
 
 ---
 
-## Notes & Known Edges
+## Known Edges and Cautions
 
-1. **Race Conditions**: Two users attempting to book the exact same `tableId` at near-simultaneous intervals might collide. The `isAvailable` boolean requires strict JPA pessimistic/optimistic locking if scale becomes high-concurrency. 
-2. **Payment Allocation**: Settlements blindly pay down chronologically. Ensure managers map refunds manually as there is currently no standalone endpoint to "reverse" a `PaymentService.settlePayment` execution.
-3. **Rejected Frames**: Leaves a `totalAmount = 0` artifact in the DB but immediately unlocks the table. Important for historical tracking.
+1. **Concurrent snooker starts can still race at backend level**
+   * Frontend duplicate-click protection exists, but true concurrency safety still depends on table-state checks and could benefit from stronger DB locking in the future.
+
+2. **Settlement ledger is shared across modules**
+   * `payments` is reused for frame, consumable, and kids-play settlements.
+   * Some non-frame payments are saved with `frame_id = null`.
+
+3. **Consumable and kids partial status handling is simple**
+   * Current code reduces `total_amount` directly as payments are applied.
+   * This means the stored `total_amount` on unpaid records behaves like remaining due, not immutable original gross amount.
+
+4. **User search is broad**
+   * `/api/users/search` currently returns general user matches.
+   * Some screens filter roles client-side, for example parent selection in Kids Play.
+
+5. **Frontend role checks are important but not sufficient**
+   * New sensitive features should not rely only on Angular visibility checks.
+
+6. **agents.md must be kept in sync manually**
+   * This file is documentation only.
+   * Any major feature added to dashboard, manager portal, payment summary, consumables, kids-play, or tournaments should be reflected here.
