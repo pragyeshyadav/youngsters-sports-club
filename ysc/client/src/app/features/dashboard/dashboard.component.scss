@@ -160,6 +160,11 @@
   transition: background-color 0.2s;
 }
 
+app-consumable-items {
+  display: block;
+  width: min(100%, 40rem);
+}
+
 .start-btn:disabled {
   opacity: 0.7;
   cursor: not-allowed;

@@ -67,6 +67,9 @@
               📍 You must be at Youngsters Sports Club to start or end a frame
             </p>
           }
+          @if (isManagerOrAdmin) {
+            <app-consumable-items />
+          }
           <button class="history-btn" (click)="goToGameHistory()">
             📜 My Game History
           </button>
