@@ -70,6 +70,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   totalDue = 0;
   showSettlementPopup = false;
   settleAmount: number | null = null;
+  discountAmount: number | null = null;
   paymentMode = '';
 
   ngOnInit(): void {
@@ -130,6 +131,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.totalDue = 0;
     this.showSettlementPopup = false;
     this.settleAmount = null;
+    this.discountAmount = null;
     this.paymentMode = '';
     this.cdr.markForCheck();
   }
@@ -191,6 +193,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         this.kidsDue = this.toNumber(summary?.kidsDue);
         this.totalDue = this.toNumber(summary?.totalDue);
         this.settleAmount = null;
+        this.discountAmount = null;
         this.paymentMode = '';
         this.showSettlementPopup = true;
         this.isLoadingTotalDue = false;
@@ -206,9 +209,14 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   }
 
   canSave(): boolean {
+    const paidAmount = this.settleAmount ?? 0;
+    const discount = this.discountAmount ?? 0;
+
     return !!this.settleAmount
-      && this.settleAmount > 0
-      && this.settleAmount <= this.totalDue
+      && paidAmount > 0
+      && discount >= 0
+      && discount <= this.getMaxDiscount()
+      && this.getEffectiveSettlement() <= this.totalDue
       && !!this.paymentMode
       && !this.isSavingSettlement;
   }
@@ -222,6 +230,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.http.post('/api/payment/settle', {
       userId: this.selectedUser.id,
       amount: this.settleAmount,
+      discount: this.discountAmount ?? 0,
       mode: this.paymentMode,
     }, { responseType: 'text' }).subscribe({
       next: (res) => {
@@ -229,6 +238,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         alert('Payment Settled Successfully');
         this.showSettlementPopup = false;
         this.settleAmount = null;
+        this.discountAmount = null;
         this.paymentMode = '';
         this.isSavingSettlement = false;
         this.getPlayerDetails();
@@ -245,7 +255,22 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
 
   closeSettlementPopup(): void {
     this.showSettlementPopup = false;
+    this.settleAmount = null;
+    this.discountAmount = null;
+    this.paymentMode = '';
     this.cdr.markForCheck();
+  }
+
+  getEffectiveSettlement(): number {
+    return this.toCurrencyNumber((this.settleAmount ?? 0) + (this.discountAmount ?? 0));
+  }
+
+  getRemainingDue(): number {
+    return this.toCurrencyNumber(Math.max(0, this.totalDue - this.getEffectiveSettlement()));
+  }
+
+  getMaxDiscount(): number {
+    return this.toCurrencyNumber(this.totalDue * 0.6);
   }
 
   goBack(): void {
@@ -286,5 +311,9 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     }
 
     return typeof value === 'number' ? value : Number(value);
+  }
+
+  private toCurrencyNumber(value: number): number {
+    return Number(value.toFixed(2));
   }
 }
