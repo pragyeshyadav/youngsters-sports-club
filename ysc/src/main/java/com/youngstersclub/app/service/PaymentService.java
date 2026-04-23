@@ -53,6 +53,11 @@ public class PaymentService {
             throw new IllegalArgumentException("Payment mode is required");
         }
 
+        BigDecimal discount = request.getDiscount() == null ? BigDecimal.ZERO : request.getDiscount();
+        if (discount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Discount cannot be negative");
+        }
+
         PaymentMethod paymentMethod = PaymentMethod.valueOf(request.getMode().trim().toUpperCase());
         User user = userRepository.findById(request.getUserId()).orElseThrow();
         List<Frame> frames = frameRepository.findDueFramesByUserOrderByStartTime(request.getUserId());
@@ -70,15 +75,16 @@ public class PaymentService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalKidsOutstanding = kidsPlayService.getKidsDue(request.getUserId());
         BigDecimal totalOutstanding = totalFrameOutstanding.add(totalConsumableOutstanding).add(totalKidsOutstanding);
+        BigDecimal totalSettlement = request.getAmount().add(discount);
 
-        if (request.getAmount().compareTo(totalOutstanding) > 0) {
-            throw new IllegalArgumentException("Payment amount exceeds total due");
+        if (totalSettlement.compareTo(totalOutstanding) > 0) {
+            throw new IllegalArgumentException("Payment amount plus discount exceeds total due");
         }
 
-        BigDecimal remaining = request.getAmount();
+        AllocationState allocationState = new AllocationState(request.getAmount(), discount);
 
         for (Frame frame : frames) {
-            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+            if (allocationState.isExhausted()) {
                 break;
             }
 
@@ -87,29 +93,30 @@ public class PaymentService {
                 continue;
             }
 
-            BigDecimal paymentAmount = remaining.min(due);
+            BigDecimal settlementAmount = allocationState.getRemainingSettlement().min(due);
+            BigDecimal cashAmount = allocationState.allocateCash(settlementAmount);
+            BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
 
             Payment payment = new Payment();
             payment.setFrame(frame);
             payment.setUser(user);
-            payment.setAmount(paymentAmount);
+            payment.setAmount(cashAmount);
+            payment.setDiscount(discountAmount);
             payment.setStatus(PaymentStatus.PAID);
             payment.setPaymentMethod(paymentMethod);
             payment.setPaymentTime(TimeUtil.nowIST());
             paymentRepository.save(payment);
 
-            BigDecimal updatedDue = due.subtract(paymentAmount);
+            BigDecimal updatedDue = due.subtract(settlementAmount);
             frame.setPaymentDue(updatedDue);
             frame.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0
                     ? PaymentStatus.PAID
                     : PaymentStatus.PARTIAL);
             frameRepository.save(frame);
-
-            remaining = remaining.subtract(paymentAmount);
         }
 
         for (ConsumableOrder order : consumableOrders) {
-            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+            if (allocationState.isExhausted()) {
                 break;
             }
 
@@ -118,27 +125,67 @@ public class PaymentService {
                 continue;
             }
 
-            BigDecimal paymentAmount = remaining.min(due);
+            BigDecimal settlementAmount = allocationState.getRemainingSettlement().min(due);
+            BigDecimal cashAmount = allocationState.allocateCash(settlementAmount);
+            BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
 
             Payment payment = new Payment();
             payment.setFrame(null);
             payment.setUser(user);
-            payment.setAmount(paymentAmount);
+            payment.setAmount(cashAmount);
+            payment.setDiscount(discountAmount);
             payment.setStatus(PaymentStatus.PAID);
             payment.setPaymentMethod(paymentMethod);
             payment.setPaymentTime(TimeUtil.nowIST());
             paymentRepository.save(payment);
 
-            BigDecimal updatedDue = due.subtract(paymentAmount);
+            BigDecimal updatedDue = due.subtract(settlementAmount);
             order.setTotalAmount(updatedDue);
             order.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "UNPAID");
             consumableOrderRepository.save(order);
-
-            remaining = remaining.subtract(paymentAmount);
         }
 
-        if (remaining.compareTo(BigDecimal.ZERO) > 0) {
-            kidsPlayService.settleKidsSessions(request.getUserId(), remaining, user, paymentMethod);
+        if (!allocationState.isExhausted()) {
+            kidsPlayService.settleKidsSessions(
+                    request.getUserId(),
+                    allocationState.getRemainingCash(),
+                    allocationState.getRemainingDiscount(),
+                    user,
+                    paymentMethod);
+        }
+    }
+
+    private static final class AllocationState {
+        private BigDecimal remainingCash;
+        private BigDecimal remainingDiscount;
+
+        private AllocationState(BigDecimal cash, BigDecimal discount) {
+            this.remainingCash = cash == null ? BigDecimal.ZERO : cash;
+            this.remainingDiscount = discount == null ? BigDecimal.ZERO : discount;
+        }
+
+        private BigDecimal getRemainingCash() {
+            return remainingCash;
+        }
+
+        private BigDecimal getRemainingDiscount() {
+            return remainingDiscount;
+        }
+
+        private BigDecimal getRemainingSettlement() {
+            return remainingCash.add(remainingDiscount);
+        }
+
+        private boolean isExhausted() {
+            return getRemainingSettlement().compareTo(BigDecimal.ZERO) <= 0;
+        }
+
+        private BigDecimal allocateCash(BigDecimal settlementAmount) {
+            BigDecimal cashAmount = remainingCash.min(settlementAmount);
+            BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
+            remainingCash = remainingCash.subtract(cashAmount);
+            remainingDiscount = remainingDiscount.subtract(discountAmount);
+            return cashAmount;
         }
     }
 }

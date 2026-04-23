@@ -26,6 +26,9 @@ public class Payment {
     @Column(precision = 10, scale = 2, nullable = false)
     private BigDecimal amount;
 
+    @Column(precision = 10, scale = 2, nullable = false)
+    private BigDecimal discount = BigDecimal.ZERO;
+
     @Enumerated(EnumType.STRING)
     private PaymentStatus status;
 
@@ -46,6 +49,8 @@ public class Payment {
     public void setUser(User user) { this.user = user; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
+    public BigDecimal getDiscount() { return discount; }
+    public void setDiscount(BigDecimal discount) { this.discount = discount; }
     public PaymentStatus getStatus() { return status; }
     public void setStatus(PaymentStatus status) { this.status = status; }
     public PaymentMethod getPaymentMethod() { return paymentMethod; }

@@ -153,13 +153,31 @@ public class KidsPlayService {
 
     @Transactional
     public BigDecimal settleKidsSessions(Integer parentUserId, BigDecimal amount, User user, PaymentMethod paymentMethod) {
+        return settleKidsSessions(parentUserId, amount, BigDecimal.ZERO, user, paymentMethod);
+    }
+
+    @Transactional
+    public BigDecimal settleKidsSessions(
+            Integer parentUserId,
+            BigDecimal amount,
+            BigDecimal discount,
+            User user,
+            PaymentMethod paymentMethod) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            amount = BigDecimal.ZERO;
+        }
+        if (discount == null || discount.compareTo(BigDecimal.ZERO) < 0) {
+            discount = BigDecimal.ZERO;
+        }
+        if (amount.add(discount).compareTo(BigDecimal.ZERO) <= 0) {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal remaining = amount;
+        BigDecimal remainingCash = amount;
+        BigDecimal remainingDiscount = discount;
+        BigDecimal remainingSettlement = amount.add(discount);
         for (KidsPlaySession session : getUnpaidSessions(parentUserId)) {
-            if (remaining.compareTo(BigDecimal.ZERO) <= 0) {
+            if (remainingSettlement.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
 
@@ -168,24 +186,29 @@ public class KidsPlayService {
                 continue;
             }
 
-            BigDecimal paymentAmount = remaining.min(due);
+            BigDecimal settlementAmount = remainingSettlement.min(due);
+            BigDecimal cashAmount = remainingCash.min(settlementAmount);
+            BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
             Payment payment = new Payment();
             payment.setFrame(null);
             payment.setUser(user);
-            payment.setAmount(paymentAmount);
+            payment.setAmount(cashAmount);
+            payment.setDiscount(discountAmount);
             payment.setStatus(PaymentStatus.PAID);
             payment.setPaymentMethod(paymentMethod);
             payment.setPaymentTime(TimeUtil.nowIST());
             paymentRepository.save(payment);
 
-            BigDecimal updatedDue = due.subtract(paymentAmount);
+            BigDecimal updatedDue = due.subtract(settlementAmount);
             session.setTotalAmount(updatedDue);
             session.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "UNPAID");
             kidsPlaySessionRepository.save(session);
-            remaining = remaining.subtract(paymentAmount);
+            remainingCash = remainingCash.subtract(cashAmount);
+            remainingDiscount = remainingDiscount.subtract(discountAmount);
+            remainingSettlement = remainingCash.add(remainingDiscount);
         }
 
-        return amount.subtract(remaining);
+        return amount.add(discount).subtract(remainingSettlement);
     }
 
     private void validateOwnership(KidsPlaySession session, Integer parentUserId) {

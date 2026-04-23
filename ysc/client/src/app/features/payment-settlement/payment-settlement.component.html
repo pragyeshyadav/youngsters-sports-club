@@ -241,14 +241,47 @@
           [max]="totalDue"
         />
 
+        <input
+          type="number"
+          [(ngModel)]="discountAmount"
+          placeholder="Enter discount"
+          min="0"
+          [max]="getMaxDiscount()"
+        />
+
         <select [(ngModel)]="paymentMode">
           <option value="">Select Payment Mode</option>
           <option value="CASH">Cash</option>
           <option value="UPI">UPI</option>
         </select>
 
-        @if (settleAmount && settleAmount > totalDue) {
-          <p class="validation-message">Amount cannot exceed total due.</p>
+        <div class="settlement-preview">
+          <p class="preview-row">
+            <span>Paid Amount</span>
+            <strong>₹{{ settleAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Discount</span>
+            <strong>₹{{ discountAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row preview-row--highlight">
+            <span>Effective Settlement</span>
+            <strong>₹{{ getEffectiveSettlement() }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Remaining Due</span>
+            <strong>₹{{ getRemainingDue() }}</strong>
+          </p>
+        </div>
+
+        @if (settleAmount && settleAmount <= 0) {
+          <p class="validation-message">Paid amount must be greater than zero.</p>
+        } @else if ((discountAmount ?? 0) < 0) {
+          <p class="validation-message">Discount cannot be negative.</p>
+        } @else if ((discountAmount ?? 0) > getMaxDiscount()) {
+          <p class="validation-message">Discount cannot exceed 60% of total due.</p>
+        } @else if (getEffectiveSettlement() > totalDue) {
+          <p class="validation-message">Paid amount plus discount cannot exceed total due.</p>
         }
 
         <div class="modal-actions">
