@@ -170,6 +170,18 @@
 
       @if (isCompletedExpanded) {
         <div class="panel-body">
+          <div class="completed-filter-bar">
+            <label for="completed-date">Select Date</label>
+            <input
+              id="completed-date"
+              type="date"
+              [(ngModel)]="selectedCompletedDate"
+              [min]="minCompletedDate"
+              [max]="maxCompletedDate"
+              (change)="onCompletedDateChange()"
+            />
+          </div>
+
           @if (isLoadingCompleted) {
             <div class="spinner-container compact-spinner">
               <div class="spinner" aria-label="Loading completed frames"></div>

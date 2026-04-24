@@ -313,6 +313,28 @@ public class FrameService {
         });
     }
 
+    public List<Map<String, Object>> getCompletedFramesByDate(LocalDate selectedDate) {
+        LocalDate targetDate = selectedDate == null ? TimeUtil.nowIST().toLocalDate() : selectedDate;
+
+        return executeWithRetry("getCompletedFramesByDate", () -> {
+            LocalDateTime startOfDay = targetDate.atStartOfDay();
+            LocalDateTime endOfDay = targetDate.plusDays(1).atStartOfDay();
+
+            return frameRepository.findTodayCompletedFrames(startOfDay, endOfDay).stream().map(frame -> {
+                Map<String, Object> frameMap = new HashMap<>();
+                frameMap.put("id", frame.getId());
+                frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
+                frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
+                frameMap.put("startTime", frame.getStartTime());
+                frameMap.put("endTime", frame.getEndTime());
+                frameMap.put("durationMinutes", frame.getDurationMinutes());
+                frameMap.put("totalAmount", frame.getTotalAmount());
+                frameMap.put("paymentDue", frame.getPaymentDue());
+                return frameMap;
+            }).toList();
+        });
+    }
+
     public List<Map<String, Object>> getUserDueFrames(Integer userId) {
         if (userId == null) {
             return List.of();

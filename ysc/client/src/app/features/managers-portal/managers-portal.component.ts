@@ -61,6 +61,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private resizeHandler: (() => void) | null = null;
+  private readonly today = new Date();
 
   isOngoingExpanded = false;
   ongoingFrames: OngoingFrame[] = [];
@@ -69,6 +70,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   isMobile = false;
   isLoadingOngoing = false;
   isLoadingCompleted = false;
+  selectedCompletedDate = '';
+  minCompletedDate = '';
+  maxCompletedDate = '';
   isEarningsExpanded = false;
   isLoadingEarnings = false;
   hasLoadedEarnings = false;
@@ -94,6 +98,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.updateViewportState();
+    this.maxCompletedDate = this.formatDate(this.today);
+    this.selectedCompletedDate = this.maxCompletedDate;
+    const minDate = new Date(this.today);
+    minDate.setDate(minDate.getDate() - 60);
+    this.minCompletedDate = this.formatDate(minDate);
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
     this.loadViewerAccess();
@@ -172,14 +181,18 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.isCompletedExpanded = !this.isCompletedExpanded;
 
     if (this.isCompletedExpanded && this.completedFrames.length === 0) {
-      this.loadCompletedFrames();
+      this.loadCompletedFrames(true);
     }
   }
 
-  loadCompletedFrames(): void {
+  loadCompletedFrames(useTodayApi: boolean = false): void {
     this.isLoadingCompleted = true;
 
-    this.http.get<CompletedFrame[]>('/api/frame/completed/today').subscribe({
+    const request$ = useTodayApi
+      ? this.http.get<CompletedFrame[]>('/api/frame/completed/today')
+      : this.http.get<CompletedFrame[]>(`/api/frame/completed?date=${this.selectedCompletedDate}`);
+
+    request$.subscribe({
       next: (frames) => {
         this.completedFrames = frames;
         this.isLoadingCompleted = false;
@@ -190,6 +203,29 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.isLoadingCompleted = false;
       },
     });
+  }
+
+  onCompletedDateChange(): void {
+    if (!this.selectedCompletedDate) {
+      return;
+    }
+
+    if (this.selectedCompletedDate < this.minCompletedDate || this.selectedCompletedDate > this.maxCompletedDate) {
+      alert('Please select a valid date within the last 60 days');
+      this.selectedCompletedDate = this.maxCompletedDate;
+      return;
+    }
+
+    if (!this.isCompletedExpanded) {
+      this.isCompletedExpanded = true;
+    }
+
+    if (this.selectedCompletedDate === this.maxCompletedDate) {
+      this.loadCompletedFrames(true);
+      return;
+    }
+
+    this.loadCompletedFrames();
   }
 
   toggleAddCustomer(): void {
@@ -364,6 +400,13 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
 
     return typeof value === 'number' ? value : Number(value);
+  }
+
+  private formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
   }
 
   private isValidEmail(email: string): boolean {
