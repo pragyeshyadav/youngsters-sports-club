@@ -156,20 +156,90 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
             WHERE f.start_time >= CURRENT_DATE
               AND f.start_time < CURRENT_DATE + INTERVAL '1 day'
         ),
-        totals AS (
+        frame_totals AS (
             SELECT
                 COALESCE(SUM(CASE WHEN status = 'ENDED' THEN total_amount ELSE 0 END), 0) AS total_earnings,
                 COALESCE(SUM(payment_due), 0) AS total_due
             FROM today_frames
         ),
+        today_consumable_orders AS (
+            SELECT
+                co.id,
+                co.payment_status,
+                COALESCE(co.total_amount, 0) AS outstanding_due,
+                COALESCE(SUM(coi.total_cost), 0) AS gross_amount
+            FROM consumable_orders co
+            LEFT JOIN consumable_order_items coi ON coi.order_id = co.id
+            WHERE co.created_at >= CURRENT_DATE
+              AND co.created_at < CURRENT_DATE + INTERVAL '1 day'
+            GROUP BY co.id, co.payment_status, co.total_amount
+        ),
+        consumable_totals AS (
+            SELECT
+                COALESCE(SUM(gross_amount), 0) AS total_earnings,
+                COALESCE(SUM(CASE WHEN outstanding_due > 0 AND payment_status <> 'PAID' THEN outstanding_due ELSE 0 END), 0) AS total_due
+            FROM today_consumable_orders
+        ),
+        today_kids_sessions AS (
+            SELECT
+                k.status,
+                k.payment_status,
+                COALESCE(k.total_amount, 0) AS total_amount
+            FROM kids_play_sessions k
+            WHERE k.start_time >= CURRENT_DATE
+              AND k.start_time < CURRENT_DATE + INTERVAL '1 day'
+        ),
+        kids_totals AS (
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'ENDED' THEN total_amount ELSE 0 END), 0) AS total_earnings,
+                COALESCE(SUM(CASE WHEN total_amount > 0 AND payment_status <> 'PAID' THEN total_amount ELSE 0 END), 0) AS total_due
+            FROM today_kids_sessions
+        ),
+        totals AS (
+            SELECT
+                COALESCE(ft.total_earnings, 0) + COALESCE(ct.total_earnings, 0) + COALESCE(kt.total_earnings, 0) AS total_earnings,
+                COALESCE(ft.total_due, 0) + COALESCE(ct.total_due, 0) + COALESCE(kt.total_due, 0) AS total_due
+            FROM frame_totals ft
+            CROSS JOIN consumable_totals ct
+            CROSS JOIN kids_totals kt
+        ),
+        due_entries AS (
+            SELECT
+                tf.looser AS user_id,
+                COALESCE(tf.payment_due, 0) AS due_amount
+            FROM today_frames tf
+            WHERE tf.looser IS NOT NULL
+              AND tf.payment_due > 0
+
+            UNION ALL
+
+            SELECT
+                co.user_id AS user_id,
+                COALESCE(co.total_amount, 0) AS due_amount
+            FROM consumable_orders co
+            WHERE co.created_at >= CURRENT_DATE
+              AND co.created_at < CURRENT_DATE + INTERVAL '1 day'
+              AND COALESCE(co.total_amount, 0) > 0
+              AND co.payment_status <> 'PAID'
+
+            UNION ALL
+
+            SELECT
+                k.parent_user_id AS user_id,
+                COALESCE(k.total_amount, 0) AS due_amount
+            FROM kids_play_sessions k
+            WHERE k.start_time >= CURRENT_DATE
+              AND k.start_time < CURRENT_DATE + INTERVAL '1 day'
+              AND COALESCE(k.total_amount, 0) > 0
+              AND k.payment_status <> 'PAID'
+        ),
         due_players AS (
             SELECT
                 u.name AS player_name,
-                SUM(tf.payment_due) AS due_amount
-            FROM today_frames tf
-            JOIN users u ON tf.looser = u.id
-            WHERE tf.payment_due > 0
-            GROUP BY u.name
+                SUM(de.due_amount) AS due_amount
+            FROM due_entries de
+            JOIN users u ON de.user_id = u.id
+            GROUP BY u.id, u.name
         )
         SELECT
             t.total_earnings AS totalEarnings,
