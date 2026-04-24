@@ -15,6 +15,7 @@ import java.util.Optional;
 public interface UserRepository extends JpaRepository<User, Integer> {
     Optional<User> findByEmail(String email);
     Optional<User> findByGoogleId(String googleId);
+    Optional<User> findByPhone(String phone);
     List<User> findTop10ByNameContainingIgnoreCaseOrderByNameAsc(String name);
 
     @Query(value = "SELECT " +

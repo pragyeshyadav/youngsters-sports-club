@@ -312,6 +312,73 @@
       }
     </div>
 
+    <div class="portal-panel add-customer-panel">
+      <button type="button" class="panel-header add-customer-header" (click)="toggleAddCustomer()">
+        <span>➕ Add Customer</span>
+        <span class="panel-chevron">{{ isAddCustomerExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isAddCustomerExpanded) {
+        <div class="panel-body add-customer-body">
+          <div class="customer-form-card">
+            <div class="customer-form-grid">
+              <div class="customer-field">
+                <label for="customer-name">Name</label>
+                <input
+                  id="customer-name"
+                  type="text"
+                  [(ngModel)]="customerForm.name"
+                  placeholder="Enter customer name"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="customer-field">
+                <label for="customer-email">Email</label>
+                <input
+                  id="customer-email"
+                  type="email"
+                  [(ngModel)]="customerForm.email"
+                  placeholder="Enter customer email"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="customer-field">
+                <label for="customer-mobile">Mobile Number</label>
+                <input
+                  id="customer-mobile"
+                  type="text"
+                  [ngModel]="customerForm.mobileNumber"
+                  (ngModelChange)="customerForm.mobileNumber = $event"
+                  (input)="onCustomerMobileInput($event)"
+                  placeholder="Enter 10 digit mobile number"
+                  autocomplete="off"
+                  maxlength="10"
+                />
+              </div>
+            </div>
+
+            @if (hasCustomerFormMissingFields()) {
+              <p class="customer-validation-message">All fields are required.</p>
+            } @else if (hasCustomerEmailError()) {
+              <p class="customer-validation-message">Enter a valid email address.</p>
+            } @else if (hasCustomerMobileError()) {
+              <p class="customer-validation-message">Mobile number must be exactly 10 digits.</p>
+            }
+
+            <button
+              type="button"
+              class="save-customer-btn"
+              [disabled]="!isCustomerFormValid()"
+              (click)="saveCustomer()">
+              {{ isSavingCustomer ? 'Saving Customer...' : 'Save Customer' }}
+            </button>
+          </div>
+        </div>
+      }
+    </div>
+
     <button type="button" class="settle-btn" (click)="goToSettlement()">
       💳 Settle Customer Payment
     </button>
