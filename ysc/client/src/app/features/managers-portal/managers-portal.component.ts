@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
@@ -45,10 +46,14 @@ interface TodayEarnings {
   duePlayers: DuePlayer[];
 }
 
+interface MessageResponse {
+  message: string;
+}
+
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
-  imports: [CommonModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './managers-portal.component.html',
   styleUrl: './managers-portal.component.scss',
 })
@@ -56,6 +61,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private resizeHandler: (() => void) | null = null;
+  private readonly today = new Date();
 
   isOngoingExpanded = false;
   ongoingFrames: OngoingFrame[] = [];
@@ -64,6 +70,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   isMobile = false;
   isLoadingOngoing = false;
   isLoadingCompleted = false;
+  selectedCompletedDate = '';
+  minCompletedDate = '';
+  maxCompletedDate = '';
   isEarningsExpanded = false;
   isLoadingEarnings = false;
   hasLoadedEarnings = false;
@@ -72,6 +81,13 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     totalEarnings: 0,
     totalDue: 0,
     duePlayers: [],
+  };
+  isAddCustomerExpanded = false;
+  isSavingCustomer = false;
+  customerForm = {
+    name: '',
+    email: '',
+    mobileNumber: '',
   };
 
   isPlayersExpanded = false;
@@ -82,6 +98,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.updateViewportState();
+    this.maxCompletedDate = this.formatDate(this.today);
+    this.selectedCompletedDate = this.maxCompletedDate;
+    const minDate = new Date(this.today);
+    minDate.setDate(minDate.getDate() - 60);
+    this.minCompletedDate = this.formatDate(minDate);
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
     this.loadViewerAccess();
@@ -160,14 +181,18 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.isCompletedExpanded = !this.isCompletedExpanded;
 
     if (this.isCompletedExpanded && this.completedFrames.length === 0) {
-      this.loadCompletedFrames();
+      this.loadCompletedFrames(true);
     }
   }
 
-  loadCompletedFrames(): void {
+  loadCompletedFrames(useTodayApi: boolean = false): void {
     this.isLoadingCompleted = true;
 
-    this.http.get<CompletedFrame[]>('/api/frame/completed/today').subscribe({
+    const request$ = useTodayApi
+      ? this.http.get<CompletedFrame[]>('/api/frame/completed/today')
+      : this.http.get<CompletedFrame[]>(`/api/frame/completed?date=${this.selectedCompletedDate}`);
+
+    request$.subscribe({
       next: (frames) => {
         this.completedFrames = frames;
         this.isLoadingCompleted = false;
@@ -176,6 +201,88 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         console.error('Failed to load completed frames', err);
         this.completedFrames = [];
         this.isLoadingCompleted = false;
+      },
+    });
+  }
+
+  onCompletedDateChange(): void {
+    if (!this.selectedCompletedDate) {
+      return;
+    }
+
+    if (this.selectedCompletedDate < this.minCompletedDate || this.selectedCompletedDate > this.maxCompletedDate) {
+      alert('Please select a valid date within the last 60 days');
+      this.selectedCompletedDate = this.maxCompletedDate;
+      return;
+    }
+
+    if (!this.isCompletedExpanded) {
+      this.isCompletedExpanded = true;
+    }
+
+    if (this.selectedCompletedDate === this.maxCompletedDate) {
+      this.loadCompletedFrames(true);
+      return;
+    }
+
+    this.loadCompletedFrames();
+  }
+
+  toggleAddCustomer(): void {
+    this.isAddCustomerExpanded = !this.isAddCustomerExpanded;
+  }
+
+  onCustomerMobileInput(event: Event): void {
+    const inputElement = event.target as HTMLInputElement;
+    const sanitized = inputElement.value.replace(/[^0-9]/g, '').slice(0, 10);
+    if (inputElement.value !== sanitized) {
+      inputElement.value = sanitized;
+    }
+    this.customerForm.mobileNumber = sanitized;
+  }
+
+  isCustomerFormValid(): boolean {
+    return this.customerForm.name.trim().length > 0
+      && this.isValidEmail(this.customerForm.email)
+      && /^[0-9]{10}$/.test(this.customerForm.mobileNumber)
+      && !this.isSavingCustomer;
+  }
+
+  hasCustomerFormMissingFields(): boolean {
+    return this.customerForm.name.trim().length === 0
+      || this.customerForm.email.trim().length === 0
+      || this.customerForm.mobileNumber.trim().length === 0;
+  }
+
+  hasCustomerEmailError(): boolean {
+    return !this.hasCustomerFormMissingFields() && !this.isValidEmail(this.customerForm.email);
+  }
+
+  hasCustomerMobileError(): boolean {
+    return !this.hasCustomerFormMissingFields() && !/^[0-9]{10}$/.test(this.customerForm.mobileNumber);
+  }
+
+  saveCustomer(): void {
+    if (!this.isCustomerFormValid()) {
+      return;
+    }
+
+    this.isSavingCustomer = true;
+    this.http.post<MessageResponse>('/api/users/create-customer', {
+      name: this.customerForm.name.trim(),
+      email: this.customerForm.email.trim().toLowerCase(),
+      mobileNumber: this.customerForm.mobileNumber.trim(),
+    }).subscribe({
+      next: (response) => {
+        this.isSavingCustomer = false;
+        alert(response?.message || 'Customer added successfully');
+        this.resetCustomerForm();
+        this.isAddCustomerExpanded = false;
+      },
+      error: (err) => {
+        console.error('Failed to create customer', err);
+        this.isSavingCustomer = false;
+        alert(err?.error?.message || 'Unable to add customer right now');
       },
     });
   }
@@ -293,5 +400,25 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
 
     return typeof value === 'number' ? value : Number(value);
+  }
+
+  private formatDate(date: Date): string {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  private isValidEmail(email: string): boolean {
+    const normalizedEmail = email == null ? '' : email.trim();
+    return /^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$/.test(normalizedEmail);
+  }
+
+  private resetCustomerForm(): void {
+    this.customerForm = {
+      name: '',
+      email: '',
+      mobileNumber: '',
+    };
   }
 }
