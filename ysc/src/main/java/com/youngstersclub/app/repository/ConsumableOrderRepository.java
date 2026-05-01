@@ -28,6 +28,18 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
     """)
     BigDecimal getTotalUnpaidDueByUserId(@Param("userId") Integer userId);
 
+    @Query(value = """
+        SELECT COALESCE(SUM(coi.total_cost), 0)
+        FROM consumable_orders co
+        JOIN consumable_order_items coi ON coi.order_id = co.id
+        WHERE co.payment_status = 'PAID'
+          AND co.created_at >= :startDateTime
+          AND co.created_at < :endDateTime
+    """, nativeQuery = true)
+    BigDecimal getPaidEarningsBetween(
+            @Param("startDateTime") java.time.LocalDateTime startDateTime,
+            @Param("endDateTime") java.time.LocalDateTime endDateTime);
+
     interface DueOrderItemProjection {
         Long getOrderId();
         String getItemName();
