@@ -53,4 +53,24 @@ public interface KidsPlaySessionRepository extends JpaRepository<KidsPlaySession
         AND k.paymentStatus = 'UNPAID'
     """)
     BigDecimal getTotalUnpaidDueByParentUserId(@Param("parentUserId") Integer parentUserId);
+
+    @Query(value = """
+        SELECT COALESCE(SUM(
+            CASE
+                WHEN k.total_amount IS NOT NULL AND k.total_amount > 0 THEN k.total_amount
+                WHEN k.duration_minutes IS NOT NULL AND k.rate_per_minute IS NOT NULL
+                    THEN k.rate_per_minute * k.duration_minutes
+                ELSE 0
+            END
+        ), 0)
+        FROM kids_play_sessions k
+        WHERE k.payment_status = 'PAID'
+          AND k.status = 'ENDED'
+          AND k.end_time IS NOT NULL
+          AND k.end_time >= :startDateTime
+          AND k.end_time < :endDateTime
+    """, nativeQuery = true)
+    BigDecimal getPaidEarningsBetween(
+            @Param("startDateTime") java.time.LocalDateTime startDateTime,
+            @Param("endDateTime") java.time.LocalDateTime endDateTime);
 }

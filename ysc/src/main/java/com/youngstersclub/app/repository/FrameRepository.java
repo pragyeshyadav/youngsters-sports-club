@@ -3,6 +3,7 @@ package com.youngstersclub.app.repository;
 import com.youngstersclub.app.entity.Frame;
 import com.youngstersclub.app.enums.FrameStatus;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.Query;
@@ -116,6 +117,40 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ORDER BY f.startTime ASC
     """)
     List<Frame> findDueFramesByUserOrderByStartTime(@Param("userId") Integer userId);
+
+    @Query("""
+        SELECT COALESCE(SUM(f.totalAmount), 0)
+        FROM Frame f
+        WHERE f.status = com.youngstersclub.app.enums.FrameStatus.ENDED
+        AND f.endTime IS NOT NULL
+        AND f.endTime >= :startDateTime
+        AND f.endTime < :endDateTime
+    """)
+    BigDecimal getCompletedEarningsBetween(
+            @Param("startDateTime") java.time.LocalDateTime startDateTime,
+            @Param("endDateTime") java.time.LocalDateTime endDateTime);
+
+    interface SnookerTableEarningsProjection {
+        String getTableName();
+        BigDecimal getTotal();
+    }
+
+    @Query(value = """
+        SELECT
+            st.table_name AS tableName,
+            COALESCE(SUM(f.total_amount), 0) AS total
+        FROM frames f
+        JOIN snooker_tables st ON st.id = f.table_id
+        WHERE f.status = 'ENDED'
+          AND f.end_time IS NOT NULL
+          AND f.end_time >= :startDateTime
+          AND f.end_time < :endDateTime
+        GROUP BY st.table_name
+        ORDER BY total DESC, st.table_name ASC
+    """, nativeQuery = true)
+    List<SnookerTableEarningsProjection> getCompletedEarningsByTableBetween(
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime);
 
     interface TopPlayerProjection {
         String getName();
