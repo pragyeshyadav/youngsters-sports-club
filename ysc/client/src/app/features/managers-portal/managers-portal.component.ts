@@ -243,19 +243,20 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   isCustomerFormValid(): boolean {
     return this.customerForm.name.trim().length > 0
-      && this.isValidEmail(this.customerForm.email)
+      && (!this.customerForm.email.trim() || this.isValidEmail(this.customerForm.email))
       && /^[0-9]{10}$/.test(this.customerForm.mobileNumber)
       && !this.isSavingCustomer;
   }
 
   hasCustomerFormMissingFields(): boolean {
     return this.customerForm.name.trim().length === 0
-      || this.customerForm.email.trim().length === 0
       || this.customerForm.mobileNumber.trim().length === 0;
   }
 
   hasCustomerEmailError(): boolean {
-    return !this.hasCustomerFormMissingFields() && !this.isValidEmail(this.customerForm.email);
+    return !this.hasCustomerFormMissingFields()
+      && this.customerForm.email.trim().length > 0
+      && !this.isValidEmail(this.customerForm.email);
   }
 
   hasCustomerMobileError(): boolean {
