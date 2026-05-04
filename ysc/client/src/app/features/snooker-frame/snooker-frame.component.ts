@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
@@ -61,11 +61,13 @@ interface OngoingFrameSummary {
   imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './snooker-frame.component.html',
   styleUrl: './snooker-frame.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SnookerFrameComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
+  private readonly cdr = inject(ChangeDetectorRef);
 
   tables: Table[] = [];
   ongoingFrames: OngoingFrameSummary[] = [];
@@ -79,6 +81,9 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   winnerId: number | null = null;
   looserId: number | null = null;
   userRole = '';
+  isLoadingTables = false;
+  isLoadingCurrentFrame = false;
+  isLoadingOngoingFrames = false;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
@@ -107,10 +112,12 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     this.http.get<ActiveFramePlayer[]>(`/api/frame/${this.activeFrame.id}/players`).subscribe({
       next: (res) => {
         this.framePlayers = res.filter((player) => player.userId !== null && player.userId !== undefined);
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load frame players', err);
         this.framePlayers = [];
+        this.cdr.markForCheck();
       },
     });
   }
@@ -145,6 +152,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
             this.loadOngoingFrames();
           }
           this.loadTables();
+          this.cdr.markForCheck();
         },
         error: (err) => {
           console.error('Failed to end frame', err);
@@ -190,53 +198,73 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
           this.players = [];
           this.loadOngoingFrames();
           this.loadTables();
+          this.cdr.markForCheck();
           return;
         }
 
+        this.isLoadingCurrentFrame = true;
         this.http.get<ActiveFrameResponse | null>(`/api/frame/active?userId=${user.id}`).subscribe({
           next: (res) => {
             if (res?.frame) {
               this.activeFrame = res.frame;
               this.players = res.players ?? [];
               this.startTimerFromServerTime();
+              this.isLoadingCurrentFrame = false;
+              this.cdr.markForCheck();
               return;
             }
 
+            this.isLoadingCurrentFrame = false;
             this.loadTables();
+            this.cdr.markForCheck();
           },
           error: (err) => {
             console.error('Failed to load active frame', err);
+            this.isLoadingCurrentFrame = false;
             this.loadTables();
+            this.cdr.markForCheck();
           },
         });
       },
       error: (err) => {
         console.error('Failed to load current user', err);
         this.loadTables();
+        this.cdr.markForCheck();
       },
     });
   }
 
   private loadTables(): void {
+    this.isLoadingTables = true;
     this.http.get<Table[]>('/api/snooker/tables').subscribe({
       next: (res) => {
-        const availableTables = res.filter((table) => table.isAvailable !== false);
+        const availableTables = res.filter((table) => table.isAvailable !== false && table.tableName !== 'Kids Ocean Dream Land');
         this.tables = availableTables;
+        this.isLoadingTables = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to fetch tables', err);
+        this.tables = [];
+        this.isLoadingTables = false;
+        this.cdr.markForCheck();
       },
     });
   }
 
   private loadOngoingFrames(): void {
+    this.isLoadingOngoingFrames = true;
     this.http.get<OngoingFrameSummary[]>('/api/frame/ongoing/today').subscribe({
       next: (res) => {
         this.ongoingFrames = res ?? [];
+        this.isLoadingOngoingFrames = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load ongoing frames', err);
         this.ongoingFrames = [];
+        this.isLoadingOngoingFrames = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -255,6 +283,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     this.timerInterval = setInterval(() => {
       const now = Date.now();
       this.timerSeconds = Math.floor((now - startTime) / 1000);
+      this.cdr.markForCheck();
     }, 1000);
   }
 

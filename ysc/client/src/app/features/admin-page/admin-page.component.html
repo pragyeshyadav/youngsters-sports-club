@@ -5,7 +5,99 @@
   </div>
 
   <div class="admin-card">
+    <button type="button" class="back-link" (click)="goBack()">← Back to Dashboard</button>
     <h2>🛠 Admin Panel</h2>
     <p>Manage frames, payments, approvals and users.</p>
+
+    @if (canViewAdminReport) {
+      <div class="admin-panel">
+        <button type="button" class="panel-header report-header" (click)="toggleMonthlyReport()">
+          <span>📊 Monthly Earning Report</span>
+          <span class="panel-chevron">{{ isMonthlyReportExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isMonthlyReportExpanded) {
+          <div class="panel-body">
+            <div class="filters-row">
+              <div class="filter-field">
+                <label for="month-filter">Month</label>
+                <select id="month-filter" [(ngModel)]="selectedMonth" (change)="onFilterChange()">
+                  @for (month of monthOptions; track month.value) {
+                    <option [ngValue]="month.value">{{ month.label }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="filter-field">
+                <label for="year-filter">Year</label>
+                <select id="year-filter" [(ngModel)]="selectedYear" (change)="onFilterChange()">
+                  @for (year of yearOptions; track year) {
+                    <option [ngValue]="year">{{ year }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            @if (isLoadingMonthlyReport) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading monthly earning report"></div>
+              </div>
+            } @else if (reportError) {
+              <p class="panel-message error-message">{{ reportError }}</p>
+            } @else {
+              <div class="summary-grid">
+                <div class="summary-card earnings-card">
+                  <span>💰 Current Month Earnings</span>
+                  <strong>₹{{ monthlyEarnings.currentMonthTotal ?? 0 }}</strong>
+                </div>
+
+                <div class="summary-card previous-card">
+                  <span>📉 Previous Month Earnings</span>
+                  <strong>₹{{ monthlyEarnings.previousMonthTotal ?? 0 }}</strong>
+                </div>
+              </div>
+
+              <div class="breakdown-card">
+                <h3>📊 Earnings Breakdown</h3>
+
+                <div class="breakdown-list">
+                  <div class="breakdown-row">
+                    <div class="breakdown-copy">
+                      <span>🎱 Snooker Earnings</span>
+                      @if (snookerBreakdownEntries.length > 0) {
+                        <div class="snooker-breakdown-card">
+                          <span class="breakdown-subtitle">Table Breakdown</span>
+                          <div class="snooker-breakdown-list">
+                            @for (entry of snookerBreakdownEntries; track entry.tableName) {
+                              <div class="snooker-breakdown-row">
+                                <strong>🎱 {{ entry.tableName }}</strong>
+                                <span>₹{{ entry.amount ?? 0 }}</span>
+                              </div>
+                            }
+                          </div>
+                        </div>
+                      }
+                    </div>
+                    <strong class="text-green amount-pill">₹{{ monthlyEarnings.snookerEarnings ?? 0 }}</strong>
+                  </div>
+
+                  <div class="breakdown-row">
+                    <span>🍔 Consumable Earnings</span>
+                    <strong class="text-green amount-pill">₹{{ monthlyEarnings.consumableEarnings ?? 0 }}</strong>
+                  </div>
+
+                  <div class="breakdown-row">
+                    <span>👶 Kids Zone Earnings</span>
+                    <strong class="text-green amount-pill">₹{{ monthlyEarnings.kidsZoneEarnings ?? 0 }}</strong>
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    } @else {
+      <p class="access-message">This report is available only for admin users.</p>
+    }
   </div>
 </div>

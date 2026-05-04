@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 public class PaymentRequest {
     private Integer userId;
     private BigDecimal amount;
+    private BigDecimal discount;
     private String mode;
 
     public Integer getUserId() {
@@ -21,6 +22,14 @@ public class PaymentRequest {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public BigDecimal getDiscount() {
+        return discount;
+    }
+
+    public void setDiscount(BigDecimal discount) {
+        this.discount = discount;
     }
 
     public String getMode() {
