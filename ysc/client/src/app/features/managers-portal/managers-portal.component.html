@@ -351,7 +351,7 @@
                   id="customer-email"
                   type="email"
                   [(ngModel)]="customerForm.email"
-                  placeholder="Enter customer email"
+                  placeholder="Email (Optional)"
                   autocomplete="off"
                 />
               </div>
@@ -372,7 +372,7 @@
             </div>
 
             @if (hasCustomerFormMissingFields()) {
-              <p class="customer-validation-message">All fields are required.</p>
+              <p class="customer-validation-message">Name and mobile number are required.</p>
             } @else if (hasCustomerEmailError()) {
               <p class="customer-validation-message">Enter a valid email address.</p>
             } @else if (hasCustomerMobileError()) {

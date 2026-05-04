@@ -88,12 +88,16 @@ public class UserController {
             return ResponseEntity.badRequest().body(new MessageResponseDto("Name is required"));
         }
 
-        if (!EMAIL_PATTERN.matcher(email).matches()) {
+        if (!email.isEmpty() && !EMAIL_PATTERN.matcher(email).matches()) {
             return ResponseEntity.badRequest().body(new MessageResponseDto("Valid email is required"));
         }
 
         if (!PHONE_PATTERN.matcher(mobileNumber).matches()) {
             return ResponseEntity.badRequest().body(new MessageResponseDto("Mobile number must be exactly 10 digits"));
+        }
+
+        if (email.isEmpty()) {
+            email = buildDummyEmail(name, mobileNumber);
         }
 
         if (userRepository.findByEmail(email).isPresent()) {
@@ -114,5 +118,20 @@ public class UserController {
         userRepository.save(user);
 
         return ResponseEntity.ok(new MessageResponseDto("Customer created successfully"));
+    }
+
+    private String buildDummyEmail(String name, String mobileNumber) {
+        String normalizedName = name == null
+                ? "customer"
+                : name.toLowerCase()
+                        .trim()
+                        .replaceAll("\\s+", "_")
+                        .replaceAll("[^a-z0-9_]", "");
+
+        if (normalizedName.isBlank()) {
+            normalizedName = "customer";
+        }
+
+        return "dummy_" + normalizedName + "_" + mobileNumber + "@gmail.com";
     }
 }
