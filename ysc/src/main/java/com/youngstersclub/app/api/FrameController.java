@@ -3,6 +3,7 @@ package com.youngstersclub.app.api;
 import com.youngstersclub.app.dto.StartFrameRequest;
 import com.youngstersclub.app.service.FrameService;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import com.youngstersclub.app.util.TimeUtil;
 
 @RestController
 @RequestMapping("/api/frame")
@@ -35,6 +37,11 @@ public class FrameController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/user-ongoing")
+    public ResponseEntity<?> getUserOngoingFrame(@RequestParam Integer userId) {
+        return ResponseEntity.ok(frameService.getUserOngoingFrame(userId));
+    }
+
     @GetMapping("/ongoing/today")
     public ResponseEntity<List<Map<String, Object>>> getTodayOngoingFrames() {
         return ResponseEntity.ok(frameService.getTodayOngoingFrames());
@@ -43,6 +50,22 @@ public class FrameController {
     @GetMapping("/completed/today")
     public ResponseEntity<List<Map<String, Object>>> getTodayCompletedFrames() {
         return ResponseEntity.ok(frameService.getTodayCompletedFrames());
+    }
+
+    @GetMapping("/completed")
+    public ResponseEntity<?> getCompletedFramesByDate(@RequestParam(required = false) LocalDate date) {
+        LocalDate today = TimeUtil.nowIST().toLocalDate();
+        LocalDate targetDate = date == null ? today : date;
+
+        if (targetDate.isAfter(today)) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Future dates are not allowed"));
+        }
+
+        if (targetDate.isBefore(today.minusDays(60))) {
+            return ResponseEntity.badRequest().body(Map.of("message", "You can only view completed frames for the last 60 days"));
+        }
+
+        return ResponseEntity.ok(frameService.getCompletedFramesByDate(targetDate));
     }
 
     @GetMapping("/user-due")

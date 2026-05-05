@@ -1,8 +1,9 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { forkJoin } from 'rxjs';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 
@@ -23,27 +24,53 @@ interface DueFrame {
   looserName: string | null;
 }
 
+interface ConsumableDueRow {
+  orderId: number;
+  itemName: string;
+  quantity: number;
+  price: number | string | null;
+  totalCost: number | string | null;
+  createdAt: string;
+}
+
+interface PaymentSummary {
+  frameDue: number | string | null;
+  consumableDue: number | string | null;
+  kidsDue: number | string | null;
+  totalDue: number | string | null;
+}
+
 @Component({
   selector: 'app-payment-settlement',
   standalone: true,
   imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './payment-settlement.component.html',
   styleUrl: './payment-settlement.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PaymentSettlementComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly cdr = inject(ChangeDetectorRef);
   private resizeHandler: (() => void) | null = null;
 
   searchText = '';
   users: SettlementUser[] = [];
   selectedUser: SettlementUser | null = null;
   frames: DueFrame[] = [];
+  consumables: ConsumableDueRow[] = [];
   isMobile = false;
   isLoadingFrames = false;
+  isLoadingUsers = false;
+  isLoadingTotalDue = false;
+  isSavingSettlement = false;
+  frameDue = 0;
+  consumableDue = 0;
+  kidsDue = 0;
   totalDue = 0;
   showSettlementPopup = false;
   settleAmount: number | null = null;
+  discountAmount: number | null = null;
   paymentMode = '';
 
   ngOnInit(): void {
@@ -62,26 +89,33 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   searchUsers(): void {
     const query = this.searchText.trim();
 
-    if (!query) {
+    if (query.length < 3) {
       this.users = [];
       if (!this.selectedUser || this.selectedUser.name !== this.searchText) {
         this.selectedUser = null;
       }
+      this.isLoadingUsers = false;
       return;
     }
 
     if (this.selectedUser && this.selectedUser.name !== query) {
       this.selectedUser = null;
       this.frames = [];
+      this.consumables = [];
     }
 
+    this.isLoadingUsers = true;
     this.http.get<SettlementUser[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
       next: (users) => {
         this.users = users;
+        this.isLoadingUsers = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to search users', err);
         this.users = [];
+        this.isLoadingUsers = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -91,10 +125,15 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.searchText = user.name;
     this.users = [];
     this.frames = [];
+    this.consumables = [];
+    this.frameDue = 0;
+    this.consumableDue = 0;
     this.totalDue = 0;
     this.showSettlementPopup = false;
     this.settleAmount = null;
+    this.discountAmount = null;
     this.paymentMode = '';
+    this.cdr.markForCheck();
   }
 
   getPlayerDetails(): void {
@@ -103,15 +142,40 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingFrames = true;
-    this.http.get<DueFrame[]>(`/api/frame/user-due?userId=${this.selectedUser.id}`).subscribe({
-      next: (frames) => {
-        this.frames = frames;
-        this.isLoadingFrames = false;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+      next: (summary) => {
+        this.frameDue = this.toNumber(summary?.frameDue);
+        this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.kidsDue = this.toNumber(summary?.kidsDue);
+        this.totalDue = this.toNumber(summary?.totalDue);
+        this.cdr.markForCheck();
       },
       error: (err) => {
-        console.error('Failed to load due frames', err);
-        this.frames = [];
+        console.error('Failed to load payment summary', err);
+        this.frameDue = 0;
+        this.consumableDue = 0;
+        this.kidsDue = 0;
+        this.totalDue = 0;
+        this.cdr.markForCheck();
+      },
+    });
+
+    forkJoin({
+      frames: this.http.get<DueFrame[]>(`/api/frame/user-due?userId=${this.selectedUser.id}`),
+      consumables: this.http.get<ConsumableDueRow[]>(`/api/consumables/orders/due?userId=${this.selectedUser.id}`),
+    }).subscribe({
+      next: ({ frames, consumables }) => {
+        this.frames = frames;
+        this.consumables = consumables;
         this.isLoadingFrames = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load due details', err);
+        this.frames = [];
+        this.consumables = [];
+        this.isLoadingFrames = false;
+        this.cdr.markForCheck();
       },
     });
   }
@@ -121,22 +185,40 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.get<number>(`/api/frame/total-due?userId=${this.selectedUser.id}`).subscribe({
-      next: (totalDue) => {
-        this.totalDue = totalDue ?? 0;
+    this.isLoadingTotalDue = true;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+      next: (summary) => {
+        this.frameDue = this.toNumber(summary?.frameDue);
+        this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.kidsDue = this.toNumber(summary?.kidsDue);
+        this.totalDue = this.toNumber(summary?.totalDue);
         this.settleAmount = null;
+        this.discountAmount = null;
         this.paymentMode = '';
         this.showSettlementPopup = true;
+        this.isLoadingTotalDue = false;
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load total due', err);
+        this.isLoadingTotalDue = false;
+        this.cdr.markForCheck();
         alert('Unable to load total due right now');
       },
     });
   }
 
   canSave(): boolean {
-    return !!this.settleAmount && this.settleAmount > 0 && this.settleAmount <= this.totalDue && !!this.paymentMode;
+    const paidAmount = this.settleAmount ?? 0;
+    const discount = this.discountAmount ?? 0;
+
+    return !!this.settleAmount
+      && paidAmount > 0
+      && discount >= 0
+      && discount <= this.getMaxDiscount()
+      && this.getEffectiveSettlement() <= this.totalDue
+      && !!this.paymentMode
+      && !this.isSavingSettlement;
   }
 
   saveSettlement(): void {
@@ -144,9 +226,11 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.isSavingSettlement = true;
     this.http.post('/api/payment/settle', {
       userId: this.selectedUser.id,
       amount: this.settleAmount,
+      discount: this.discountAmount ?? 0,
       mode: this.paymentMode,
     }, { responseType: 'text' }).subscribe({
       next: (res) => {
@@ -154,12 +238,16 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         alert('Payment Settled Successfully');
         this.showSettlementPopup = false;
         this.settleAmount = null;
+        this.discountAmount = null;
         this.paymentMode = '';
+        this.isSavingSettlement = false;
         this.getPlayerDetails();
         this.refreshTotalDue();
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Settlement error:', err);
+        this.isSavingSettlement = false;
         alert('Unable to settle payment right now');
       },
     });
@@ -167,6 +255,22 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
 
   closeSettlementPopup(): void {
     this.showSettlementPopup = false;
+    this.settleAmount = null;
+    this.discountAmount = null;
+    this.paymentMode = '';
+    this.cdr.markForCheck();
+  }
+
+  getEffectiveSettlement(): number {
+    return this.toCurrencyNumber((this.settleAmount ?? 0) + (this.discountAmount ?? 0));
+  }
+
+  getRemainingDue(): number {
+    return this.toCurrencyNumber(Math.max(0, this.totalDue - this.getEffectiveSettlement()));
+  }
+
+  getMaxDiscount(): number {
+    return this.toCurrencyNumber(this.totalDue * 0.6);
   }
 
   goBack(): void {
@@ -175,21 +279,41 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
 
   private updateViewportState(): void {
     this.isMobile = window.innerWidth < 768;
+    this.cdr.markForCheck();
   }
 
   private refreshTotalDue(): void {
     if (!this.selectedUser) {
+      this.frameDue = 0;
+      this.consumableDue = 0;
+      this.kidsDue = 0;
       this.totalDue = 0;
       return;
     }
 
-    this.http.get<number>(`/api/frame/total-due?userId=${this.selectedUser.id}`).subscribe({
-      next: (totalDue) => {
-        this.totalDue = totalDue ?? 0;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+      next: (summary) => {
+        this.frameDue = this.toNumber(summary?.frameDue);
+        this.consumableDue = this.toNumber(summary?.consumableDue);
+        this.kidsDue = this.toNumber(summary?.kidsDue);
+        this.totalDue = this.toNumber(summary?.totalDue);
+        this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to refresh total due', err);
       },
     });
+  }
+
+  private toNumber(value: number | string | null | undefined): number {
+    if (value === null || value === undefined || value === '') {
+      return 0;
+    }
+
+    return typeof value === 'number' ? value : Number(value);
+  }
+
+  private toCurrencyNumber(value: number): number {
+    return Number(value.toFixed(2));
   }
 }

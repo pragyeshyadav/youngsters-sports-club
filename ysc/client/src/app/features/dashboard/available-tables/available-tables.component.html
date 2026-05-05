@@ -1,0 +1,45 @@
+<div class="portal-panel">
+  <button type="button" class="panel-header" (click)="toggleExpand()" [class.expanded]="isExpanded">
+    <span>🎱 Check Available Tables</span>
+    <span class="panel-chevron">{{ isExpanded ? '▲' : '▼' }}</span>
+  </button>
+
+  @if (isExpanded) {
+    <div class="panel-body">
+      @if (isLoading) {
+        <div class="spinner-container compact-spinner">
+          <div class="spinner" aria-label="Loading available tables"></div>
+        </div>
+      } @else {
+        <div class="card-container">
+          @for (table of tables; track table.tableName) {
+            <div class="history-card" [ngClass]="table.isAvailable ? 'available-row' : 'occupied-row'">
+              <div class="card-row">
+                <span>🎱 Table</span>
+                <strong>{{ table.tableName }}</strong>
+              </div>
+              <div class="card-row">
+                <span>Status</span>
+                @if (table.isAvailable) {
+                  <strong class="status-available">✅ Available</strong>
+                } @else {
+                  <strong class="status-occupied">❌ Occupied</strong>
+                }
+              </div>
+              @if (!table.isAvailable && table.players.length > 0) {
+                <div class="players-stack">
+                  <span class="players-label">👥 Playing</span>
+                  <div class="players-wrapper">
+                    @for (player of table.players; track player) {
+                      <span class="player-chip">{{ player }}</span>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>

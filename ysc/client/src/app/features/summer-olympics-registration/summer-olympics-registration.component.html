@@ -1,0 +1,107 @@
+<div class="registration-page">
+  <header class="header">
+    <button class="back-btn" (click)="goBack()">← Back</button>
+    <div class="brand">
+      <app-club-logo size="md" />
+      <app-brand-title size="small" />
+    </div>
+  </header>
+
+  <main class="content">
+    <div class="page-title">
+      <span class="badge">🔥 Premier Event</span>
+      <h1>Summer Olympics 2K26</h1>
+      <p>Register for your favorite sporting events and compete for ultimate glory!</p>
+    </div>
+
+    @if (isLoading) {
+      <div class="loading">Loading active events...</div>
+    } @else if (tournaments.length === 0) {
+      <div class="empty-state">
+        <p>No active events found for Summer Olympics 2K26 at the moment.</p>
+      </div>
+    } @else {
+      <div class="events-grid">
+        @for (t of tournaments; track t.id) {
+          <div 
+            class="event-card" 
+            [class.selected]="isSelected(t.id)"
+            (click)="toggleSelection(t.id)">
+            
+            <div class="event-icon">{{ getIconForTournament(t.name) }}</div>
+            <div class="event-details">
+              <h3>{{ t.name }}</h3>
+              <span class="price-tag">{{ getFeeDisplay(t.registrationFee) }}</span>
+            </div>
+            
+            <div class="checkbox">
+              <span class="checkmark" *ngIf="isSelected(t.id)">✓</span>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="action-footer">
+        <p class="selection-count">
+          {{ selectedTournamentIds.size }} event(s) selected
+        </p>
+        <button 
+          class="submit-btn" 
+          [disabled]="selectedTournamentIds.size === 0 || isSubmitting"
+          (click)="submitRegistration()">
+          {{ isSubmitting ? 'Registering...' : 'Confirm Registration' }}
+        </button>
+      </div>
+    }
+  </main>
+
+  @if (showResultModal && registrationResult) {
+    <div class="result-modal-backdrop" (click)="closeModal()">
+      <div class="result-modal" (click)="$event.stopPropagation()">
+        @if (registrationResult.successfullyRegistered?.length === 0 && registrationResult.alreadyRegistered?.length > 0) {
+          <h2 class="modal-title">🎉 You're Already Registered!</h2>
+          <p class="modal-subtitle">You have already registered for the following events:</p>
+        } @else {
+          <h2 class="modal-title">Congratulations!🎉 Registration Summary</h2>
+        }
+
+        @if (registrationResult.successfullyRegistered?.length > 0) {
+          <div class="result-section success">
+            <h3>✅ Successfully registered:</h3>
+            <ul>
+              @for (name of registrationResult.successfullyRegistered; track name) {
+                <li>• {{ name }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        @if (registrationResult.alreadyRegistered?.length > 0 && registrationResult.successfullyRegistered?.length > 0) {
+          <div class="result-section warning">
+            <h3>⚠ Already registered:</h3>
+            <ul>
+              @for (name of registrationResult.alreadyRegistered; track name) {
+                <li>• {{ name }}</li>
+              }
+            </ul>
+          </div>
+        } @else if (registrationResult.alreadyRegistered?.length > 0 && registrationResult.successfullyRegistered?.length === 0) {
+          <div class="result-section info">
+             <ul>
+              @for (name of registrationResult.alreadyRegistered; track name) {
+                <li>• {{ name }}</li>
+              }
+            </ul>
+          </div>
+        }
+
+        <div class="modal-footer-msg">
+          <p>💪 Now begin your preparation!</p>
+          <p>📅 We will notify you with the schedule of your upcoming matches.</p>
+        </div>
+
+        <button class="close-modal-btn" (click)="closeModal()">Got it!</button>
+      </div>
+    </div>
+  }
+</div>

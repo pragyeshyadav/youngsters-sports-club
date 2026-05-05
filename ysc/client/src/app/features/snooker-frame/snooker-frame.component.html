@@ -4,45 +4,102 @@
     <app-brand-title size="small" />
   </div>
 
-  @if (activeFrame) {
-    <div class="active-frame">
-      <h2 class="title">🎱 Ongoing Frame</h2>
-      <h3 class="active-frame__table">Table: {{ activeFrame.tableName }}</h3>
-      <p class="active-frame__meta">Frame #{{ activeFrame.id }}</p>
-
-      <div class="players-card">
-        <h4>Players</h4>
-        <div class="players-list">
-          @for (player of players; track player.id) {
-            <div class="player-chip">{{ player.playerName }}</div>
-          }
-        </div>
-      </div>
-
-      <button class="end-btn" (click)="openEndPopup()">🔴 End Frame ({{ formattedTime }})</button>
+  @if (isLoadingCurrentFrame) {
+    <div class="spinner-container">
+      <div class="spinner" aria-label="Loading current frame"></div>
     </div>
   } @else {
-    @if (billAmount !== null) {
-      <div class="bill-summary">
-        <h2>Frame Completed</h2>
-        <p>Duration: {{ billDuration }} mins</p>
-        <p>Total Amount: ₹{{ billAmount }}</p>
-      </div>
-    }
+    @if (showOngoingOnly()) {
+      @if (activeFrame; as frame) {
+        <div class="active-frame">
+          <h2 class="title">🎱 Ongoing Frame</h2>
+          <h3 class="active-frame__table">Table: {{ frame.tableName }}</h3>
+          <p class="active-frame__meta">Frame #{{ frame.id }}</p>
 
-    <h2 class="title">Select Snooker Table</h2>
+          <div class="players-card">
+            <h4>Players</h4>
+            <div class="players-list">
+              @for (player of players; track player.id) {
+                <div class="player-chip">{{ player.playerName }}</div>
+              }
+            </div>
+          </div>
 
-    <div class="tables-grid">
-      @for (table of tables; track table.id) {
-        <div class="table-card" (click)="selectTable(table)">
-          <div class="table-icon">🎱</div>
-          <div class="table-name">{{ table.tableName }}</div>
+          <button class="end-btn" (click)="openEndPopup()">🔴 End Frame ({{ formattedTime }})</button>
         </div>
       }
-      @empty {
-        <p class="no-tables">No tables currently available.</p>
+    } @else {
+      @if (billAmount !== null) {
+        <div class="bill-summary">
+          <h2>Frame Completed</h2>
+          <p>Duration: {{ billDuration }} mins</p>
+          <p>Total Amount: ₹{{ billAmount }}</p>
+        </div>
       }
-    </div>
+
+      @if (isPrivileged()) {
+        <div class="running-frames">
+          <div class="running-frames__header">
+            <h2 class="title">Current Running Frames</h2>
+            <button type="button" class="change-table-btn" (click)="goToTableSelection()">← Select Table</button>
+          </div>
+
+          @if (isLoadingOngoingFrames) {
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading running frames"></div>
+            </div>
+          } @else if (ongoingFrames.length > 0) {
+            <div class="running-frames__grid">
+              @for (frame of ongoingFrames; track frame.id) {
+                <div class="running-frame-card">
+                  <div class="running-frame-card__title">{{ frame.tableName || ('Table #' + frame.tableId) }}</div>
+                  <div class="running-frame-card__meta">Frame #{{ frame.id }}</div>
+                  <p class="started-by">
+                    Started by: <strong>{{ frame.startedBy || '-' }}</strong>
+                  </p>
+                  <div class="running-players">
+                    @for (player of frame.players; track player) {
+                      <span class="running-player-chip">{{ player }}</span>
+                    } @empty {
+                      <span class="running-player-empty">-</span>
+                    }
+                  </div>
+                  <div class="running-frame-card__meta">{{ frame.startTime | date: 'short' }}</div>
+                  <div class="running-frame-card__status">{{ frame.status }}</div>
+                </div>
+              }
+            </div>
+          } @else {
+            <p class="section-empty">No running frames right now.</p>
+          }
+        </div>
+      }
+
+      <h2 class="title">Select Snooker Table</h2>
+
+      @if (!isPrivileged()) {
+        <p class="auto-assign-note">🎱 You will be assigned the next available table automatically.</p>
+      } @else {
+        <p class="auto-assign-note privileged-note">Choose any available table to start a new frame.</p>
+      }
+
+      @if (isLoadingTables) {
+        <div class="spinner-container compact-spinner">
+          <div class="spinner" aria-label="Loading available tables"></div>
+        </div>
+      } @else {
+        <div class="tables-grid">
+          @for (table of tables; track table.id) {
+            <div class="table-card" (click)="selectTable(table)">
+              <div class="table-icon">🎱</div>
+              <div class="table-name">{{ table.tableName }}</div>
+            </div>
+          } @empty {
+            <p class="no-tables">No tables currently available.</p>
+          }
+        </div>
+      }
+    }
   }
 
   @if (showEndPopup) {

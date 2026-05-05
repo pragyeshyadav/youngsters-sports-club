@@ -21,6 +21,7 @@
         autocomplete="off"
         class="search-input"
       />
+      <p class="search-hint">Type at least 3 characters to search.</p>
 
       @if (users.length > 0) {
         <div class="dropdown">
@@ -33,6 +34,12 @@
         </div>
       }
     </div>
+
+    @if (isLoadingUsers) {
+      <div class="spinner-container compact-spinner">
+        <div class="spinner"></div>
+      </div>
+    }
 
     <button type="button" class="details-btn" [disabled]="!selectedUser" (click)="getPlayerDetails()">
       Get Player Details
@@ -49,17 +56,37 @@
       </div>
     }
 
-    @if (totalDue > 0) {
-      <div class="total-due-card">
-        <span>Total Due</span>
-        <h3>₹{{ totalDue }}</h3>
+    @if (isLoadingTotalDue) {
+      <div class="spinner-container compact-spinner">
+        <div class="spinner"></div>
+      </div>
+    } @else if (selectedUser) {
+      <div class="summary-grid">
+        <div class="summary-card frame-summary-card">
+          <span>Frame Due</span>
+          <h3>₹{{ frameDue }}</h3>
+        </div>
+        <div class="summary-card consumable-summary-card">
+          <span>Consumable Due</span>
+          <h3>₹{{ consumableDue }}</h3>
+        </div>
+        <div class="summary-card kids-summary-card">
+          <span>Kids Play Due</span>
+          <h3>₹{{ kidsDue }}</h3>
+        </div>
+        <div class="total-due-card">
+          <span>Total Due</span>
+          <h3>₹{{ totalDue }}</h3>
+        </div>
       </div>
     }
 
     @if (isLoadingFrames) {
-      <p class="empty-state">Loading due frames...</p>
-    } @else if (selectedUser && frames.length === 0) {
-      <p class="empty-state">No due frames found for this customer.</p>
+      <div class="spinner-container">
+        <div class="spinner"></div>
+      </div>
+    } @else if (selectedUser && frames.length === 0 && consumables.length === 0) {
+      <p class="empty-state">No due records found for this customer.</p>
     }
 
     @if (frames.length > 0 && !isMobile) {
@@ -126,6 +153,72 @@
         }
       </div>
     }
+
+    @if (consumables.length > 0) {
+      <div class="consumables-section">
+        <h3>🧾 Consumable Dues</h3>
+
+        @if (!isMobile) {
+          <div class="table-wrap">
+            <table class="history-table">
+              <thead>
+                <tr>
+                  <th>Order</th>
+                  <th>Item</th>
+                  <th>Quantity</th>
+                  <th>Price</th>
+                  <th>Total</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (item of consumables; track item.orderId + '-' + item.itemName + '-' + item.createdAt) {
+                  <tr class="due-row">
+                    <td>#{{ item.orderId }}</td>
+                    <td>{{ item.itemName }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>₹{{ item.price ?? 0 }}</td>
+                    <td>₹{{ item.totalCost ?? 0 }}</td>
+                    <td>{{ item.createdAt | date: 'short' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
+          <div class="card-container">
+            @for (item of consumables; track item.orderId + '-' + item.itemName + '-' + item.createdAt) {
+              <div class="history-card due-row">
+                <div class="card-row">
+                  <span>🧾 Order</span>
+                  <strong>#{{ item.orderId }}</strong>
+                </div>
+                <div class="card-row">
+                  <span>Item</span>
+                  <strong>{{ item.itemName }}</strong>
+                </div>
+                <div class="card-row">
+                  <span>Quantity</span>
+                  <span>{{ item.quantity }}</span>
+                </div>
+                <div class="card-row">
+                  <span>Price</span>
+                  <span>₹{{ item.price ?? 0 }}</span>
+                </div>
+                <div class="card-row">
+                  <span>Total</span>
+                  <strong>₹{{ item.totalCost ?? 0 }}</strong>
+                </div>
+                <div class="card-row">
+                  <span>Created</span>
+                  <span>{{ item.createdAt | date: 'short' }}</span>
+                </div>
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
   </div>
 
   @if (showSettlementPopup) {
@@ -133,7 +226,12 @@
       <div class="modal" (click)="$event.stopPropagation()">
         <h3>💳 Settle Payment</h3>
 
-        <p class="modal-total">Total Due: ₹{{ totalDue }}</p>
+        <div class="modal-summary">
+          <p class="modal-total">Frame Due: ₹{{ frameDue }}</p>
+          <p class="modal-total">Consumable Due: ₹{{ consumableDue }}</p>
+          <p class="modal-total">Kids Play Due: ₹{{ kidsDue }}</p>
+          <p class="modal-total modal-total--highlight">Total Due: ₹{{ totalDue }}</p>
+        </div>
 
         <input
           type="number"
@@ -143,18 +241,53 @@
           [max]="totalDue"
         />
 
+        <input
+          type="number"
+          [(ngModel)]="discountAmount"
+          placeholder="Enter discount"
+          min="0"
+          [max]="getMaxDiscount()"
+        />
+
         <select [(ngModel)]="paymentMode">
           <option value="">Select Payment Mode</option>
           <option value="CASH">Cash</option>
           <option value="UPI">UPI</option>
         </select>
 
-        @if (settleAmount && settleAmount > totalDue) {
-          <p class="validation-message">Amount cannot exceed total due.</p>
+        <div class="settlement-preview">
+          <p class="preview-row">
+            <span>Paid Amount</span>
+            <strong>₹{{ settleAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Discount</span>
+            <strong>₹{{ discountAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row preview-row--highlight">
+            <span>Effective Settlement</span>
+            <strong>₹{{ getEffectiveSettlement() }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Remaining Due</span>
+            <strong>₹{{ getRemainingDue() }}</strong>
+          </p>
+        </div>
+
+        @if (settleAmount && settleAmount <= 0) {
+          <p class="validation-message">Paid amount must be greater than zero.</p>
+        } @else if ((discountAmount ?? 0) < 0) {
+          <p class="validation-message">Discount cannot be negative.</p>
+        } @else if ((discountAmount ?? 0) > getMaxDiscount()) {
+          <p class="validation-message">Discount cannot exceed 60% of total due.</p>
+        } @else if (getEffectiveSettlement() > totalDue) {
+          <p class="validation-message">Paid amount plus discount cannot exceed total due.</p>
         }
 
         <div class="modal-actions">
-          <button class="save-btn" [disabled]="!canSave()" (click)="saveSettlement()">Save</button>
+          <button class="save-btn" [disabled]="!canSave()" (click)="saveSettlement()">
+            {{ isSavingSettlement ? 'Saving...' : 'Save' }}
+          </button>
           <button class="cancel-btn" (click)="closeSettlementPopup()">Cancel</button>
         </div>
       </div>

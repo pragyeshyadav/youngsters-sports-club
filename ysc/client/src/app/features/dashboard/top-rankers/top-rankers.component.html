@@ -1,0 +1,42 @@
+<div class="top-rankers-panel">
+  <div class="panel-header">
+    <h3>🏆 Top 3 Rankers of the Month</h3>
+    <p class="subtitle">🔥 Win more frames to climb the leaderboard!<br>🏆 Rank #1 wins ₹1000 & Rank #2 wins ₹500 voucher every month!</p>
+  </div>
+
+  <div class="panel-body">
+    @if (isLoading) {
+      <div class="spinner-container compact-spinner">
+        <div class="spinner" aria-label="Loading top players"></div>
+      </div>
+    } @else if (players.length === 0) {
+      <div class="empty-state">
+        <p>No games completed this month yet. Be the first to claim Rank #1! 🚀</p>
+      </div>
+    } @else {
+      <div class="card-container">
+        @for (player of players; track player.name; let i = $index) {
+          <div class="rank-card" 
+               [class.rank-1]="i === 0" 
+               [class.rank-2]="i === 1" 
+               [class.rank-3]="i === 2">
+            <div class="rank-header">
+              <span class="rank-badge">
+                @if (i === 0) { 🥇 #1 }
+                @if (i === 1) { 🥈 #2 }
+                @if (i === 2) { 🥉 #3 }
+              </span>
+              @if (i === 0) {
+                <span class="winner-label">Winner</span>
+              }
+            </div>
+            <div class="player-info">
+              <strong>{{ player.name }}</strong>
+              <span class="wins">Wins: {{ player.wins }} {{ i === 0 ? '🏆' : '' }}</span>
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
+</div>

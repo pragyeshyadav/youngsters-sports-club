@@ -8,6 +8,58 @@
     <h2>🧑‍💼 Manager's Portal</h2>
     <p>Manage tables, frames, and daily operations.</p>
 
+    @if (canViewTodayEarnings) {
+      <div class="portal-panel earnings-panel">
+        <button type="button" class="panel-header earnings-header" (click)="toggleEarnings()">
+          <span>💰 Today's Total Earnings</span>
+          <span class="panel-chevron">{{ isEarningsExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isEarningsExpanded) {
+          <div class="panel-body earnings-body">
+            @if (isLoadingEarnings) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading today's earnings"></div>
+              </div>
+            } @else {
+              <div class="earnings-summary">
+                <div class="earnings-metric earnings-total-card">
+                  <span class="metric-label">Total Earnings Today</span>
+                  <strong class="metric-value text-green">₹{{ todayEarnings.totalEarnings ?? 0 }}</strong>
+                </div>
+
+                <div class="earnings-metric earnings-due-card">
+                  <span class="metric-label">Total Payment Due Today</span>
+                  <strong class="metric-value text-red">₹{{ todayEarnings.totalDue ?? 0 }}</strong>
+                </div>
+              </div>
+
+              <div class="due-breakdown-card">
+                <div class="due-breakdown-header">
+                  <span>⚠️ Pending Payments</span>
+                </div>
+
+                @if (todayEarnings.duePlayers.length === 0) {
+                  <p class="panel-message due-breakdown-empty">No pending payments for today's frames.</p>
+                } @else {
+                  <div class="due-player-list">
+                    @for (player of todayEarnings.duePlayers; track player.name) {
+                      <div class="due-player-item">
+                        <div>
+                          <span class="due-player-name">{{ player.name }}</span>
+                        </div>
+                        <strong class="text-red">₹{{ player.due ?? 0 }}</strong>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+    }
+
     <div class="portal-panel">
       <button type="button" class="panel-header" (click)="toggleOngoing()">
         <span>📌 Ongoing Frames (Today)</span>
@@ -17,7 +69,9 @@
       @if (isOngoingExpanded) {
         <div class="panel-body">
           @if (isLoadingOngoing) {
-            <p class="panel-message">Loading ongoing frames...</p>
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading ongoing frames"></div>
+            </div>
           } @else if (ongoingFrames.length === 0) {
             <p class="panel-message">No ongoing frames found for today.</p>
           } @else if (!isMobile) {
@@ -26,6 +80,8 @@
                 <thead>
                   <tr>
                     <th>Table</th>
+                    <th>Started By</th>
+                    <th>Players</th>
                     <th>Start Time</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -35,6 +91,16 @@
                   @for (frame of ongoingFrames; track frame.id) {
                     <tr>
                       <td>{{ frame.tableName || ('Table #' + frame.tableId) }}</td>
+                      <td>{{ frame.startedBy || '-' }}</td>
+                      <td class="players-cell">
+                        <div class="players-wrapper">
+                          @for (player of frame.players; track player) {
+                            <span class="player-chip">{{ player }}</span>
+                          } @empty {
+                            <span>-</span>
+                          }
+                        </div>
+                      </td>
                       <td>{{ frame.startTime | date: 'short' }}</td>
                       <td>{{ frame.status }}</td>
                       <td class="actions-cell">
@@ -57,6 +123,20 @@
                   <div class="card-row">
                     <span>🎱 Table</span>
                     <strong>{{ frame.tableName || ('Table #' + frame.tableId) }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>👤 Started By</span>
+                    <strong>{{ frame.startedBy || '-' }}</strong>
+                  </div>
+                  <div class="players-stack">
+                    <span class="players-label">Players</span>
+                    <div class="players-wrapper">
+                      @for (player of frame.players; track player) {
+                        <span class="player-chip">{{ player }}</span>
+                      } @empty {
+                        <span>-</span>
+                      }
+                    </div>
                   </div>
                   <div class="card-row">
                     <span>🕒 Start</span>
@@ -90,8 +170,22 @@
 
       @if (isCompletedExpanded) {
         <div class="panel-body">
+          <div class="completed-filter-bar">
+            <label for="completed-date">Select Date</label>
+            <input
+              id="completed-date"
+              type="date"
+              [(ngModel)]="selectedCompletedDate"
+              [min]="minCompletedDate"
+              [max]="maxCompletedDate"
+              (change)="onCompletedDateChange()"
+            />
+          </div>
+
           @if (isLoadingCompleted) {
-            <p class="panel-message">Loading completed frames...</p>
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading completed frames"></div>
+            </div>
           } @else if (completedFrames.length === 0) {
             <p class="panel-message">No completed frames found for today.</p>
           } @else if (!isMobile) {
@@ -159,6 +253,140 @@
               }
             </div>
           }
+        </div>
+      }
+    </div>
+
+    <div class="portal-panel players-panel">
+      <button type="button" class="panel-header players-header" (click)="togglePlayers()">
+        <span>👥 Show All Players</span>
+        <span class="panel-chevron">{{ isPlayersExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isPlayersExpanded) {
+        <div class="panel-body scrollable-panel" (scroll)="onPlayersScroll($event)">
+          @if (players.length === 0 && !isLoadingPlayers) {
+            <p class="panel-message">No players found.</p>
+          } @else if (!isMobile) {
+            <div class="table-wrap">
+              <table class="frames-table players-table">
+                <thead>
+                  <tr>
+                    <th>Player Name</th>
+                    <th>Email</th>
+                    <th>Total Frames Played</th>
+                    <th>Total Payment Due</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (player of players; track player.userId) {
+                    <tr>
+                      <td>{{ player.name || '-' }}</td>
+                      <td>{{ player.email || '-' }}</td>
+                      <td>{{ player.framesPlayed }}</td>
+                      <td [class.text-red]="player.totalDue > 0">₹{{ player.totalDue }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="card-container">
+              @for (player of players; track player.userId) {
+                <div class="history-card player-card">
+                  <div class="card-row">
+                    <span>👤 Name</span>
+                    <strong>{{ player.name || '-' }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>✉️ Email</span>
+                    <span>{{ player.email || '-' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>🎱 Frames Played</span>
+                    <strong>{{ player.framesPlayed }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>💳 Due Amount</span>
+                    <strong [class.text-red]="player.totalDue > 0">₹{{ player.totalDue }}</strong>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          @if (isLoadingPlayers) {
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading players"></div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="portal-panel add-customer-panel">
+      <button type="button" class="panel-header add-customer-header" (click)="toggleAddCustomer()">
+        <span>➕ Add Customer</span>
+        <span class="panel-chevron">{{ isAddCustomerExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isAddCustomerExpanded) {
+        <div class="panel-body add-customer-body">
+          <div class="customer-form-card">
+            <div class="customer-form-grid">
+              <div class="customer-field">
+                <label for="customer-name">Name</label>
+                <input
+                  id="customer-name"
+                  type="text"
+                  [(ngModel)]="customerForm.name"
+                  placeholder="Enter customer name"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="customer-field">
+                <label for="customer-email">Email</label>
+                <input
+                  id="customer-email"
+                  type="email"
+                  [(ngModel)]="customerForm.email"
+                  placeholder="Email (Optional)"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div class="customer-field">
+                <label for="customer-mobile">Mobile Number</label>
+                <input
+                  id="customer-mobile"
+                  type="text"
+                  [ngModel]="customerForm.mobileNumber"
+                  (ngModelChange)="customerForm.mobileNumber = $event"
+                  (input)="onCustomerMobileInput($event)"
+                  placeholder="Enter 10 digit mobile number"
+                  autocomplete="off"
+                  maxlength="10"
+                />
+              </div>
+            </div>
+
+            @if (hasCustomerFormMissingFields()) {
+              <p class="customer-validation-message">Name and mobile number are required.</p>
+            } @else if (hasCustomerEmailError()) {
+              <p class="customer-validation-message">Enter a valid email address.</p>
+            } @else if (hasCustomerMobileError()) {
+              <p class="customer-validation-message">Mobile number must be exactly 10 digits.</p>
+            }
+
+            <button
+              type="button"
+              class="save-customer-btn"
+              [disabled]="!isCustomerFormValid()"
+              (click)="saveCustomer()">
+              {{ isSavingCustomer ? 'Saving Customer...' : 'Save Customer' }}
+            </button>
+          </div>
         </div>
       }
     </div>

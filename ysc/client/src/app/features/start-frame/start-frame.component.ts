@@ -1,4 +1,4 @@
-import { AsyncPipe } from '@angular/common';
+import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -70,7 +70,7 @@ interface ExistingFrameResponse {
 @Component({
   selector: 'app-start-frame',
   standalone: true,
-  imports: [AsyncPipe, FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
   templateUrl: './start-frame.component.html',
   styleUrl: './start-frame.component.scss',
 })
@@ -97,6 +97,9 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   billDuration: number | null = null;
   viewMode: 'start' | 'manage' = 'start';
   backRoute = '/snooker-frame';
+  isStartingFrame = false;
+  isOpeningEndPopup = false;
+  isEndingFrame = false;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
@@ -178,8 +181,12 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   }
 
   startFrame(): void {
-    if (this.selectedPlayers.length === 0) {
-      alert('Select at least one player');
+    if (this.isStartingFrame || this.frameStarted) {
+      return;
+    }
+
+    if (!this.selectedPlayers || this.selectedPlayers.length < 2) {
+      alert('Please select at least 2 players to start a frame');
       return;
     }
 
@@ -197,23 +204,27 @@ export class StartFrameComponent implements OnInit, OnDestroy {
       })),
     };
 
+    this.isStartingFrame = true;
+
     this.http.post<number>('/api/frame/start', request).subscribe({
       next: (frameId) => {
         this.frameStarted = true;
         this.frameId = frameId;
         this.billAmount = null;
         this.billDuration = null;
+        this.isStartingFrame = false;
         this.startTimer();
       },
       error: (err) => {
         console.error('Failed to start frame', err);
+        this.isStartingFrame = false;
         alert('Unable to start frame right now');
       },
     });
   }
 
   openEndPopup(): void {
-    if (!this.frameId) {
+    if (!this.frameId || this.isOpeningEndPopup || this.isEndingFrame) {
       return;
     }
 
@@ -229,13 +240,17 @@ export class StartFrameComponent implements OnInit, OnDestroy {
       return;
     }
 
+    this.isOpeningEndPopup = true;
+
     this.http.get<FramePlayerOption[]>(`/api/frame/${this.frameId}/players`).subscribe({
       next: (res) => {
         this.framePlayers = res;
+        this.isOpeningEndPopup = false;
       },
       error: (err) => {
         console.error('Failed to load frame players', err);
         this.framePlayers = [];
+        this.isOpeningEndPopup = false;
       },
     });
   }
@@ -245,9 +260,11 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   }
 
   confirmEndFrame(): void {
-    if (!this.frameId || !this.canEndFrame()) {
+    if (!this.frameId || !this.canEndFrame() || this.isEndingFrame) {
       return;
     }
+
+    this.isEndingFrame = true;
 
     this.http
       .post<EndFrameResponse>(`/api/frame/end/${this.frameId}`, {
@@ -270,20 +287,25 @@ export class StartFrameComponent implements OnInit, OnDestroy {
           }
           this.winnerId = null;
           this.looserId = null;
+          this.isEndingFrame = false;
         },
         error: (err) => {
           console.error('Failed to end frame', err);
+          this.isEndingFrame = false;
           alert('Unable to end frame right now');
         },
       });
   }
 
   closeEndPopup(): void {
+    if (this.isEndingFrame) {
+      return;
+    }
     this.showEndPopup = false;
   }
 
   goBack(): void {
-    if (this.frameStarted) {
+    if (this.frameStarted || this.isStartingFrame || this.isEndingFrame) {
       return;
     }
     void this.router.navigate([this.backRoute]);

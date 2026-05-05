@@ -5,14 +5,108 @@
   </div>
 
   <div class="history-card">
-    <div class="total-due-card">
-      <span>Total Due</span>
-      <h2>₹{{ totalDue }}</h2>
+    @if (isLoadingTotalDue) {
+      <div class="spinner-container compact-spinner">
+        <div class="spinner"></div>
+      </div>
+    } @else {
+      <div class="summary-grid">
+        <div class="due-summary-card frame-due-card">
+          <span>Frame Payment Due</span>
+          <h2>₹{{ frameDue }}</h2>
+        </div>
+        <div class="due-summary-card consumable-due-card">
+          <span>Consumable Due</span>
+          <h2>₹{{ consumableDue }}</h2>
+        </div>
+        <div class="due-summary-card kids-due-card">
+          <span>Kids Play Due</span>
+          <h2>₹{{ kidsDue }}</h2>
+        </div>
+        <div class="total-due-card">
+          <span>Total Due</span>
+          <h2>₹{{ totalDue }}</h2>
+        </div>
+      </div>
+    }
+
+    <div class="portal-panel consumable-history-panel">
+      <button type="button" class="panel-header consumable-history-header" (click)="toggleConsumableHistory()">
+        <span>🧾 My Consumable History</span>
+        <span class="panel-chevron">{{ isConsumableHistoryExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isConsumableHistoryExpanded) {
+        <div class="panel-body">
+          @if (isLoadingConsumableHistory) {
+            <div class="spinner-container compact-spinner">
+              <div class="spinner"></div>
+            </div>
+          } @else if (consumableHistory.length === 0) {
+            <p class="panel-message">No consumable history found</p>
+          } @else if (!isMobile) {
+            <div class="table-wrap">
+              <table class="history-table">
+                <thead>
+                  <tr>
+                    <th>Item Name</th>
+                    <th>Quantity</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Payment Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (item of consumableHistory; track item.itemName + '-' + item.date + '-' + item.quantity) {
+                    <tr [ngClass]="getConsumableRowClass(item)">
+                      <td>{{ item.itemName }}</td>
+                      <td>{{ item.quantity }}</td>
+                      <td>{{ item.date | date: 'd MMM, h:mm a' }}</td>
+                      <td>₹{{ item.amount ?? 0 }}</td>
+                      <td>{{ item.paymentStatus }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="card-container">
+              @for (item of consumableHistory; track item.itemName + '-' + item.date + '-' + item.quantity) {
+                <div class="mobile-history-card consumable-card" [ngClass]="getConsumableRowClass(item)">
+                  <div class="card-row">
+                    <span>🧾 {{ item.itemName }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>Qty:</span>
+                    <strong>{{ item.quantity }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>Date:</span>
+                    <span>{{ item.date | date: 'd MMM, h:mm a' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>Amount:</span>
+                    <strong>₹{{ item.amount ?? 0 }}</strong>
+                  </div>
+                  <div class="card-row highlight">
+                    <span>Status:</span>
+                    <strong>{{ item.paymentStatus }}</strong>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
     </div>
 
     <h2>📜 My Game History</h2>
 
-    @if (history.length > 0) {
+    @if (isLoadingHistory) {
+      <div class="spinner-container">
+        <div class="spinner"></div>
+      </div>
+    } @else if (history.length > 0) {
       @if (!isMobile) {
         <div class="table-container">
           <div class="table-wrap">
