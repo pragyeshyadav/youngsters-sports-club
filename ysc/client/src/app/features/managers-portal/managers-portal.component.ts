@@ -36,6 +36,7 @@ interface PlayerSummary {
 }
 
 interface DuePlayer {
+  userId?: number;
   name: string;
   due: number | string | null;
 }
@@ -77,6 +78,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   isLoadingEarnings = false;
   hasLoadedEarnings = false;
   canViewTodayEarnings = false;
+  selectedEarningsDate = '';
+  minEarningsDate = '';
+  maxEarningsDate = '';
   todayEarnings: TodayEarnings = {
     totalEarnings: 0,
     totalDue: 0,
@@ -96,6 +100,19 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   playersPage = 0;
   hasMorePlayers = true;
 
+  showSettlementPopup = false;
+  settlementPlayer: DuePlayer | null = null;
+  settlementTotalDue = 0;
+  settlementFrameDue = 0;
+  settlementConsumableDue = 0;
+  settlementKidsDue = 0;
+  
+  settleAmount: number | null = null;
+  discountAmount: number | null = null;
+  paymentMode = '';
+  isSavingSettlement = false;
+  isLoadingSettlementDetails = false;
+
   ngOnInit(): void {
     this.updateViewportState();
     this.maxCompletedDate = this.formatDate(this.today);
@@ -103,6 +120,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     const minDate = new Date(this.today);
     minDate.setDate(minDate.getDate() - 60);
     this.minCompletedDate = this.formatDate(minDate);
+    this.maxEarningsDate = this.maxCompletedDate;
+    this.selectedEarningsDate = this.maxEarningsDate;
+    this.minEarningsDate = this.minCompletedDate;
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
     this.loadViewerAccess();
@@ -131,7 +151,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.isEarningsExpanded = !this.isEarningsExpanded;
 
     if (this.isEarningsExpanded && !this.isLoadingEarnings && !this.hasLoadedEarnings) {
-      this.loadTodayEarnings();
+      this.loadEarningsForSelectedDate();
     }
   }
 
@@ -159,6 +179,56 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.isLoadingEarnings = false;
       },
     });
+  }
+
+  loadEarningsForSelectedDate(): void {
+    if (this.selectedEarningsDate === this.maxEarningsDate) {
+      this.loadTodayEarnings();
+      return;
+    }
+
+    this.isLoadingEarnings = true;
+
+    this.http.get<TodayEarnings>(`/api/manager/earnings?date=${this.selectedEarningsDate}`).subscribe({
+      next: (earnings) => {
+        this.todayEarnings = {
+          totalEarnings: earnings?.totalEarnings ?? 0,
+          totalDue: earnings?.totalDue ?? 0,
+          duePlayers: earnings?.duePlayers ?? [],
+        };
+        this.hasLoadedEarnings = true;
+        this.isLoadingEarnings = false;
+      },
+      error: (err) => {
+        console.error('Failed to load earnings', err);
+        this.todayEarnings = {
+          totalEarnings: 0,
+          totalDue: 0,
+          duePlayers: [],
+        };
+        this.hasLoadedEarnings = false;
+        this.isLoadingEarnings = false;
+        alert(err?.error?.message || 'Unable to load earnings right now');
+      },
+    });
+  }
+
+  onEarningsDateChange(): void {
+    if (!this.selectedEarningsDate) {
+      return;
+    }
+
+    if (this.selectedEarningsDate < this.minEarningsDate || this.selectedEarningsDate > this.maxEarningsDate) {
+      alert('Please select a valid date within the last 60 days');
+      this.selectedEarningsDate = this.maxEarningsDate;
+      return;
+    }
+
+    if (!this.isEarningsExpanded) {
+      this.isEarningsExpanded = true;
+    }
+
+    this.loadEarningsForSelectedDate();
   }
 
   loadOngoingFrames(): void {
@@ -421,5 +491,92 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       email: '',
       mobileNumber: '',
     };
+  }
+
+  openSettlementPopup(player: DuePlayer): void {
+    if (!player.userId) {
+      alert('User ID is missing');
+      return;
+    }
+    this.settlementPlayer = player;
+    this.showSettlementPopup = true;
+    this.isLoadingSettlementDetails = true;
+    this.settlementTotalDue = 0;
+    this.settlementFrameDue = 0;
+    this.settlementConsumableDue = 0;
+    this.settlementKidsDue = 0;
+    this.settleAmount = null;
+    this.discountAmount = null;
+    this.paymentMode = '';
+
+    this.http.get<any>(`/api/user/payment-summary-by-date?userId=${player.userId}&date=${this.selectedEarningsDate}`).subscribe({
+      next: (summary) => {
+        this.settlementFrameDue = summary?.frameDue ?? 0;
+        this.settlementConsumableDue = summary?.consumableDue ?? 0;
+        this.settlementKidsDue = summary?.kidsDue ?? 0;
+        this.settlementTotalDue = this.settlementFrameDue + this.settlementConsumableDue + this.settlementKidsDue;
+        this.isLoadingSettlementDetails = false;
+      },
+      error: (err) => {
+        console.error('Failed to load payment summary', err);
+        alert('Failed to load detailed dues. Settlement might be inaccurate.');
+        this.isLoadingSettlementDetails = false;
+      }
+    });
+  }
+
+  closeSettlementPopup(): void {
+    this.showSettlementPopup = false;
+    this.settlementPlayer = null;
+  }
+
+  getEffectiveSettlement(): number {
+    return (this.settleAmount || 0) + (this.discountAmount || 0);
+  }
+
+  getRemainingDue(): number {
+    return Math.max(0, this.settlementTotalDue - this.getEffectiveSettlement());
+  }
+
+  getMaxDiscount(): number {
+    return Math.floor(this.settlementTotalDue * 0.6);
+  }
+
+  canSaveSettlement(): boolean {
+    return !this.isSavingSettlement &&
+           !this.isLoadingSettlementDetails &&
+           this.settleAmount !== null && 
+           this.settleAmount > 0 &&
+           (this.discountAmount || 0) >= 0 &&
+           (this.discountAmount || 0) <= this.getMaxDiscount() &&
+           this.getEffectiveSettlement() <= this.settlementTotalDue &&
+           this.paymentMode !== '';
+  }
+
+  saveSettlement(): void {
+    if (!this.canSaveSettlement() || !this.settlementPlayer?.userId) return;
+
+    this.isSavingSettlement = true;
+    const request = {
+      userId: this.settlementPlayer.userId,
+      date: this.selectedEarningsDate,
+      paidAmount: this.settleAmount || 0,
+      discount: this.discountAmount || 0,
+      paymentMode: this.paymentMode
+    };
+
+    this.http.post('/api/payment/settle-by-date', request, { responseType: 'text' }).subscribe({
+      next: () => {
+        this.isSavingSettlement = false;
+        alert('Payment settled successfully for selected date');
+        this.closeSettlementPopup();
+        this.loadEarningsForSelectedDate();
+      },
+      error: (err) => {
+        console.error('Settlement failed', err);
+        this.isSavingSettlement = false;
+        alert(err?.error?.message || 'Payment settlement failed');
+      }
+    });
   }
 }

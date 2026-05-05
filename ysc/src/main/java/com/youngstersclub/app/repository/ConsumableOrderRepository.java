@@ -2,6 +2,7 @@ package com.youngstersclub.app.repository;
 
 import com.youngstersclub.app.entity.ConsumableOrder;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,12 +22,35 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
     List<ConsumableOrder> findByUserIdAndPaymentStatus(@Param("userId") Integer userId, @Param("paymentStatus") String paymentStatus);
 
     @Query("""
+        SELECT co FROM ConsumableOrder co
+        WHERE co.user.id = :userId
+        AND co.paymentStatus = :paymentStatus
+        AND FUNCTION('DATE', co.createdAt) = :selectedDate
+        ORDER BY co.createdAt ASC
+    """)
+    List<ConsumableOrder> findByUserIdAndPaymentStatusAndCreatedDate(
+            @Param("userId") Integer userId,
+            @Param("paymentStatus") String paymentStatus,
+            @Param("selectedDate") LocalDate selectedDate);
+
+    @Query("""
         SELECT COALESCE(SUM(co.totalAmount), 0)
         FROM ConsumableOrder co
         WHERE co.user.id = :userId
         AND co.paymentStatus = 'UNPAID'
     """)
     BigDecimal getTotalUnpaidDueByUserId(@Param("userId") Integer userId);
+
+    @Query("""
+        SELECT COALESCE(SUM(co.totalAmount), 0)
+        FROM ConsumableOrder co
+        WHERE co.user.id = :userId
+        AND co.paymentStatus = 'UNPAID'
+        AND FUNCTION('DATE', co.createdAt) = :selectedDate
+    """)
+    BigDecimal getTotalUnpaidDueByUserIdAndDate(
+            @Param("userId") Integer userId,
+            @Param("selectedDate") LocalDate selectedDate);
 
     @Query(value = """
         SELECT COALESCE(SUM(coi.total_cost), 0)

@@ -3,6 +3,7 @@ package com.youngstersclub.app.service;
 import com.youngstersclub.app.dto.UserPaymentSummaryDto;
 import com.youngstersclub.app.repository.FrameRepository;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -25,6 +26,15 @@ public class UserPaymentSummaryService {
         BigDecimal frameDue = userId == null ? BigDecimal.ZERO : frameRepository.getTotalDueForUser(userId);
         BigDecimal consumableDue = consumableService.getConsumableDue(userId);
         BigDecimal kidsDue = kidsPlayService.getKidsDue(userId);
+        return new UserPaymentSummaryDto(frameDue, consumableDue, kidsDue);
+    }
+
+    public UserPaymentSummaryDto getPaymentSummaryByDate(Integer userId, LocalDate selectedDate) {
+        BigDecimal frameDue = (userId == null || selectedDate == null)
+                ? BigDecimal.ZERO
+                : frameRepository.getTotalDueForUserByDate(userId, selectedDate);
+        BigDecimal consumableDue = consumableService.getConsumableDueByDate(userId, selectedDate);
+        BigDecimal kidsDue = kidsPlayService.getKidsDueByDate(userId, selectedDate);
         return new UserPaymentSummaryDto(frameDue, consumableDue, kidsDue);
     }
 }
