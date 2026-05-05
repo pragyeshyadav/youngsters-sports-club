@@ -14,6 +14,7 @@ import com.youngstersclub.app.repository.ConsumableOrderRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -111,6 +112,21 @@ public class ConsumableService {
         }
         BigDecimal total = consumableOrderRepository.getTotalUnpaidDueByUserId(userId);
         return total == null ? BigDecimal.ZERO : total;
+    }
+
+    public BigDecimal getConsumableDueByDate(Integer userId, LocalDate selectedDate) {
+        if (userId == null || selectedDate == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal total = consumableOrderRepository.getTotalUnpaidDueByUserIdAndDate(userId, selectedDate);
+        return total == null ? BigDecimal.ZERO : total;
+    }
+
+    public List<ConsumableOrder> getUnpaidOrdersByDate(Integer userId, LocalDate selectedDate) {
+        if (userId == null || selectedDate == null) {
+            return List.of();
+        }
+        return consumableOrderRepository.findByUserIdAndPaymentStatusAndCreatedDate(userId, "UNPAID", selectedDate);
     }
 
     public List<ConsumableDueRowDto> getDueConsumables(Integer userId) {

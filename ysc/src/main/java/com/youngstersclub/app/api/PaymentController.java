@@ -23,4 +23,10 @@ public class PaymentController {
         paymentService.settlePayment(request);
         return ResponseEntity.ok("SUCCESS");
     }
+
+    @PostMapping("/settle-by-date")
+    public ResponseEntity<String> settlePaymentByDate(@RequestBody com.youngstersclub.app.dto.PaymentByDateRequest request) {
+        paymentService.settlePaymentByDate(request);
+        return ResponseEntity.ok("SUCCESS");
+    }
 }

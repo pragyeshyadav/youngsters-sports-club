@@ -18,6 +18,7 @@ import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -144,11 +145,26 @@ public class KidsPlayService {
         return due == null ? BigDecimal.ZERO : due;
     }
 
+    public BigDecimal getKidsDueByDate(Integer parentUserId, LocalDate selectedDate) {
+        if (parentUserId == null || selectedDate == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal due = kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIdAndDate(parentUserId, selectedDate);
+        return due == null ? BigDecimal.ZERO : due;
+    }
+
     public List<KidsPlaySession> getUnpaidSessions(Integer parentUserId) {
         if (parentUserId == null) {
             return List.of();
         }
         return kidsPlaySessionRepository.findUnpaidByParentUserIdOrderByStartTime(parentUserId);
+    }
+
+    public List<KidsPlaySession> getUnpaidSessionsByDate(Integer parentUserId, LocalDate selectedDate) {
+        if (parentUserId == null || selectedDate == null) {
+            return List.of();
+        }
+        return kidsPlaySessionRepository.findUnpaidByParentUserIdAndEndDateOrderByStartTime(parentUserId, selectedDate);
     }
 
     @Transactional

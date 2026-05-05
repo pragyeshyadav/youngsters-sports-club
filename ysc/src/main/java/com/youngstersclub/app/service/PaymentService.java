@@ -155,6 +155,127 @@ public class PaymentService {
         }
     }
 
+    @Transactional
+    public void settlePaymentByDate(com.youngstersclub.app.dto.PaymentByDateRequest request) {
+        if (request == null || request.getUserId() == null || request.getPaidAmount() == null || request.getDate() == null) {
+            throw new IllegalArgumentException("Payment details and date are required");
+        }
+
+        if (request.getPaidAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Payment amount must be greater than zero");
+        }
+
+        if (request.getPaymentMode() == null || request.getPaymentMode().trim().isEmpty()) {
+            throw new IllegalArgumentException("Payment mode is required");
+        }
+
+        BigDecimal discount = request.getDiscount() == null ? BigDecimal.ZERO : request.getDiscount();
+        if (discount.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalArgumentException("Discount cannot be negative");
+        }
+
+        PaymentMethod paymentMethod = PaymentMethod.valueOf(request.getPaymentMode().trim().toUpperCase());
+        User user = userRepository.findById(request.getUserId()).orElseThrow();
+        
+        List<Frame> frames = frameRepository.findDueFramesByUserAndDateOrderByStartTime(request.getUserId(), request.getDate());
+        List<ConsumableOrder> consumableOrders = consumableOrderRepository.findByUserIdAndPaymentStatusAndCreatedDate(
+                request.getUserId(), "UNPAID", request.getDate());
+
+        BigDecimal totalFrameOutstanding = frameRepository.getTotalDueForUserByDate(request.getUserId(), request.getDate());
+        if (totalFrameOutstanding == null) totalFrameOutstanding = BigDecimal.ZERO;
+        
+        BigDecimal totalConsumableOutstanding = consumableOrderRepository.getTotalUnpaidDueByUserIdAndDate(request.getUserId(), request.getDate());
+        if (totalConsumableOutstanding == null) totalConsumableOutstanding = BigDecimal.ZERO;
+
+        BigDecimal totalKidsOutstanding = kidsPlayService.getKidsDueByDate(request.getUserId(), request.getDate());
+        if (totalKidsOutstanding == null) totalKidsOutstanding = BigDecimal.ZERO;
+
+        BigDecimal totalOutstanding = totalFrameOutstanding.add(totalConsumableOutstanding).add(totalKidsOutstanding);
+        BigDecimal totalSettlement = request.getPaidAmount().add(discount);
+
+        if (totalSettlement.compareTo(totalOutstanding) > 0) {
+            throw new IllegalArgumentException("Payment amount plus discount exceeds total due for the selected date");
+        }
+
+        AllocationState allocationState = new AllocationState(request.getPaidAmount(), discount);
+
+        for (Frame frame : frames) {
+            if (allocationState.isExhausted()) break;
+            BigDecimal due = frame.getPaymentDue();
+            if (due == null || due.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            BigDecimal settlementAmount = allocationState.getRemainingSettlement().min(due);
+            BigDecimal cashAmount = allocationState.allocateCash(settlementAmount);
+            BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
+
+            Payment payment = new Payment();
+            payment.setFrame(frame);
+            payment.setUser(user);
+            payment.setAmount(cashAmount);
+            payment.setDiscount(discountAmount);
+            payment.setStatus(PaymentStatus.PAID);
+            payment.setPaymentMethod(paymentMethod);
+            payment.setPaymentTime(TimeUtil.nowIST());
+            paymentRepository.save(payment);
+
+            BigDecimal updatedDue = due.subtract(settlementAmount);
+            frame.setPaymentDue(updatedDue);
+            frame.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL);
+            frameRepository.save(frame);
+        }
+
+        for (ConsumableOrder order : consumableOrders) {
+            if (allocationState.isExhausted()) break;
+            BigDecimal due = order.getTotalAmount();
+            if (due == null || due.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+            BigDecimal settlementAmount = allocationState.getRemainingSettlement().min(due);
+            BigDecimal cashAmount = allocationState.allocateCash(settlementAmount);
+            BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
+
+            Payment payment = new Payment();
+            payment.setFrame(null);
+            payment.setUser(user);
+            payment.setAmount(cashAmount);
+            payment.setDiscount(discountAmount);
+            payment.setStatus(PaymentStatus.PAID);
+            payment.setPaymentMethod(paymentMethod);
+            payment.setPaymentTime(TimeUtil.nowIST());
+            paymentRepository.save(payment);
+
+            BigDecimal updatedDue = due.subtract(settlementAmount);
+            order.setTotalAmount(updatedDue);
+            order.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "UNPAID");
+            consumableOrderRepository.save(order);
+        }
+
+        if (!allocationState.isExhausted()) {
+            for (com.youngstersclub.app.entity.KidsPlaySession session : kidsPlayService.getUnpaidSessionsByDate(request.getUserId(), request.getDate())) {
+                if (allocationState.isExhausted()) break;
+                BigDecimal due = session.getTotalAmount();
+                if (due == null || due.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                BigDecimal settlementAmount = allocationState.getRemainingSettlement().min(due);
+                BigDecimal cashAmount = allocationState.allocateCash(settlementAmount);
+                BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
+
+                Payment payment = new Payment();
+                payment.setFrame(null);
+                payment.setUser(user);
+                payment.setAmount(cashAmount);
+                payment.setDiscount(discountAmount);
+                payment.setStatus(PaymentStatus.PAID);
+                payment.setPaymentMethod(paymentMethod);
+                payment.setPaymentTime(TimeUtil.nowIST());
+                paymentRepository.save(payment);
+
+                BigDecimal updatedDue = due.subtract(settlementAmount);
+                session.setTotalAmount(updatedDue);
+                session.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "UNPAID");
+            }
+        }
+    }
+
     private static final class AllocationState {
         private BigDecimal remainingCash;
         private BigDecimal remainingDiscount;

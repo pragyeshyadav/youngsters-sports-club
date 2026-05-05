@@ -17,6 +17,18 @@
 
         @if (isEarningsExpanded) {
           <div class="panel-body earnings-body">
+            <div class="earnings-filter-bar">
+              <label for="earnings-date">Select Date</label>
+              <input
+                id="earnings-date"
+                type="date"
+                [(ngModel)]="selectedEarningsDate"
+                [min]="minEarningsDate"
+                [max]="maxEarningsDate"
+                (change)="onEarningsDateChange()"
+              />
+            </div>
+
             @if (isLoadingEarnings) {
               <div class="spinner-container compact-spinner">
                 <div class="spinner" aria-label="Loading today's earnings"></div>
@@ -40,16 +52,16 @@
                 </div>
 
                 @if (todayEarnings.duePlayers.length === 0) {
-                  <p class="panel-message due-breakdown-empty">No pending payments for today's frames.</p>
+                  <p class="panel-message due-breakdown-empty">No pending payments found for the selected date.</p>
                 } @else {
                   <div class="due-player-list">
                     @for (player of todayEarnings.duePlayers; track player.name) {
-                      <div class="due-player-item">
+                      <button type="button" class="due-player-item clickable-row" (click)="openSettlementPopup(player)">
                         <div>
                           <span class="due-player-name">{{ player.name }}</span>
                         </div>
                         <strong class="text-red">₹{{ player.due ?? 0 }}</strong>
-                      </div>
+                      </button>
                     }
                   </div>
                 }
@@ -395,4 +407,77 @@
       💳 Settle Customer Payment
     </button>
   </div>
+
+  @if (showSettlementPopup) {
+    <div class="modal-backdrop" (click)="closeSettlementPopup()">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>💳 Settle Payment</h3>
+
+        <div class="modal-summary">
+          <p class="modal-total">Frame Due: ₹{{ settlementFrameDue }}</p>
+          <p class="modal-total">Consumable Due: ₹{{ settlementConsumableDue }}</p>
+          <p class="modal-total">Kids Play Due: ₹{{ settlementKidsDue }}</p>
+          <p class="modal-total modal-total--highlight">Total Due: ₹{{ settlementTotalDue }}</p>
+        </div>
+
+        <input
+          type="number"
+          [(ngModel)]="settleAmount"
+          placeholder="Enter amount"
+          min="1"
+          [max]="settlementTotalDue"
+        />
+
+        <input
+          type="number"
+          [(ngModel)]="discountAmount"
+          placeholder="Enter discount"
+          min="0"
+          [max]="getMaxDiscount()"
+        />
+
+        <select [(ngModel)]="paymentMode">
+          <option value="">Select Payment Mode</option>
+          <option value="CASH">Cash</option>
+          <option value="UPI">UPI</option>
+        </select>
+
+        <div class="settlement-preview">
+          <p class="preview-row">
+            <span>Paid Amount</span>
+            <strong>₹{{ settleAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Discount</span>
+            <strong>₹{{ discountAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row preview-row--highlight">
+            <span>Effective Settlement</span>
+            <strong>₹{{ getEffectiveSettlement() }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Remaining Due</span>
+            <strong>₹{{ getRemainingDue() }}</strong>
+          </p>
+        </div>
+
+        @if (settleAmount && settleAmount <= 0) {
+          <p class="validation-message">Paid amount must be greater than zero.</p>
+        } @else if ((discountAmount ?? 0) < 0) {
+          <p class="validation-message">Discount cannot be negative.</p>
+        } @else if ((discountAmount ?? 0) > getMaxDiscount()) {
+          <p class="validation-message">Discount cannot exceed 60% of total due.</p>
+        } @else if (getEffectiveSettlement() > settlementTotalDue) {
+          <p class="validation-message">Paid amount plus discount cannot exceed total due.</p>
+        }
+
+        <div class="modal-actions">
+          <button class="save-btn" [disabled]="!canSaveSettlement()" (click)="saveSettlement()">
+            {{ isSavingSettlement ? 'Saving...' : 'Save' }}
+          </button>
+          <button class="cancel-btn" (click)="closeSettlementPopup()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
 </div>
