@@ -67,6 +67,8 @@ interface ExistingFrameResponse {
   players: FramePlayerOption[];
 }
 
+type FrameGameMode = 'SINGLE' | 'TEAM';
+
 @Component({
   selector: 'app-start-frame',
   standalone: true,
@@ -90,8 +92,11 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   frameId: number | null = null;
   seconds = 0;
   showEndPopup = false;
+  gameMode: FrameGameMode = 'SINGLE';
   winnerId: number | null = null;
   looserId: number | null = null;
+  winnerIds: number[] = [];
+  loserIds: number[] = [];
   framePlayers: FramePlayerOption[] = [];
   billAmount: number | null = null;
   billDuration: number | null = null;
@@ -229,8 +234,11 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     }
 
     this.showEndPopup = true;
+    this.gameMode = 'SINGLE';
     this.winnerId = null;
     this.looserId = null;
+    this.winnerIds = [];
+    this.loserIds = [];
 
     if (
       this.selectedPlayers.length > 0 &&
@@ -255,8 +263,49 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     });
   }
 
+  get isTeamMatch(): boolean {
+    return this.canUseTeamMode && this.gameMode === 'TEAM';
+  }
+
+  get canUseTeamMode(): boolean {
+    return this.framePlayers.length === 4;
+  }
+
   canEndFrame(): boolean {
+    if (this.isTeamMatch) {
+      if (this.winnerIds.length !== 2 || this.loserIds.length !== 2) return false;
+      const allSelected = new Set([...this.winnerIds, ...this.loserIds]);
+      return allSelected.size === 4;
+    }
     return this.winnerId !== null && this.looserId !== null && this.winnerId !== this.looserId;
+  }
+
+  onGameModeChange(mode: FrameGameMode): void {
+    this.gameMode = mode;
+    this.winnerId = null;
+    this.looserId = null;
+    this.winnerIds = [];
+    this.loserIds = [];
+  }
+
+  toggleWinner(playerId: number | undefined | null): void {
+    if (!playerId) return;
+    if (this.winnerIds.includes(playerId)) {
+      this.winnerIds = this.winnerIds.filter(id => id !== playerId);
+    } else if (this.winnerIds.length < 2) {
+      this.winnerIds.push(playerId);
+      this.loserIds = this.loserIds.filter(id => id !== playerId);
+    }
+  }
+
+  toggleLoser(playerId: number | undefined | null): void {
+    if (!playerId) return;
+    if (this.loserIds.includes(playerId)) {
+      this.loserIds = this.loserIds.filter(id => id !== playerId);
+    } else if (this.loserIds.length < 2) {
+      this.loserIds.push(playerId);
+      this.winnerIds = this.winnerIds.filter(id => id !== playerId);
+    }
   }
 
   confirmEndFrame(): void {
@@ -266,11 +315,12 @@ export class StartFrameComponent implements OnInit, OnDestroy {
 
     this.isEndingFrame = true;
 
+    const payload = this.isTeamMatch
+      ? { mode: 'TEAM', winnerIds: this.winnerIds, loserIds: this.loserIds }
+      : { mode: 'SINGLE', winnerId: this.winnerId, looserId: this.looserId };
+
     this.http
-      .post<EndFrameResponse>(`/api/frame/end/${this.frameId}`, {
-        winnerId: this.winnerId,
-        looserId: this.looserId,
-      })
+      .post<EndFrameResponse>(`/api/frame/end/${this.frameId}`, payload)
       .subscribe({
         next: (res) => {
           this.clearTimer();
@@ -287,6 +337,9 @@ export class StartFrameComponent implements OnInit, OnDestroy {
           }
           this.winnerId = null;
           this.looserId = null;
+          this.winnerIds = [];
+          this.loserIds = [];
+          this.gameMode = 'SINGLE';
           this.isEndingFrame = false;
         },
         error: (err) => {

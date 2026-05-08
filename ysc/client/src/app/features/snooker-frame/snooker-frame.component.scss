@@ -332,6 +332,56 @@
   }
 }
 
+.team-match-notice {
+  background-color: rgba(20, 83, 45, 0.08);
+  padding: 0.75rem;
+  border-radius: 8px;
+  border-left: 4px solid #14532d;
+  margin-bottom: 1rem;
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .subtitle {
+    color: #64748b;
+    font-size: 0.8rem;
+    margin-top: 0.25rem;
+  }
+}
+
+.multi-select-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  background: #f8fafc;
+  padding: 0.75rem;
+  border-radius: 8px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  color: #0f172a;
+  cursor: pointer;
+  padding: 0.25rem 0;
+
+  &.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  input[type='checkbox'] {
+    width: 1.1rem;
+    height: 1.1rem;
+    cursor: inherit;
+  }
+}
+
 .modal-actions {
   display: flex;
   gap: 0.75rem;

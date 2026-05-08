@@ -20,9 +20,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -357,9 +359,12 @@ public class FrameService {
     }
 
     @Transactional
-    public Map<String, Object> endFrame(Integer frameId, Integer winnerId, Integer looserId) {
+    public Map<String, Object> endFrame(Integer frameId, com.youngstersclub.app.dto.EndFrameTeamRequest request) {
         if (frameId == null) {
             throw new IllegalArgumentException("Frame id is required");
+        }
+        if (request == null) {
+            throw new IllegalArgumentException("End frame details are required");
         }
 
         Frame frame = frameRepository.findById(frameId)
@@ -398,14 +403,107 @@ public class FrameService {
 
         BigDecimal totalAmount = effectiveRate.multiply(BigDecimal.valueOf(duration));
 
-        if (winnerId != null) {
-            User winner = userRepository.findById(winnerId).orElse(null);
-            frame.setWinner(winner);
+        List<Integer> winnerIds = request.getWinnerIds();
+        List<Integer> loserIds = request.getLoserIds();
+        Set<Integer> framePlayerIds = new HashSet<>();
+        for (FramePlayer framePlayer : framePlayers) {
+            if (framePlayer.getUser() != null && framePlayer.getUser().getId() != null) {
+                framePlayerIds.add(framePlayer.getUser().getId());
+            }
         }
 
-        if (looserId != null) {
-            User looser = userRepository.findById(looserId).orElse(null);
-            frame.setLooser(looser);
+        String requestedMode = request.getMode() == null ? "SINGLE" : request.getMode().trim().toUpperCase();
+        boolean canUseTeamMode = playerCount == 4;
+        boolean isTeamGame = "TEAM".equals(requestedMode);
+
+        if (!"SINGLE".equals(requestedMode) && !"TEAM".equals(requestedMode)) {
+            throw new IllegalArgumentException("Invalid game mode");
+        }
+
+        if (isTeamGame && !canUseTeamMode) {
+            throw new IllegalArgumentException("Team mode is only available for 4-player frames");
+        }
+
+        if (isTeamGame) {
+            if (winnerIds == null || loserIds == null || winnerIds.size() != 2 || loserIds.size() != 2) {
+                throw new IllegalArgumentException("Team mode requires exactly 2 winners and 2 losers");
+            }
+
+            Set<Integer> selectedIds = new HashSet<>();
+            selectedIds.addAll(winnerIds);
+            selectedIds.addAll(loserIds);
+
+            if (selectedIds.size() != 4) {
+                throw new IllegalArgumentException("Winners and losers must be unique in team mode");
+            }
+
+            if (!framePlayerIds.containsAll(selectedIds)) {
+                throw new IllegalArgumentException("Selected players do not belong to this frame");
+            }
+
+            BigDecimal splitAmount = totalAmount.divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
+            
+            for (FramePlayer fp : framePlayers) {
+                if (fp.getUser() != null) {
+                    if (winnerIds.contains(fp.getUser().getId())) {
+                        fp.setIsWinner(true);
+                        fp.setIsLoser(false);
+                        fp.setAmountDue(BigDecimal.ZERO);
+                        fp.setPaymentStatus(PaymentStatus.PAID);
+                    } else if (loserIds.contains(fp.getUser().getId())) {
+                        fp.setIsWinner(false);
+                        fp.setIsLoser(true);
+                        fp.setAmountDue(splitAmount);
+                        fp.setPaymentStatus(PaymentStatus.UNPAID);
+                    }
+                }
+                framePlayerRepository.save(fp);
+            }
+            
+            frame.setWinner(userRepository.findById(winnerIds.get(0)).orElse(null));
+            frame.setLooser(userRepository.findById(loserIds.get(0)).orElse(null));
+        } else {
+            Integer winnerId = request.getWinnerId();
+            Integer looserId = request.getLooserId();
+
+            if (winnerId == null || looserId == null) {
+                throw new IllegalArgumentException("Single mode requires exactly 1 winner and 1 loser");
+            }
+
+            if (winnerId.equals(looserId)) {
+                throw new IllegalArgumentException("Winner and loser must be different players");
+            }
+
+            if (!framePlayerIds.contains(winnerId) || !framePlayerIds.contains(looserId)) {
+                throw new IllegalArgumentException("Selected players do not belong to this frame");
+            }
+
+            if (winnerId != null) {
+                User winner = userRepository.findById(winnerId).orElse(null);
+                frame.setWinner(winner);
+            }
+
+            if (looserId != null) {
+                User looser = userRepository.findById(looserId).orElse(null);
+                frame.setLooser(looser);
+            }
+            
+            if (framePlayers != null) {
+                for (FramePlayer fp : framePlayers) {
+                    if (fp.getUser() != null && looserId != null && fp.getUser().getId().equals(looserId)) {
+                        fp.setIsWinner(false);
+                        fp.setIsLoser(true);
+                        fp.setAmountDue(totalAmount);
+                        fp.setPaymentStatus(PaymentStatus.UNPAID);
+                    } else if (fp.getUser() != null && winnerId != null && fp.getUser().getId().equals(winnerId)) {
+                        fp.setIsWinner(true);
+                        fp.setIsLoser(false);
+                        fp.setAmountDue(BigDecimal.ZERO);
+                        fp.setPaymentStatus(PaymentStatus.PAID);
+                    }
+                    framePlayerRepository.save(fp);
+                }
+            }
         }
 
         frame.setTotalAmount(totalAmount);

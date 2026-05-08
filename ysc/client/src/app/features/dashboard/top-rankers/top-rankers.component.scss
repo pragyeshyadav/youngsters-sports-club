@@ -121,6 +121,15 @@
       color: #9a3412;
     }
   }
+
+  &.rank-standard {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    border: 1px solid #dbe4ee;
+
+    .player-info strong {
+      color: #0f172a;
+    }
+  }
 }
 
 .rank-header {
@@ -151,6 +160,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
 
   strong {
     font-size: 1.05rem;
@@ -161,5 +171,25 @@
     font-size: 0.95rem;
     font-weight: 600;
     color: #64748b;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 640px) {
+  .panel-body {
+    padding: 1rem;
+  }
+
+  .rank-card {
+    padding: 0.95rem 1rem;
+  }
+
+  .player-info {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .wins {
+    white-space: normal;
   }
 }

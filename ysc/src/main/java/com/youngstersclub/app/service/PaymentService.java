@@ -25,18 +25,21 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
     private final KidsPlayService kidsPlayService;
+    private final com.youngstersclub.app.repository.FramePlayerRepository framePlayerRepository;
 
     public PaymentService(
             FrameRepository frameRepository,
             ConsumableOrderRepository consumableOrderRepository,
             PaymentRepository paymentRepository,
             UserRepository userRepository,
-            KidsPlayService kidsPlayService) {
+            KidsPlayService kidsPlayService,
+            com.youngstersclub.app.repository.FramePlayerRepository framePlayerRepository) {
         this.frameRepository = frameRepository;
         this.consumableOrderRepository = consumableOrderRepository;
         this.paymentRepository = paymentRepository;
         this.userRepository = userRepository;
         this.kidsPlayService = kidsPlayService;
+        this.framePlayerRepository = framePlayerRepository;
     }
 
     @Transactional
@@ -88,7 +91,16 @@ public class PaymentService {
                 break;
             }
 
-            BigDecimal due = frame.getPaymentDue();
+            com.youngstersclub.app.entity.FramePlayer userFp = null;
+            if (frame.getFramePlayers() != null) {
+                userFp = frame.getFramePlayers().stream()
+                        .filter(fp -> fp.getUser() != null && fp.getUser().getId().equals(request.getUserId()) && fp.getAmountDue() != null && fp.getAmountDue().compareTo(BigDecimal.ZERO) > 0)
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            BigDecimal due = userFp != null ? userFp.getAmountDue() : frame.getPaymentDue();
+
             if (due == null || due.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
@@ -107,12 +119,26 @@ public class PaymentService {
             payment.setPaymentTime(TimeUtil.nowIST());
             paymentRepository.save(payment);
 
-            BigDecimal updatedDue = due.subtract(settlementAmount);
-            frame.setPaymentDue(updatedDue);
-            frame.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0
-                    ? PaymentStatus.PAID
-                    : PaymentStatus.PARTIAL);
-            frameRepository.save(frame);
+            if (userFp != null) {
+                BigDecimal updatedDue = due.subtract(settlementAmount);
+                userFp.setAmountDue(updatedDue);
+                userFp.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL);
+                framePlayerRepository.save(userFp);
+                
+                if (frame.getPaymentDue() != null) {
+                    BigDecimal overallUpdated = frame.getPaymentDue().subtract(settlementAmount);
+                    frame.setPaymentDue(overallUpdated);
+                    frame.setPaymentStatus(overallUpdated.compareTo(BigDecimal.ZERO) <= 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL);
+                    frameRepository.save(frame);
+                }
+            } else {
+                BigDecimal updatedDue = due.subtract(settlementAmount);
+                frame.setPaymentDue(updatedDue);
+                frame.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0
+                        ? PaymentStatus.PAID
+                        : PaymentStatus.PARTIAL);
+                frameRepository.save(frame);
+            }
         }
 
         for (ConsumableOrder order : consumableOrders) {
@@ -201,7 +227,16 @@ public class PaymentService {
 
         for (Frame frame : frames) {
             if (allocationState.isExhausted()) break;
-            BigDecimal due = frame.getPaymentDue();
+
+            com.youngstersclub.app.entity.FramePlayer userFp = null;
+            if (frame.getFramePlayers() != null) {
+                userFp = frame.getFramePlayers().stream()
+                        .filter(fp -> fp.getUser() != null && fp.getUser().getId().equals(request.getUserId()) && fp.getAmountDue() != null && fp.getAmountDue().compareTo(BigDecimal.ZERO) > 0)
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            BigDecimal due = userFp != null ? userFp.getAmountDue() : frame.getPaymentDue();
             if (due == null || due.compareTo(BigDecimal.ZERO) <= 0) continue;
 
             BigDecimal settlementAmount = allocationState.getRemainingSettlement().min(due);
@@ -218,10 +253,24 @@ public class PaymentService {
             payment.setPaymentTime(TimeUtil.nowIST());
             paymentRepository.save(payment);
 
-            BigDecimal updatedDue = due.subtract(settlementAmount);
-            frame.setPaymentDue(updatedDue);
-            frame.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL);
-            frameRepository.save(frame);
+            if (userFp != null) {
+                BigDecimal updatedDue = due.subtract(settlementAmount);
+                userFp.setAmountDue(updatedDue);
+                userFp.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL);
+                framePlayerRepository.save(userFp);
+
+                if (frame.getPaymentDue() != null) {
+                    BigDecimal overallUpdated = frame.getPaymentDue().subtract(settlementAmount);
+                    frame.setPaymentDue(overallUpdated);
+                    frame.setPaymentStatus(overallUpdated.compareTo(BigDecimal.ZERO) <= 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL);
+                    frameRepository.save(frame);
+                }
+            } else {
+                BigDecimal updatedDue = due.subtract(settlementAmount);
+                frame.setPaymentDue(updatedDue);
+                frame.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? PaymentStatus.PAID : PaymentStatus.PARTIAL);
+                frameRepository.save(frame);
+            }
         }
 
         for (ConsumableOrder order : consumableOrders) {
