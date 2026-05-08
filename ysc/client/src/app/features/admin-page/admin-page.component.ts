@@ -16,9 +16,28 @@ interface AdminMonthlyEarnings {
   kidsZoneEarnings: number | string | null;
 }
 
+interface AdminUserAccess {
+  id: number;
+  role?: string;
+}
+
 interface SnookerBreakdownEntry {
   tableName: string;
   amount: number | string | null;
+}
+
+interface ConsumableItemOption {
+  id: number;
+  name: string;
+  price: number | string | null;
+}
+
+interface ConsumableStockReportRow {
+  itemId: number;
+  itemName: string;
+  stockAdded: number | string | null;
+  soldQuantity: number | string | null;
+  availableStock: number | string | null;
 }
 
 @Component({
@@ -36,11 +55,27 @@ export class AdminPageComponent implements OnInit {
   private readonly cdr = inject(ChangeDetectorRef);
 
   canViewAdminReport = false;
+  currentUserId: number | null = null;
+  isAddStockExpanded = false;
+  isConsumableReportExpanded = false;
   isMonthlyReportExpanded = false;
+  isLoadingStockItems = false;
+  isSavingStock = false;
+  isLoadingConsumableReport = false;
   isLoadingMonthlyReport = false;
   reportError = '';
+  stockError = '';
+  consumableReportError = '';
   selectedMonth = '';
   selectedYear = '';
+  selectedConsumableReportMonth = '';
+  selectedConsumableReportYear = '';
+  stockItemSearchText = '';
+  stockItems: ConsumableItemOption[] = [];
+  selectedStockItem: ConsumableItemOption | null = null;
+  selectedStockQuantity = 1;
+  stockQuantityOptions = Array.from({ length: 100 }, (_, index) => index + 1);
+  consumableStockReport: ConsumableStockReportRow[] = [];
   monthOptions = [
     { value: '01', label: 'January' },
     { value: '02', label: 'February' },
@@ -57,6 +92,7 @@ export class AdminPageComponent implements OnInit {
   ];
   yearOptions: string[] = [];
   snookerBreakdownEntries: SnookerBreakdownEntry[] = [];
+  private stockItemSearchRequestId = 0;
   monthlyEarnings: AdminMonthlyEarnings = {
     currentMonthTotal: 0,
     previousMonthTotal: 0,
@@ -70,6 +106,8 @@ export class AdminPageComponent implements OnInit {
     const today = new Date();
     this.selectedMonth = `${today.getMonth() + 1}`.padStart(2, '0');
     this.selectedYear = `${today.getFullYear()}`;
+    this.selectedConsumableReportMonth = this.selectedMonth;
+    this.selectedConsumableReportYear = this.selectedYear;
     this.yearOptions = [this.selectedYear, `${today.getFullYear() - 1}`];
 
     const email = this.auth.getSnapshot()?.user.email;
@@ -78,13 +116,15 @@ export class AdminPageComponent implements OnInit {
       return;
     }
 
-    this.http.get<{ role?: string }>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
+    this.http.get<AdminUserAccess>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
+        this.currentUserId = user?.id ?? null;
         this.canViewAdminReport = ['ADMIN', 'SUPER_ADMIN'].includes(user?.role ?? '');
         this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load admin access', err);
+        this.currentUserId = null;
         this.canViewAdminReport = false;
         this.cdr.markForCheck();
       },
@@ -106,11 +146,144 @@ export class AdminPageComponent implements OnInit {
     }
   }
 
+  toggleAddStockPanel(): void {
+    if (!this.canViewAdminReport) {
+      return;
+    }
+    this.isAddStockExpanded = !this.isAddStockExpanded;
+    this.cdr.markForCheck();
+  }
+
+  toggleConsumableReport(): void {
+    if (!this.canViewAdminReport) {
+      return;
+    }
+    this.isConsumableReportExpanded = !this.isConsumableReportExpanded;
+    if (this.isConsumableReportExpanded) {
+      this.loadConsumableReport();
+    } else {
+      this.cdr.markForCheck();
+    }
+  }
+
   onFilterChange(): void {
     if (!this.isMonthlyReportExpanded) {
       return;
     }
     this.loadMonthlyReport();
+  }
+
+  onConsumableReportFilterChange(): void {
+    if (!this.isConsumableReportExpanded) {
+      return;
+    }
+    this.loadConsumableReport();
+  }
+
+  searchStockItems(): void {
+    const query = this.stockItemSearchText.trim();
+    const requestId = ++this.stockItemSearchRequestId;
+
+    if (query.length < 3) {
+      this.stockItems = [];
+      this.isLoadingStockItems = false;
+      if (!this.selectedStockItem || this.selectedStockItem.name !== this.stockItemSearchText) {
+        this.selectedStockItem = null;
+      }
+      this.cdr.markForCheck();
+      return;
+    }
+
+    if (this.selectedStockItem && this.selectedStockItem.name !== query) {
+      this.selectedStockItem = null;
+    }
+
+    this.isLoadingStockItems = true;
+    this.stockError = '';
+    this.cdr.markForCheck();
+
+    this.http.get<ConsumableItemOption[]>(`/api/consumables/items/search?query=${encodeURIComponent(query)}`).subscribe({
+      next: (items) => {
+        if (requestId !== this.stockItemSearchRequestId) {
+          return;
+        }
+        this.stockItems = items;
+        this.isLoadingStockItems = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        if (requestId !== this.stockItemSearchRequestId) {
+          return;
+        }
+        console.error('Failed to search stock items', err);
+        this.stockItems = [];
+        this.isLoadingStockItems = false;
+        this.stockError = 'Unable to search consumable items right now';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  selectStockItem(item: ConsumableItemOption): void {
+    this.selectedStockItem = item;
+    this.stockItemSearchText = item.name;
+    this.stockItems = [];
+    this.isLoadingStockItems = false;
+    this.stockItemSearchRequestId++;
+    this.cdr.markForCheck();
+  }
+
+  canSaveStock(): boolean {
+    return !!this.currentUserId && !!this.selectedStockItem && this.selectedStockQuantity > 0 && !this.isSavingStock;
+  }
+
+  saveStock(): void {
+    if (!this.canSaveStock() || !this.selectedStockItem || !this.currentUserId) {
+      return;
+    }
+
+    this.isSavingStock = true;
+    this.stockError = '';
+    this.cdr.markForCheck();
+
+    this.http.post<{ message?: string }>('/api/admin/consumables/stock', {
+      itemId: this.selectedStockItem.id,
+      quantityAdded: this.selectedStockQuantity,
+      addedBy: this.currentUserId,
+    }).subscribe({
+      next: (response) => {
+        this.stockItemSearchText = '';
+        this.stockItems = [];
+        this.selectedStockItem = null;
+        this.selectedStockQuantity = 1;
+        this.isLoadingStockItems = false;
+        this.isSavingStock = false;
+        this.stockItemSearchRequestId++;
+        if (this.isConsumableReportExpanded) {
+          this.loadConsumableReport();
+        } else {
+          this.cdr.detectChanges();
+        }
+        alert(response?.message || 'Stock added successfully');
+      },
+      error: (err) => {
+        console.error('Failed to save stock', err);
+        this.stockError = err?.error?.message || 'Unable to add stock right now';
+        this.isSavingStock = false;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  getStockStateClass(availableStock: number | string | null): string {
+    const stock = this.toNumber(availableStock);
+    if (stock < 0) {
+      return 'stock-negative';
+    }
+    if (stock < 10) {
+      return 'stock-low';
+    }
+    return 'stock-positive';
   }
 
   private loadMonthlyReport(): void {
@@ -151,5 +324,37 @@ export class AdminPageComponent implements OnInit {
         this.cdr.markForCheck();
       },
     });
+  }
+
+  private loadConsumableReport(): void {
+    this.isLoadingConsumableReport = true;
+    this.consumableReportError = '';
+    this.cdr.markForCheck();
+
+    this.http.get<ConsumableStockReportRow[]>(
+      `/api/admin/consumables/stock-report?month=${this.selectedConsumableReportMonth}&year=${this.selectedConsumableReportYear}`,
+    ).subscribe({
+      next: (report) => {
+        this.consumableStockReport = report ?? [];
+        this.isLoadingConsumableReport = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load consumable stock report', err);
+        this.consumableStockReport = [];
+        this.consumableReportError = err?.error?.message || 'Unable to load consumable stock report right now';
+        this.isLoadingConsumableReport = false;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  private toNumber(value: number | string | null): number {
+    if (value === null || value === undefined || value === '') {
+      return 0;
+    }
+
+    const parsed = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 }
