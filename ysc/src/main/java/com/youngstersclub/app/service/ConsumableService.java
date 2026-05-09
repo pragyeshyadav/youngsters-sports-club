@@ -5,13 +5,19 @@ import com.youngstersclub.app.dto.ConsumableHistoryRowDto;
 import com.youngstersclub.app.dto.ConsumableItemOptionDto;
 import com.youngstersclub.app.dto.ConsumableOrderCreateRequest;
 import com.youngstersclub.app.dto.ConsumableOrderResponseDto;
+import com.youngstersclub.app.dto.ConsumableStockCreateRequest;
+import com.youngstersclub.app.dto.ConsumableStockCreateResponseDto;
+import com.youngstersclub.app.dto.ConsumableStockReportRowDto;
 import com.youngstersclub.app.entity.ConsumableItem;
+import com.youngstersclub.app.entity.ConsumableItemStock;
 import com.youngstersclub.app.entity.ConsumableOrder;
 import com.youngstersclub.app.entity.ConsumableOrderItem;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.repository.ConsumableItemRepository;
+import com.youngstersclub.app.repository.ConsumableItemStockRepository;
 import com.youngstersclub.app.repository.ConsumableOrderRepository;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -24,14 +30,17 @@ import org.springframework.stereotype.Service;
 public class ConsumableService {
 
     private final ConsumableItemRepository consumableItemRepository;
+    private final ConsumableItemStockRepository consumableItemStockRepository;
     private final ConsumableOrderRepository consumableOrderRepository;
     private final UserRepository userRepository;
 
     public ConsumableService(
             ConsumableItemRepository consumableItemRepository,
+            ConsumableItemStockRepository consumableItemStockRepository,
             ConsumableOrderRepository consumableOrderRepository,
             UserRepository userRepository) {
         this.consumableItemRepository = consumableItemRepository;
+        this.consumableItemStockRepository = consumableItemStockRepository;
         this.consumableOrderRepository = consumableOrderRepository;
         this.userRepository = userRepository;
     }
@@ -106,6 +115,45 @@ public class ConsumableService {
         return new ConsumableOrderResponseDto(savedOrder.getId(), totalAmount);
     }
 
+    @Transactional
+    public ConsumableStockCreateResponseDto addStock(ConsumableStockCreateRequest request) {
+        if (request == null || request.getItemId() == null) {
+            throw new IllegalArgumentException("Consumable item is required");
+        }
+        if (request.getQuantityAdded() == null || request.getQuantityAdded() <= 0) {
+            throw new IllegalArgumentException("Quantity must be greater than zero");
+        }
+        if (request.getAddedBy() == null) {
+            throw new IllegalArgumentException("Added by user is required");
+        }
+
+        ConsumableItem item = consumableItemRepository.findById(request.getItemId())
+                .orElseThrow(() -> new IllegalArgumentException("Consumable item not found"));
+        User addedBy = userRepository.findById(request.getAddedBy())
+                .orElseThrow(() -> new IllegalArgumentException("Added by user not found"));
+
+        ConsumableItemStock stock = new ConsumableItemStock();
+        stock.setItem(item);
+        stock.setQuantityAdded(request.getQuantityAdded());
+        stock.setAddedBy(addedBy);
+
+        ConsumableItemStock savedStock = consumableItemStockRepository.save(stock);
+        return new ConsumableStockCreateResponseDto(savedStock.getId(), "Stock added successfully");
+    }
+
+    public List<ConsumableStockReportRowDto> getStockReport(int month, int year) {
+        validateMonthYear(month, year);
+
+        return consumableItemRepository.getConsumableStockReport(month, year).stream()
+                .map(row -> new ConsumableStockReportRowDto(
+                        row.getItemId(),
+                        row.getItemName(),
+                        row.getStockAdded() == null ? 0L : row.getStockAdded(),
+                        row.getSoldQuantity() == null ? 0L : row.getSoldQuantity(),
+                        row.getAvailableStock() == null ? 0L : row.getAvailableStock()))
+                .toList();
+    }
+
     public BigDecimal getConsumableDue(Integer userId) {
         if (userId == null) {
             return BigDecimal.ZERO;
@@ -158,5 +206,16 @@ public class ConsumableService {
                         row.getAmount(),
                         row.getPaymentStatus()))
                 .toList();
+    }
+
+    private void validateMonthYear(int month, int year) {
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("Month must be between 1 and 12");
+        }
+
+        int currentYear = TimeUtil.nowIST().getYear();
+        if (year < currentYear - 1 || year > currentYear) {
+            throw new IllegalArgumentException("Year must be current year or previous year");
+        }
     }
 }

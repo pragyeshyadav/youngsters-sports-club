@@ -107,27 +107,76 @@
       <div class="modal" (click)="$event.stopPropagation()">
         <h3>Select Winner &amp; Loser</h3>
 
-        <label for="winner-select">Winner</label>
-        <select id="winner-select" [(ngModel)]="winnerId">
-          <option [ngValue]="null">Select Winner</option>
-          @for (player of framePlayers; track player.id) {
-            <option [ngValue]="player.userId">{{ player.playerName }}</option>
-          }
-        </select>
+        @if (canUseTeamMode) {
+          <label for="game-mode-select">Game Mode</label>
+          <select id="game-mode-select" [ngModel]="gameMode" (ngModelChange)="onGameModeChange($event)">
+            <option value="SINGLE">Single</option>
+            <option value="TEAM">Team</option>
+          </select>
+        }
 
-        <label for="looser-select">Loser</label>
-        <select id="looser-select" [(ngModel)]="looserId">
-          <option [ngValue]="null">Select Loser</option>
-          @for (player of framePlayers; track player.id) {
-            <option [ngValue]="player.userId">{{ player.playerName }}</option>
-          }
-        </select>
+        @if (isTeamMatch) {
+          <div class="team-match-notice">
+            <p><strong>Team Match (2 vs 2)</strong></p>
+            <p class="subtitle">Select exactly 2 winners and 2 losers.</p>
+          </div>
+
+          <label>Winners (Select 2)</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id) {
+              <label class="checkbox-label" [class.disabled]="winnerIds.length >= 2 && !winnerIds.includes($any(player.userId))">
+                <input
+                  type="checkbox"
+                  [checked]="winnerIds.includes($any(player.userId))"
+                  [disabled]="(winnerIds.length >= 2 && !winnerIds.includes($any(player.userId))) || loserIds.includes($any(player.userId))"
+                  (change)="toggleWinner(player.userId)"
+                />
+                {{ player.playerName }}
+              </label>
+            }
+          </div>
+
+          <label>Losers (Select 2)</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id) {
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= 2 && !loserIds.includes($any(player.userId))">
+                <input
+                  type="checkbox"
+                  [checked]="loserIds.includes($any(player.userId))"
+                  [disabled]="(loserIds.length >= 2 && !loserIds.includes($any(player.userId))) || winnerIds.includes($any(player.userId))"
+                  (change)="toggleLoser(player.userId)"
+                />
+                {{ player.playerName }}
+              </label>
+            }
+          </div>
+        } @else {
+          <label for="winner-select">Winner</label>
+          <select id="winner-select" [(ngModel)]="winnerId">
+            <option [ngValue]="null">Select Winner</option>
+            @for (player of framePlayers; track player.id) {
+              <option [ngValue]="player.userId">{{ player.playerName }}</option>
+            }
+          </select>
+
+          <label for="looser-select">Loser</label>
+          <select id="looser-select" [(ngModel)]="looserId">
+            <option [ngValue]="null">Select Loser</option>
+            @for (player of framePlayers; track player.id) {
+              <option [ngValue]="player.userId">{{ player.playerName }}</option>
+            }
+          </select>
+        }
 
         <div class="modal-actions">
-          <button class="confirm-btn" [disabled]="!canEndFrame()" (click)="confirmEndFrame()">
-            Confirm End Frame
+          <button class="confirm-btn" [disabled]="!canEndFrame() || isEndingFrame" (click)="confirmEndFrame()">
+            @if (isEndingFrame) {
+              <span>Ending Frame...</span>
+            } @else {
+              <span>Confirm End Frame</span>
+            }
           </button>
-          <button class="cancel-btn" (click)="closeEndPopup()">Cancel</button>
+          <button class="cancel-btn" [disabled]="isEndingFrame" (click)="closeEndPopup()">Cancel</button>
         </div>
       </div>
     </div>
