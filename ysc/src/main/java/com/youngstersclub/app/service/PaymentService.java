@@ -1,6 +1,7 @@
 package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.PaymentRequest;
+import com.youngstersclub.app.dto.UserPaymentSummaryDto;
 import com.youngstersclub.app.entity.ConsumableOrder;
 import com.youngstersclub.app.entity.Frame;
 import com.youngstersclub.app.entity.Payment;
@@ -15,10 +16,16 @@ import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class PaymentService {
+
+    private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
     private final FrameRepository frameRepository;
     private final ConsumableOrderRepository consumableOrderRepository;
@@ -26,6 +33,8 @@ public class PaymentService {
     private final UserRepository userRepository;
     private final KidsPlayService kidsPlayService;
     private final com.youngstersclub.app.repository.FramePlayerRepository framePlayerRepository;
+    private final UserPaymentSummaryService userPaymentSummaryService;
+    private final WhatsAppService whatsAppService;
 
     public PaymentService(
             FrameRepository frameRepository,
@@ -33,13 +42,17 @@ public class PaymentService {
             PaymentRepository paymentRepository,
             UserRepository userRepository,
             KidsPlayService kidsPlayService,
-            com.youngstersclub.app.repository.FramePlayerRepository framePlayerRepository) {
+            com.youngstersclub.app.repository.FramePlayerRepository framePlayerRepository,
+            UserPaymentSummaryService userPaymentSummaryService,
+            WhatsAppService whatsAppService) {
         this.frameRepository = frameRepository;
         this.consumableOrderRepository = consumableOrderRepository;
         this.paymentRepository = paymentRepository;
         this.userRepository = userRepository;
         this.kidsPlayService = kidsPlayService;
         this.framePlayerRepository = framePlayerRepository;
+        this.userPaymentSummaryService = userPaymentSummaryService;
+        this.whatsAppService = whatsAppService;
     }
 
     @Transactional
@@ -179,6 +192,8 @@ public class PaymentService {
                     user,
                     paymentMethod);
         }
+
+        registerPaymentSettlementNotification(user, request.getAmount(), discount);
     }
 
     @Transactional
@@ -322,6 +337,32 @@ public class PaymentService {
                 session.setTotalAmount(updatedDue);
                 session.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "UNPAID");
             }
+        }
+
+        registerPaymentSettlementNotification(user, request.getPaidAmount(), discount);
+    }
+
+    private void registerPaymentSettlementNotification(User user, BigDecimal paidAmount, BigDecimal discountAmount) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            triggerPaymentSettlementNotification(user, paidAmount, discountAmount);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                triggerPaymentSettlementNotification(user, paidAmount, discountAmount);
+            }
+        });
+    }
+
+    private void triggerPaymentSettlementNotification(User user, BigDecimal paidAmount, BigDecimal discountAmount) {
+        try {
+            UserPaymentSummaryDto summary = userPaymentSummaryService.getPaymentSummary(user.getId());
+            BigDecimal remainingDue = summary == null ? BigDecimal.ZERO : summary.getTotalDue();
+            whatsAppService.sendPaymentSettlementMessage(user, paidAmount, discountAmount, remainingDue);
+        } catch (Exception ex) {
+            log.warn("WhatsApp settlement notification failed for userId: {}. Reason: {}", user.getId(), ex.getMessage());
         }
     }
 
