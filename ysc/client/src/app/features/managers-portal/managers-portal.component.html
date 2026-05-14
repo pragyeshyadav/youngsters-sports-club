@@ -66,6 +66,28 @@
                   </div>
                 }
               </div>
+
+              <div class="settled-payments-card">
+                <div class="due-breakdown-header">
+                  <span>💰 Settled Payments</span>
+                </div>
+
+                @if (todayEarnings.settledPayments.length === 0) {
+                  <p class="panel-message due-breakdown-empty">No settled payments for selected date.</p>
+                } @else {
+                  <div class="settled-payment-list">
+                    @for (payment of todayEarnings.settledPayments; track payment.userName + '-' + payment.date + '-' + payment.paidAmount) {
+                      <div class="settled-payment-item">
+                        <div class="settled-payment-copy">
+                          <span class="due-player-name">{{ payment.userName }}</span>
+                          <span class="settled-payment-discount">Discount: ₹{{ payment.discount ?? 0 }}</span>
+                        </div>
+                        <strong class="text-green">₹{{ payment.paidAmount ?? 0 }}</strong>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
             }
           </div>
         }

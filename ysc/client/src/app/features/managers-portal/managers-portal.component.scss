@@ -261,7 +261,8 @@
 }
 
 .earnings-metric,
-.due-breakdown-card {
+.due-breakdown-card,
+.settled-payments-card {
   background: #ffffff;
   border-radius: 1rem;
   padding: 1rem;
@@ -312,6 +313,35 @@
   border-radius: 0.85rem;
   background: #fff7f7;
   border: 1px solid #fecaca;
+}
+
+.settled-payment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.settled-payment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.85rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+.settled-payment-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.settled-payment-discount {
+  color: #16a34a;
+  font-size: 0.88rem;
+  font-weight: 600;
 }
 
 .due-player-name {

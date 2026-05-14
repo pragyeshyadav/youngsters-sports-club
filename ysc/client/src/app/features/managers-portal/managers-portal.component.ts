@@ -45,6 +45,14 @@ interface TodayEarnings {
   totalEarnings: number | string | null;
   totalDue: number | string | null;
   duePlayers: DuePlayer[];
+  settledPayments: SettledPayment[];
+}
+
+interface SettledPayment {
+  userName: string;
+  paidAmount: number | string | null;
+  discount: number | string | null;
+  date: string;
 }
 
 interface MessageResponse {
@@ -85,6 +93,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     totalEarnings: 0,
     totalDue: 0,
     duePlayers: [],
+    settledPayments: [],
   };
   isAddCustomerExpanded = false;
   isSavingCustomer = false;
@@ -164,6 +173,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
           totalEarnings: earnings?.totalEarnings ?? 0,
           totalDue: earnings?.totalDue ?? 0,
           duePlayers: earnings?.duePlayers ?? [],
+          settledPayments: earnings?.settledPayments ?? [],
         };
         this.hasLoadedEarnings = true;
         this.isLoadingEarnings = false;
@@ -174,6 +184,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
           totalEarnings: 0,
           totalDue: 0,
           duePlayers: [],
+          settledPayments: [],
         };
         this.hasLoadedEarnings = false;
         this.isLoadingEarnings = false;
@@ -195,6 +206,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
           totalEarnings: earnings?.totalEarnings ?? 0,
           totalDue: earnings?.totalDue ?? 0,
           duePlayers: earnings?.duePlayers ?? [],
+          settledPayments: earnings?.settledPayments ?? [],
         };
         this.hasLoadedEarnings = true;
         this.isLoadingEarnings = false;
@@ -205,6 +217,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
           totalEarnings: 0,
           totalDue: 0,
           duePlayers: [],
+          settledPayments: [],
         };
         this.hasLoadedEarnings = false;
         this.isLoadingEarnings = false;
