@@ -22,7 +22,7 @@ public class WhatsAppService {
     private static final String WHATSAPP_API_BASE_URL = "https://graph.facebook.com/v17.0/";
     private static final String PAYMENT_TEMPLATE_NAME = "payment_settled_successfully";
     private static final String PAYMENT_TEMPLATE_LANGUAGE_CODE = "en";
-    private static final String DAILY_VISIT_TEMPLATE_NAME = "daily_visit_thank_you";
+    private static final String DAILY_VISIT_TEMPLATE_NAME = "daily_visit_thanks_message";
     private static final String DAILY_VISIT_TEMPLATE_LANGUAGE_CODE = "en";
 
     private final RestTemplate restTemplate = new RestTemplate();
