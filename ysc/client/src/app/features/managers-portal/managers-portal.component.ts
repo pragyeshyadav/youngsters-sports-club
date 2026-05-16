@@ -385,7 +385,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.isSearchingChildParent = true;
     this.http.get<CustomerSearchResult[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
       next: (users) => {
-        this.childParentResults = (users ?? []).filter((user) => (user.role ?? '') === 'CUSTOMER');
+        this.childParentResults = this.mapSearchResults(users, query);
         this.isSearchingChildParent = false;
       },
       error: (err) => {
@@ -465,7 +465,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.isSearchingUpdateCustomers = true;
     this.http.get<CustomerSearchResult[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
       next: (users) => {
-        this.updateCustomerResults = (users ?? []).filter((user) => (user.role ?? '') === 'CUSTOMER');
+        this.updateCustomerResults = this.mapSearchResults(users, query);
         this.isSearchingUpdateCustomers = false;
       },
       error: (err) => {
@@ -779,6 +779,14 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       name: '',
       dateOfBirth: '',
     };
+  }
+
+  private mapSearchResults(users: CustomerSearchResult[] | null | undefined, query: string): CustomerSearchResult[] {
+    const normalizedQuery = query.trim().toLowerCase();
+    return (users ?? []).filter((user) => {
+      const name = (user?.name ?? '').trim().toLowerCase();
+      return !!name && (!normalizedQuery || name.includes(normalizedQuery));
+    });
   }
 
   private clearSelectedUpdateCustomer(): void {

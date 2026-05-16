@@ -6,6 +6,7 @@ import { Router } from '@angular/router';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 import { AuthService } from '../../core/services/auth.service';
+import { TriggerWhatsappPanelComponent } from '../../shared/components/trigger-whatsapp-panel/trigger-whatsapp-panel.component';
 
 interface AdminMonthlyEarnings {
   currentMonthTotal: number | string | null;
@@ -43,7 +44,7 @@ interface ConsumableStockReportRow {
 @Component({
   selector: 'app-admin-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, TriggerWhatsappPanelComponent],
   templateUrl: './admin-page.component.html',
   styleUrl: './admin-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

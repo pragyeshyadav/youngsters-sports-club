@@ -9,12 +9,14 @@ import org.springframework.context.ApplicationListener;
 import org.springframework.core.env.Environment;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EntityScan(basePackages = "com.youngstersclub.app.entity")
 @EnableJpaRepositories(basePackages = "com.youngstersclub.app.repository")
 @EnableScheduling
+@EnableAsync
 public class YoungstersSportsClubApplication {
 
   private static final Logger log = LoggerFactory.getLogger(YoungstersSportsClubApplication.class);
