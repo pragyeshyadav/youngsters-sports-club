@@ -425,6 +425,218 @@
       }
     </div>
 
+    <div class="portal-panel add-child-panel">
+      <button type="button" class="panel-header add-child-header" (click)="toggleAddChild()">
+        <span>👧 Add Child</span>
+        <span class="panel-chevron">{{ isAddChildExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isAddChildExpanded) {
+        <div class="panel-body add-customer-body">
+          <div class="customer-form-card">
+            <div class="customer-field customer-search-field">
+              <label for="child-parent-search">Search Parent</label>
+              <input
+                id="child-parent-search"
+                type="text"
+                [(ngModel)]="childParentSearch"
+                (ngModelChange)="onChildParentSearchInput()"
+                placeholder="Search parent by name (min 3 characters)"
+                autocomplete="off"
+              />
+
+              @if (isSearchingChildParent) {
+                <div class="customer-search-status">Searching parents...</div>
+              } @else if (childParentSearch.trim().length >= 3 && childParentResults.length > 0) {
+                <div class="customer-search-results">
+                  @for (parent of childParentResults; track parent.id) {
+                    <button type="button" class="customer-search-result" (click)="selectChildParent(parent)">
+                      <span class="customer-search-name">{{ parent.name }}</span>
+                      <span class="customer-search-meta">{{ parent.email || 'No email' }}</span>
+                    </button>
+                  }
+                </div>
+              } @else if (childParentSearch.trim().length >= 3 && !selectedChildParent) {
+                <div class="customer-search-status">No parents found.</div>
+              }
+            </div>
+
+            @if (selectedChildParent) {
+              <div class="selected-customer-banner">
+                <strong>Selected Parent: {{ selectedChildParent.name }}</strong>
+                <button type="button" class="clear-inline-btn" (click)="clearSelectedChildParent()">Clear</button>
+              </div>
+
+              @if (isLoadingParentChildren) {
+                <div class="spinner-container compact-spinner">
+                  <div class="spinner" aria-label="Loading children"></div>
+                </div>
+              } @else if (parentChildren.length === 0) {
+                <p class="panel-message update-customer-empty">No children added yet.</p>
+              } @else {
+                <div class="existing-children-list">
+                  @for (child of parentChildren; track child.id) {
+                    <div class="existing-child-item">
+                      <div>
+                        <strong>{{ child.name }}</strong>
+                        <span>{{ child.dateOfBirth ? (child.dateOfBirth | date: 'd MMM y') : 'DOB not added' }}</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <div class="customer-form-grid child-form-grid">
+                <div class="customer-field">
+                  <label for="manager-child-name">Child Name</label>
+                  <input
+                    id="manager-child-name"
+                    type="text"
+                    [(ngModel)]="childForm.name"
+                    placeholder="Enter child name"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div class="customer-field">
+                  <label for="manager-child-dob">Date of Birth</label>
+                  <input
+                    id="manager-child-dob"
+                    type="date"
+                    [(ngModel)]="childForm.dateOfBirth"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+
+              @if (!childForm.name.trim()) {
+                <p class="customer-validation-message">Parent and child name are required.</p>
+              }
+
+              <button
+                type="button"
+                class="save-customer-btn add-child-save-btn"
+                [disabled]="!isChildFormValid()"
+                (click)="saveChild()">
+                {{ isSavingChild ? 'Saving Child...' : 'Save Child' }}
+              </button>
+            } @else {
+              <p class="panel-message update-customer-empty">Select a parent to add and view children.</p>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    <div class="portal-panel update-customer-panel">
+      <button type="button" class="panel-header update-customer-header" (click)="toggleUpdateCustomer()">
+        <span>📝 Update Customer</span>
+        <span class="panel-chevron">{{ isUpdateCustomerExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isUpdateCustomerExpanded) {
+        <div class="panel-body add-customer-body">
+          <div class="customer-form-card">
+            <div class="customer-field customer-search-field">
+              <label for="update-customer-search">Search Customer</label>
+              <input
+                id="update-customer-search"
+                type="text"
+                [(ngModel)]="updateCustomerSearch"
+                (ngModelChange)="onUpdateCustomerSearchInput()"
+                placeholder="Search customer by name (min 3 characters)"
+                autocomplete="off"
+              />
+
+              @if (isSearchingUpdateCustomers) {
+                <div class="customer-search-status">Searching customers...</div>
+              } @else if (updateCustomerSearch.trim().length >= 3 && updateCustomerResults.length > 0) {
+                <div class="customer-search-results">
+                  @for (customer of updateCustomerResults; track customer.id) {
+                    <button type="button" class="customer-search-result" (click)="selectUpdateCustomer(customer)">
+                      <span class="customer-search-name">{{ customer.name }}</span>
+                      <span class="customer-search-meta">{{ customer.email || 'No email' }}</span>
+                    </button>
+                  }
+                </div>
+              } @else if (updateCustomerSearch.trim().length >= 3 && !selectedUpdateCustomer) {
+                <div class="customer-search-status">No customers found.</div>
+              }
+            </div>
+
+            @if (selectedUpdateCustomer) {
+              <div class="selected-customer-banner">
+                <strong>{{ selectedUpdateCustomer.name }}</strong>
+                <span>{{ isManualUpdateCustomer() ? 'Manual customer' : 'Google customer' }}</span>
+              </div>
+
+              <div class="customer-form-grid">
+                <div class="customer-field">
+                  <label for="update-customer-name">Name</label>
+                  <input
+                    id="update-customer-name"
+                    type="text"
+                    [(ngModel)]="updateCustomerForm.name"
+                    placeholder="Enter customer name"
+                    [disabled]="!isManualUpdateCustomer()"
+                    [class.readonly-field]="!isManualUpdateCustomer()"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div class="customer-field">
+                  <label for="update-customer-email">Email</label>
+                  <input
+                    id="update-customer-email"
+                    type="email"
+                    [(ngModel)]="updateCustomerForm.email"
+                    placeholder="Email (Optional)"
+                    [disabled]="!isManualUpdateCustomer()"
+                    [class.readonly-field]="!isManualUpdateCustomer()"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div class="customer-field">
+                  <label for="update-customer-phone">Phone Number</label>
+                  <input
+                    id="update-customer-phone"
+                    type="text"
+                    [ngModel]="updateCustomerForm.phone"
+                    (ngModelChange)="updateCustomerForm.phone = $event"
+                    (input)="onUpdateCustomerPhoneInput($event)"
+                    placeholder="Enter 10 digit phone number"
+                    autocomplete="off"
+                    maxlength="10"
+                  />
+                </div>
+              </div>
+
+              @if (hasUpdateCustomerMissingFields()) {
+                <p class="customer-validation-message">
+                  {{ isManualUpdateCustomer() ? 'Name and phone number are required.' : 'Phone number is required.' }}
+                </p>
+              } @else if (hasUpdateCustomerEmailError()) {
+                <p class="customer-validation-message">Enter a valid email address.</p>
+              } @else if (hasUpdateCustomerPhoneError()) {
+                <p class="customer-validation-message">Phone number must be exactly 10 digits.</p>
+              }
+
+              <button
+                type="button"
+                class="save-customer-btn"
+                [disabled]="!isUpdateCustomerFormValid()"
+                (click)="updateCustomer()">
+                {{ isUpdatingCustomer ? 'Updating Customer...' : 'Update Customer' }}
+              </button>
+            } @else {
+              <p class="panel-message update-customer-empty">Select a customer to update their details.</p>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
     <button type="button" class="settle-btn" (click)="goToSettlement()">
       💳 Settle Customer Payment
     </button>

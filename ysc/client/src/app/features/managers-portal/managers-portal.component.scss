@@ -69,6 +69,14 @@
   background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 45%, #38bdf8 100%);
 }
 
+.add-child-header {
+  background: linear-gradient(135deg, #0f766e 0%, #14b8a6 48%, #5eead4 100%);
+}
+
+.update-customer-header {
+  background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 48%, #a78bfa 100%);
+}
+
 .panel-chevron {
   font-size: 0.95rem;
 }
@@ -434,6 +442,128 @@
   }
 }
 
+.customer-search-field {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.customer-search-status {
+  margin-top: 0.65rem;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.customer-search-results {
+  margin-top: 0.65rem;
+  border: 1px solid #dbe4ee;
+  border-radius: 0.9rem;
+  background: white;
+  overflow: hidden;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.customer-search-result {
+  width: 100%;
+  border: none;
+  background: white;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+
+  & + & {
+    border-top: 1px solid #e2e8f0;
+  }
+
+  &:hover {
+    background: #f8fafc;
+  }
+}
+
+.customer-search-name {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.customer-search-meta {
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.selected-customer-banner {
+  margin-bottom: 1rem;
+  padding: 0.95rem 1rem;
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.12) 0%, rgba(167, 139, 250, 0.2) 100%);
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+
+  strong {
+    color: #1e293b;
+  }
+
+  span {
+    color: #6d28d9;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+}
+
+.clear-inline-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.85);
+  color: #6d28d9;
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.existing-children-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.existing-child-item {
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+  border: 1px solid #dbe4ee;
+
+  strong,
+  span {
+    display: block;
+  }
+
+  strong {
+    color: #0f172a;
+    margin-bottom: 0.2rem;
+  }
+
+  span {
+    color: #64748b;
+    font-size: 0.9rem;
+  }
+}
+
+.child-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.readonly-field,
+.customer-field input:disabled {
+  background: #e2e8f0 !important;
+  color: #64748b !important;
+  cursor: not-allowed;
+}
+
 .customer-validation-message {
   margin: 0.85rem 0 0;
   color: #b91c1c;
@@ -458,6 +588,10 @@
     background: #94a3b8;
     cursor: not-allowed;
   }
+}
+
+.update-customer-empty {
+  padding: 0.5rem 0 0;
 }
 
 .completed-table {
@@ -529,6 +663,15 @@
 
   .customer-form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .child-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .selected-customer-banner {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 

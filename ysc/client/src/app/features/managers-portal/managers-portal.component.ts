@@ -59,6 +59,23 @@ interface MessageResponse {
   message: string;
 }
 
+interface CustomerSearchResult {
+  id: number;
+  name: string;
+  email: string;
+  phone: string | null;
+  googleId: string | null;
+  role?: string | null;
+}
+
+interface ChildProfile {
+  id: number;
+  name: string;
+  dateOfBirth: string | null;
+  address?: string | null;
+  school?: string | null;
+}
+
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
@@ -101,6 +118,30 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     name: '',
     email: '',
     mobileNumber: '',
+  };
+  isAddChildExpanded = false;
+  isSearchingChildParent = false;
+  isSavingChild = false;
+  isLoadingParentChildren = false;
+  childParentSearch = '';
+  childParentResults: CustomerSearchResult[] = [];
+  selectedChildParent: CustomerSearchResult | null = null;
+  parentChildren: ChildProfile[] = [];
+  childForm = {
+    name: '',
+    dateOfBirth: '',
+  };
+  isUpdateCustomerExpanded = false;
+  isSearchingUpdateCustomers = false;
+  isUpdatingCustomer = false;
+  updateCustomerSearch = '';
+  updateCustomerResults: CustomerSearchResult[] = [];
+  selectedUpdateCustomer: CustomerSearchResult | null = null;
+  updateCustomerForm = {
+    userId: null as number | null,
+    name: '',
+    email: '',
+    phone: '',
   };
 
   isPlayersExpanded = false;
@@ -315,6 +356,14 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.isAddCustomerExpanded = !this.isAddCustomerExpanded;
   }
 
+  toggleAddChild(): void {
+    this.isAddChildExpanded = !this.isAddChildExpanded;
+  }
+
+  toggleUpdateCustomer(): void {
+    this.isUpdateCustomerExpanded = !this.isUpdateCustomerExpanded;
+  }
+
   onCustomerMobileInput(event: Event): void {
     const inputElement = event.target as HTMLInputElement;
     const sanitized = inputElement.value.replace(/[^0-9]/g, '').slice(0, 10);
@@ -322,6 +371,130 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       inputElement.value = sanitized;
     }
     this.customerForm.mobileNumber = sanitized;
+  }
+
+  onChildParentSearchInput(): void {
+    const query = this.childParentSearch.trim();
+
+    if (query.length < 3) {
+      this.isSearchingChildParent = false;
+      this.childParentResults = [];
+      return;
+    }
+
+    this.isSearchingChildParent = true;
+    this.http.get<CustomerSearchResult[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+      next: (users) => {
+        this.childParentResults = (users ?? []).filter((user) => (user.role ?? '') === 'CUSTOMER');
+        this.isSearchingChildParent = false;
+      },
+      error: (err) => {
+        console.error('Failed to search parents', err);
+        this.childParentResults = [];
+        this.isSearchingChildParent = false;
+      },
+    });
+  }
+
+  selectChildParent(user: CustomerSearchResult): void {
+    this.selectedChildParent = user;
+    this.childParentSearch = user.name ?? '';
+    this.childParentResults = [];
+    this.loadParentChildren(user.id);
+  }
+
+  clearSelectedChildParent(): void {
+    this.selectedChildParent = null;
+    this.childParentSearch = '';
+    this.childParentResults = [];
+    this.parentChildren = [];
+    this.resetChildForm();
+  }
+
+  isChildFormValid(): boolean {
+    return !!this.selectedChildParent
+      && this.childForm.name.trim().length > 0
+      && !this.isSavingChild;
+  }
+
+  saveChild(): void {
+    if (!this.selectedChildParent) {
+      alert('Please select a parent first');
+      return;
+    }
+
+    if (!this.childForm.name.trim()) {
+      alert('Child name is required');
+      return;
+    }
+
+    this.isSavingChild = true;
+    this.http.post<ChildProfile>('/api/children', {
+      parentUserId: this.selectedChildParent.id,
+      name: this.childForm.name.trim(),
+      dateOfBirth: this.childForm.dateOfBirth || null,
+      address: '',
+      school: '',
+    }).subscribe({
+      next: () => {
+        this.isSavingChild = false;
+        alert('Child added successfully');
+        this.resetChildForm();
+        this.loadParentChildren(this.selectedChildParent!.id);
+      },
+      error: (err) => {
+        console.error('Failed to add child', err);
+        this.isSavingChild = false;
+        alert(err?.error?.message || 'Unable to add child right now');
+      },
+    });
+  }
+
+  onUpdateCustomerSearchInput(): void {
+    const query = this.updateCustomerSearch.trim();
+
+    if (query.length < 3) {
+      this.isSearchingUpdateCustomers = false;
+      this.updateCustomerResults = [];
+      if (!query) {
+        this.clearSelectedUpdateCustomer();
+      }
+      return;
+    }
+
+    this.isSearchingUpdateCustomers = true;
+    this.http.get<CustomerSearchResult[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+      next: (users) => {
+        this.updateCustomerResults = (users ?? []).filter((user) => (user.role ?? '') === 'CUSTOMER');
+        this.isSearchingUpdateCustomers = false;
+      },
+      error: (err) => {
+        console.error('Failed to search customers', err);
+        this.updateCustomerResults = [];
+        this.isSearchingUpdateCustomers = false;
+      },
+    });
+  }
+
+  selectUpdateCustomer(user: CustomerSearchResult): void {
+    this.selectedUpdateCustomer = user;
+    this.updateCustomerSearch = user.name ?? '';
+    this.updateCustomerResults = [];
+    this.updateCustomerForm = {
+      userId: user.id,
+      name: user.name ?? '',
+      email: user.email ?? '',
+      phone: user.phone ?? '',
+    };
+  }
+
+  onUpdateCustomerPhoneInput(event: Event): void {
+    const inputElement = event.target as HTMLInputElement;
+    const sanitized = inputElement.value.replace(/[^0-9]/g, '').slice(0, 10);
+    if (inputElement.value !== sanitized) {
+      inputElement.value = sanitized;
+    }
+    this.updateCustomerForm.phone = sanitized;
   }
 
   isCustomerFormValid(): boolean {
@@ -346,6 +519,54 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     return !this.hasCustomerFormMissingFields() && !/^[0-9]{10}$/.test(this.customerForm.mobileNumber);
   }
 
+  isManualUpdateCustomer(): boolean {
+    return (this.selectedUpdateCustomer?.googleId ?? '').startsWith('MANUAL_USER_');
+  }
+
+  isUpdateCustomerFormValid(): boolean {
+    if (!this.selectedUpdateCustomer || this.updateCustomerForm.userId === null || this.isUpdatingCustomer) {
+      return false;
+    }
+
+    const hasValidPhone = /^[0-9]{10}$/.test(this.updateCustomerForm.phone.trim());
+    if (!hasValidPhone) {
+      return false;
+    }
+
+    if (!this.isManualUpdateCustomer()) {
+      return true;
+    }
+
+    return this.updateCustomerForm.name.trim().length > 0
+      && (!this.updateCustomerForm.email.trim() || this.isValidEmail(this.updateCustomerForm.email));
+  }
+
+  hasUpdateCustomerMissingFields(): boolean {
+    if (!this.selectedUpdateCustomer) {
+      return false;
+    }
+
+    if (this.isManualUpdateCustomer() && this.updateCustomerForm.name.trim().length === 0) {
+      return true;
+    }
+
+    return this.updateCustomerForm.phone.trim().length === 0;
+  }
+
+  hasUpdateCustomerEmailError(): boolean {
+    return !!this.selectedUpdateCustomer
+      && this.isManualUpdateCustomer()
+      && !this.hasUpdateCustomerMissingFields()
+      && this.updateCustomerForm.email.trim().length > 0
+      && !this.isValidEmail(this.updateCustomerForm.email);
+  }
+
+  hasUpdateCustomerPhoneError(): boolean {
+    return !!this.selectedUpdateCustomer
+      && !this.hasUpdateCustomerMissingFields()
+      && !/^[0-9]{10}$/.test(this.updateCustomerForm.phone);
+  }
+
   saveCustomer(): void {
     if (!this.isCustomerFormValid()) {
       return;
@@ -367,6 +588,38 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         console.error('Failed to create customer', err);
         this.isSavingCustomer = false;
         alert(err?.error?.message || 'Unable to add customer right now');
+      },
+    });
+  }
+
+  updateCustomer(): void {
+    if (!this.isUpdateCustomerFormValid() || this.updateCustomerForm.userId === null) {
+      return;
+    }
+
+    this.isUpdatingCustomer = true;
+    this.http.put<CustomerSearchResult>('/api/customer/update', {
+      userId: this.updateCustomerForm.userId,
+      name: this.updateCustomerForm.name.trim(),
+      email: this.updateCustomerForm.email.trim().toLowerCase(),
+      phone: this.updateCustomerForm.phone.trim(),
+    }).subscribe({
+      next: (user) => {
+        this.isUpdatingCustomer = false;
+        const updatedUser: CustomerSearchResult = {
+          id: user.id,
+          name: user.name ?? '',
+          email: user.email ?? '',
+          phone: user.phone ?? '',
+          googleId: user.googleId ?? this.selectedUpdateCustomer?.googleId ?? null,
+        };
+        this.selectUpdateCustomer(updatedUser);
+        alert('Customer updated successfully');
+      },
+      error: (err) => {
+        console.error('Failed to update customer', err);
+        this.isUpdatingCustomer = false;
+        alert(err?.error?.message || 'Unable to update customer right now');
       },
     });
   }
@@ -503,6 +756,38 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       name: '',
       email: '',
       mobileNumber: '',
+    };
+  }
+
+  private loadParentChildren(parentId: number): void {
+    this.isLoadingParentChildren = true;
+    this.http.get<ChildProfile[]>(`/api/children/by-parent?parentUserId=${parentId}`).subscribe({
+      next: (children) => {
+        this.parentChildren = children ?? [];
+        this.isLoadingParentChildren = false;
+      },
+      error: (err) => {
+        console.error('Failed to load parent children', err);
+        this.parentChildren = [];
+        this.isLoadingParentChildren = false;
+      },
+    });
+  }
+
+  private resetChildForm(): void {
+    this.childForm = {
+      name: '',
+      dateOfBirth: '',
+    };
+  }
+
+  private clearSelectedUpdateCustomer(): void {
+    this.selectedUpdateCustomer = null;
+    this.updateCustomerForm = {
+      userId: null,
+      name: '',
+      email: '',
+      phone: '',
     };
   }
 

@@ -32,9 +32,6 @@ public class ChildService {
         if (request.getName() == null || request.getName().trim().isEmpty()) {
             throw new IllegalArgumentException("Child name is required");
         }
-        if (request.getDateOfBirth() == null || request.getDateOfBirth().trim().isEmpty()) {
-            throw new IllegalArgumentException("Date of birth is required");
-        }
 
         long currentCount = childRepository.countByParentUser_Id(request.getParentUserId());
         if (currentCount >= MAX_CHILDREN_PER_PARENT) {
@@ -45,7 +42,9 @@ public class ChildService {
         Child child = new Child();
         child.setParentUser(parent);
         child.setName(request.getName().trim());
-        child.setDateOfBirth(LocalDate.parse(request.getDateOfBirth().trim()));
+        child.setDateOfBirth(request.getDateOfBirth() == null || request.getDateOfBirth().trim().isEmpty()
+                ? null
+                : LocalDate.parse(request.getDateOfBirth().trim()));
         child.setAddress(request.getAddress() == null ? null : request.getAddress().trim());
         child.setSchool(request.getSchool() == null ? null : request.getSchool().trim());
 
