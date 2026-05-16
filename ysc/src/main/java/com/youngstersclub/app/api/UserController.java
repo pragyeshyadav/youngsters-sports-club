@@ -2,6 +2,7 @@ package com.youngstersclub.app.api;
 
 import com.youngstersclub.app.dto.CreateCustomerRequest;
 import com.youngstersclub.app.dto.MessageResponseDto;
+import com.youngstersclub.app.dto.UpdateCustomerRequest;
 import com.youngstersclub.app.dto.UserPhoneUpdateRequest;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
@@ -118,6 +119,58 @@ public class UserController {
         userRepository.save(user);
 
         return ResponseEntity.ok(new MessageResponseDto("Customer created successfully"));
+    }
+
+    @PutMapping("/api/customer/update")
+    public ResponseEntity<?> updateCustomer(@RequestBody UpdateCustomerRequest request) {
+        if (request == null || request.getUserId() == null) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer details are required"));
+        }
+
+        Optional<User> optionalUser = userRepository.findById(request.getUserId());
+        if (optionalUser.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        User user = optionalUser.get();
+        String phone = request.getPhone() == null ? "" : request.getPhone().trim();
+
+        if (!PHONE_PATTERN.matcher(phone).matches()) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto("Phone number must be exactly 10 digits"));
+        }
+
+        Optional<User> existingPhoneUser = userRepository.findByPhone(phone);
+        if (existingPhoneUser.isPresent() && !existingPhoneUser.get().getId().equals(user.getId())) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer with this mobile number already exists"));
+        }
+
+        boolean isManualUser = user.getGoogleId() != null && user.getGoogleId().startsWith("MANUAL_USER_");
+        if (isManualUser) {
+            String name = request.getName() == null ? "" : request.getName().trim();
+            String email = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
+
+            if (name.isEmpty()) {
+                return ResponseEntity.badRequest().body(new MessageResponseDto("Name is required"));
+            }
+
+            if (!email.isEmpty() && !EMAIL_PATTERN.matcher(email).matches()) {
+                return ResponseEntity.badRequest().body(new MessageResponseDto("Enter a valid email address"));
+            }
+
+            if (!email.isEmpty()) {
+                Optional<User> existingEmailUser = userRepository.findByEmail(email);
+                if (existingEmailUser.isPresent() && !existingEmailUser.get().getId().equals(user.getId())) {
+                    return ResponseEntity.badRequest().body(new MessageResponseDto("Customer with this email already exists"));
+                }
+                user.setEmail(email);
+            }
+
+            user.setName(name);
+        }
+
+        user.setPhone(phone);
+        userRepository.save(user);
+        return ResponseEntity.ok(user);
     }
 
     private String buildDummyEmail(String name, String mobileNumber) {
