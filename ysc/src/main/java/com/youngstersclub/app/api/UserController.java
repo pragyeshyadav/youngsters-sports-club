@@ -1,12 +1,16 @@
 package com.youngstersclub.app.api;
 
 import com.youngstersclub.app.dto.CreateCustomerRequest;
+import com.youngstersclub.app.dto.MergeUserAccountRequest;
 import com.youngstersclub.app.dto.MessageResponseDto;
+import com.youngstersclub.app.dto.PhoneVerificationResponse;
 import com.youngstersclub.app.dto.UpdateCustomerRequest;
+import com.youngstersclub.app.dto.VerifyPhoneRequest;
 import com.youngstersclub.app.dto.UserPhoneUpdateRequest;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -22,9 +26,11 @@ public class UserController {
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$");
     private static final Pattern PHONE_PATTERN = Pattern.compile("^[0-9]{10}$");
     private final UserRepository userRepository;
+    private final UserService userService;
 
-    public UserController(UserRepository userRepository) {
+    public UserController(UserRepository userRepository, UserService userService) {
         this.userRepository = userRepository;
+        this.userService = userService;
     }
 
     @GetMapping("/api/user")
@@ -65,6 +71,49 @@ public class UserController {
 
         log.info("Phone number saved successfully for user: {}", request.getEmail());
         return ResponseEntity.ok("Phone number saved successfully");
+    }
+
+    @PostMapping("/api/user/verify-phone")
+    public ResponseEntity<?> verifyPhone(@RequestBody VerifyPhoneRequest request) {
+        String phoneNumber = request == null || request.getPhoneNumber() == null ? "" : request.getPhoneNumber().trim();
+        if (!PHONE_PATTERN.matcher(phoneNumber).matches()) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto("Phone number must be exactly 10 digits"));
+        }
+
+        try {
+            PhoneVerificationResponse response = userService.verifyPhone(phoneNumber);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
+        }
+    }
+
+    @PostMapping("/api/user/merge-account")
+    public ResponseEntity<?> mergeAccount(@RequestBody MergeUserAccountRequest request) {
+        if (request == null) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto("Merge request is required"));
+        }
+
+        String email = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
+        String phoneNumber = request.getPhoneNumber() == null ? "" : request.getPhoneNumber().trim();
+
+        if (email.isEmpty()) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto("Current user email is required"));
+        }
+        if (!PHONE_PATTERN.matcher(phoneNumber).matches()) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto("Phone number must be exactly 10 digits"));
+        }
+
+        try {
+            User mergedUser = userService.mergeUserAccounts(email, phoneNumber);
+            return ResponseEntity.ok(mergedUser);
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            log.warn("User merge failed for email {} and phone {}: {}", email, phoneNumber, ex.getMessage());
+            return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
+        } catch (Exception ex) {
+            log.error("Unexpected user merge failure for email {} and phone {}", email, phoneNumber, ex);
+            return ResponseEntity.internalServerError().body(new MessageResponseDto("Unable to merge account right now"));
+        }
     }
 
     @GetMapping("/api/users/player-summary")
