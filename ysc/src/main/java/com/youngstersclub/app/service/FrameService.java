@@ -15,6 +15,7 @@ import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -441,8 +442,8 @@ public class FrameService {
                 throw new IllegalArgumentException("Selected players do not belong to this frame");
             }
 
-            BigDecimal splitAmount = totalAmount.divide(BigDecimal.valueOf(2), 2, java.math.RoundingMode.HALF_UP);
-            
+            Map<Integer, BigDecimal> splitAmounts = splitAmounts(totalAmount, loserIds);
+
             for (FramePlayer fp : framePlayers) {
                 if (fp.getUser() != null) {
                     if (winnerIds.contains(fp.getUser().getId())) {
@@ -453,55 +454,144 @@ public class FrameService {
                     } else if (loserIds.contains(fp.getUser().getId())) {
                         fp.setIsWinner(false);
                         fp.setIsLoser(true);
-                        fp.setAmountDue(splitAmount);
+                        fp.setAmountDue(splitAmounts.getOrDefault(fp.getUser().getId(), BigDecimal.ZERO));
                         fp.setPaymentStatus(PaymentStatus.UNPAID);
                     }
                 }
                 framePlayerRepository.save(fp);
             }
-            
+
             frame.setWinner(userRepository.findById(winnerIds.get(0)).orElse(null));
             frame.setLooser(userRepository.findById(loserIds.get(0)).orElse(null));
         } else {
             Integer winnerId = request.getWinnerId();
             Integer looserId = request.getLooserId();
+            List<Integer> dynamicLoserIds = request.getLoserIds();
 
-            if (winnerId == null || looserId == null) {
-                throw new IllegalArgumentException("Single mode requires exactly 1 winner and 1 loser");
-            }
+            if (playerCount == 3) {
+                if (winnerId == null) {
+                    throw new IllegalArgumentException("3-player frames require exactly 1 winner");
+                }
+                if (dynamicLoserIds == null || dynamicLoserIds.isEmpty() || dynamicLoserIds.size() > 2) {
+                    throw new IllegalArgumentException("3-player frames require 1 or 2 losers");
+                }
+                if (dynamicLoserIds.contains(winnerId)) {
+                    throw new IllegalArgumentException("Winner and losers must be different players");
+                }
+                if (!framePlayerIds.contains(winnerId) || !framePlayerIds.containsAll(dynamicLoserIds)) {
+                    throw new IllegalArgumentException("Selected players do not belong to this frame");
+                }
+                if (new HashSet<>(dynamicLoserIds).size() != dynamicLoserIds.size()) {
+                    throw new IllegalArgumentException("Losers must be unique");
+                }
 
-            if (winnerId.equals(looserId)) {
-                throw new IllegalArgumentException("Winner and loser must be different players");
-            }
+                Map<Integer, BigDecimal> splitAmounts = splitAmounts(totalAmount, dynamicLoserIds);
+                frame.setWinner(userRepository.findById(winnerId).orElse(null));
+                frame.setLooser(userRepository.findById(dynamicLoserIds.get(0)).orElse(null));
 
-            if (!framePlayerIds.contains(winnerId) || !framePlayerIds.contains(looserId)) {
-                throw new IllegalArgumentException("Selected players do not belong to this frame");
-            }
-
-            if (winnerId != null) {
-                User winner = userRepository.findById(winnerId).orElse(null);
-                frame.setWinner(winner);
-            }
-
-            if (looserId != null) {
-                User looser = userRepository.findById(looserId).orElse(null);
-                frame.setLooser(looser);
-            }
-            
-            if (framePlayers != null) {
                 for (FramePlayer fp : framePlayers) {
-                    if (fp.getUser() != null && looserId != null && fp.getUser().getId().equals(looserId)) {
+                    if (fp.getUser() == null || fp.getUser().getId() == null) {
+                        framePlayerRepository.save(fp);
+                        continue;
+                    }
+                    Integer playerId = fp.getUser().getId();
+                    if (playerId.equals(winnerId)) {
+                        fp.setIsWinner(true);
+                        fp.setIsLoser(false);
+                        fp.setAmountDue(BigDecimal.ZERO);
+                        fp.setPaymentStatus(PaymentStatus.PAID);
+                    } else if (dynamicLoserIds.contains(playerId)) {
                         fp.setIsWinner(false);
                         fp.setIsLoser(true);
-                        fp.setAmountDue(totalAmount);
+                        fp.setAmountDue(splitAmounts.getOrDefault(playerId, BigDecimal.ZERO));
                         fp.setPaymentStatus(PaymentStatus.UNPAID);
-                    } else if (fp.getUser() != null && winnerId != null && fp.getUser().getId().equals(winnerId)) {
+                    } else {
+                        fp.setIsWinner(false);
+                        fp.setIsLoser(false);
+                        fp.setAmountDue(BigDecimal.ZERO);
+                        fp.setPaymentStatus(PaymentStatus.PAID);
+                    }
+                    framePlayerRepository.save(fp);
+                }
+            } else if (playerCount == 5 || playerCount == 6) {
+                if (dynamicLoserIds == null || dynamicLoserIds.isEmpty() || dynamicLoserIds.size() > 3) {
+                    throw new IllegalArgumentException("5 or 6-player frames require 1 to 3 losers");
+                }
+                if (!framePlayerIds.containsAll(dynamicLoserIds)) {
+                    throw new IllegalArgumentException("Selected players do not belong to this frame");
+                }
+                if (new HashSet<>(dynamicLoserIds).size() != dynamicLoserIds.size()) {
+                    throw new IllegalArgumentException("Losers must be unique");
+                }
+
+                Set<Integer> winnerIdSet = new HashSet<>(framePlayerIds);
+                winnerIdSet.removeAll(dynamicLoserIds);
+                if (winnerIdSet.isEmpty()) {
+                    throw new IllegalArgumentException("At least one winner is required");
+                }
+
+                Map<Integer, BigDecimal> splitAmounts = splitAmounts(totalAmount, dynamicLoserIds);
+                Integer primaryWinnerId = winnerIdSet.iterator().next();
+                frame.setWinner(userRepository.findById(primaryWinnerId).orElse(null));
+                frame.setLooser(userRepository.findById(dynamicLoserIds.get(0)).orElse(null));
+
+                for (FramePlayer fp : framePlayers) {
+                    if (fp.getUser() == null || fp.getUser().getId() == null) {
+                        framePlayerRepository.save(fp);
+                        continue;
+                    }
+                    Integer playerId = fp.getUser().getId();
+                    if (dynamicLoserIds.contains(playerId)) {
+                        fp.setIsWinner(false);
+                        fp.setIsLoser(true);
+                        fp.setAmountDue(splitAmounts.getOrDefault(playerId, BigDecimal.ZERO));
+                        fp.setPaymentStatus(PaymentStatus.UNPAID);
+                    } else {
                         fp.setIsWinner(true);
                         fp.setIsLoser(false);
                         fp.setAmountDue(BigDecimal.ZERO);
                         fp.setPaymentStatus(PaymentStatus.PAID);
                     }
                     framePlayerRepository.save(fp);
+                }
+            } else {
+                if (winnerId == null || looserId == null) {
+                    throw new IllegalArgumentException("Single mode requires exactly 1 winner and 1 loser");
+                }
+
+                if (winnerId.equals(looserId)) {
+                    throw new IllegalArgumentException("Winner and loser must be different players");
+                }
+
+                if (!framePlayerIds.contains(winnerId) || !framePlayerIds.contains(looserId)) {
+                    throw new IllegalArgumentException("Selected players do not belong to this frame");
+                }
+
+                User winner = userRepository.findById(winnerId).orElse(null);
+                frame.setWinner(winner);
+                User looser = userRepository.findById(looserId).orElse(null);
+                frame.setLooser(looser);
+
+                if (framePlayers != null) {
+                    for (FramePlayer fp : framePlayers) {
+                        if (fp.getUser() != null && looserId != null && fp.getUser().getId().equals(looserId)) {
+                            fp.setIsWinner(false);
+                            fp.setIsLoser(true);
+                            fp.setAmountDue(totalAmount);
+                            fp.setPaymentStatus(PaymentStatus.UNPAID);
+                        } else if (fp.getUser() != null && winnerId != null && fp.getUser().getId().equals(winnerId)) {
+                            fp.setIsWinner(true);
+                            fp.setIsLoser(false);
+                            fp.setAmountDue(BigDecimal.ZERO);
+                            fp.setPaymentStatus(PaymentStatus.PAID);
+                        } else if (fp.getUser() != null) {
+                            fp.setIsWinner(false);
+                            fp.setIsLoser(false);
+                            fp.setAmountDue(BigDecimal.ZERO);
+                            fp.setPaymentStatus(PaymentStatus.PAID);
+                        }
+                        framePlayerRepository.save(fp);
+                    }
                 }
             }
         }
@@ -521,6 +611,28 @@ public class FrameService {
         response.put("tableId", table.getId());
         response.put("paymentDue", frame.getPaymentDue());
         return response;
+    }
+
+    private Map<Integer, BigDecimal> splitAmounts(BigDecimal totalAmount, List<Integer> loserIds) {
+        Map<Integer, BigDecimal> amounts = new HashMap<>();
+        if (totalAmount == null || loserIds == null || loserIds.isEmpty()) {
+            return amounts;
+        }
+
+        int loserCount = loserIds.size();
+        BigDecimal baseShare = totalAmount.divide(BigDecimal.valueOf(loserCount), 2, RoundingMode.DOWN);
+        BigDecimal distributed = BigDecimal.ZERO;
+
+        for (int index = 0; index < loserCount; index++) {
+            Integer loserId = loserIds.get(index);
+            BigDecimal share = index == loserCount - 1
+                    ? totalAmount.subtract(distributed).setScale(2, RoundingMode.HALF_UP)
+                    : baseShare;
+            amounts.put(loserId, share);
+            distributed = distributed.add(share);
+        }
+
+        return amounts;
     }
 
     @Transactional
