@@ -112,6 +112,23 @@ export class AuthService {
     void this.router.navigate(['/login']);
   }
 
+  updateSessionUser(userPatch: Partial<AuthUser>): void {
+    const currentSession = this.sessionSubject.value;
+    if (!currentSession) {
+      return;
+    }
+
+    const nextSession: AuthSession = {
+      ...currentSession,
+      user: {
+        ...currentSession.user,
+        ...userPatch,
+      },
+    };
+
+    this.persistSession(nextSession);
+  }
+
   private persistSession(session: AuthSession): void {
     if (isPlatformBrowser(this.platformId)) {
       localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(session));
