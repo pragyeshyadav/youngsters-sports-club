@@ -35,6 +35,20 @@
           <p>Duration: {{ billDuration }} mins</p>
           <p>Total Amount: ₹{{ billAmount }}</p>
         </div>
+
+        @if (canRestartSameFrame()) {
+          <button
+            type="button"
+            class="change-table-btn restart-frame-btn"
+            (click)="startNewFrameWithSameTableAndPlayers()"
+            [disabled]="isRestartingSameFrame">
+            @if (isRestartingSameFrame) {
+              <span>Starting New Frame...</span>
+            } @else {
+              <span>Start New Frame (Same Table &amp; Players)</span>
+            }
+          </button>
+        }
       }
 
       @if (isPrivileged()) {

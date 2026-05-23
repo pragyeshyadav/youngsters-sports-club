@@ -103,6 +103,7 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   viewMode: 'start' | 'manage' = 'start';
   backRoute = '/snooker-frame';
   isStartingFrame = false;
+  isRestartingSameFrame = false;
   isOpeningEndPopup = false;
   isEndingFrame = false;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
@@ -186,7 +187,7 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   }
 
   startFrame(): void {
-    if (this.isStartingFrame || this.frameStarted) {
+    if (this.isStartingFrame || this.isRestartingSameFrame || this.frameStarted) {
       return;
     }
 
@@ -224,6 +225,69 @@ export class StartFrameComponent implements OnInit, OnDestroy {
         console.error('Failed to start frame', err);
         this.isStartingFrame = false;
         alert('Unable to start frame right now');
+      },
+    });
+  }
+
+  canRestartSameFrame(): boolean {
+    return this.viewMode === 'manage'
+      && !!this.selectedTable?.id
+      && !!this.authUser?.id
+      && !this.frameStarted
+      && this.billAmount !== null
+      && this.selectedPlayers.length >= 2;
+  }
+
+  startNewFrameWithSameTableAndPlayers(): void {
+    if (!this.canRestartSameFrame() || this.isRestartingSameFrame) {
+      return;
+    }
+
+    const tableId = this.selectedTable?.id;
+    const startedBy = this.authUser?.id;
+    if (!tableId || !startedBy) {
+      alert('Unable to start a new frame right now. Please refresh and try again.');
+      return;
+    }
+
+    const request: StartFramePayload = {
+      tableId,
+      startedBy,
+      players: this.selectedPlayers.map((player) => ({
+        userId: player.id,
+        name: player.name,
+      })),
+    };
+
+    this.isRestartingSameFrame = true;
+
+    this.http.post<number>('/api/frame/start', request).subscribe({
+      next: (newFrameId) => {
+        this.frameStarted = true;
+        this.frameId = newFrameId;
+        this.billAmount = null;
+        this.billDuration = null;
+        this.gameMode = 'SINGLE';
+        this.winnerId = null;
+        this.looserId = null;
+        this.winnerIds = [];
+        this.loserIds = [];
+        this.framePlayers = this.selectedPlayers.map((player) => ({
+          userId: player.id,
+          id: player.id,
+          name: player.name,
+          playerName: player.name,
+          email: player.email,
+        }));
+        this.searchText = '';
+        this.players = [];
+        this.isRestartingSameFrame = false;
+        this.startTimer();
+      },
+      error: (err) => {
+        console.error('Failed to restart frame with same table and players', err);
+        this.isRestartingSameFrame = false;
+        alert('Unable to start a new frame right now');
       },
     });
   }
