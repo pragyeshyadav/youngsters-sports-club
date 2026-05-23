@@ -147,6 +147,70 @@
               </label>
             }
           </div>
+        } @else if (playerCount === 3) {
+          <div class="team-match-notice">
+            <p><strong>3 Player Match</strong></p>
+            <p class="subtitle">Select 1 winner and 1 or 2 losers. The bill will be split equally across selected losers.</p>
+          </div>
+
+          <label for="winner-select">Winner</label>
+          <select id="winner-select" [(ngModel)]="winnerId">
+            <option [ngValue]="null">Select Winner</option>
+            @for (player of framePlayers; track player.id ?? player.userId) {
+              <option [ngValue]="player.userId || player.id" [disabled]="loserIds.includes($any(player.userId || player.id))">
+                {{ player.name || player.playerName }}
+              </option>
+            }
+          </select>
+
+          <label>Losers (Select 1 or 2)</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id ?? player.userId) {
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId || player.id))">
+                <input
+                  type="checkbox"
+                  [checked]="loserIds.includes($any(player.userId || player.id))"
+                  [disabled]="(loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId || player.id))) || winnerId === (player.userId || player.id)"
+                  (change)="toggleLoser($any(player.userId || player.id))"
+                >
+                {{ player.name || player.playerName }}
+              </label>
+            }
+          </div>
+        } @else if (playerCount === 5 || playerCount === 6) {
+          <div class="team-match-notice">
+            <p><strong>Multi Player Match</strong></p>
+            <p class="subtitle">Select 1 to 3 losers. Remaining players will be treated as winners and the bill will be split equally across selected losers.</p>
+          </div>
+
+          <label>Losers (Select up to {{ maxLosersAllowed }})</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id ?? player.userId) {
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId || player.id))">
+                <input
+                  type="checkbox"
+                  [checked]="loserIds.includes($any(player.userId || player.id))"
+                  [disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId || player.id))"
+                  (change)="toggleLoser($any(player.userId || player.id))"
+                >
+                {{ player.name || player.playerName }}
+              </label>
+            }
+          </div>
+
+          @if (autoWinnerIds.length > 0) {
+            <label>Winners (Auto)</label>
+            <div class="multi-select-group">
+              @for (player of framePlayers; track player.id ?? player.userId) {
+                @if (autoWinnerIds.includes($any(player.userId || player.id))) {
+                  <label class="checkbox-label disabled">
+                    <input type="checkbox" checked disabled>
+                    {{ player.name || player.playerName }}
+                  </label>
+                }
+              }
+            </div>
+          }
         } @else {
           <label for="winner-select">Winner</label>
           <select id="winner-select" [(ngModel)]="winnerId">

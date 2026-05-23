@@ -4,12 +4,14 @@ import com.youngstersclub.app.dto.CreateCustomerRequest;
 import com.youngstersclub.app.dto.MergeUserAccountRequest;
 import com.youngstersclub.app.dto.MessageResponseDto;
 import com.youngstersclub.app.dto.PhoneVerificationResponse;
+import com.youngstersclub.app.dto.PlayerSummaryDto;
 import com.youngstersclub.app.dto.UpdateCustomerRequest;
 import com.youngstersclub.app.dto.VerifyPhoneRequest;
 import com.youngstersclub.app.dto.UserPhoneUpdateRequest;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.service.PlayerSummaryService;
 import com.youngstersclub.app.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,10 +29,15 @@ public class UserController {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^[0-9]{10}$");
     private final UserRepository userRepository;
     private final UserService userService;
+    private final PlayerSummaryService playerSummaryService;
 
-    public UserController(UserRepository userRepository, UserService userService) {
+    public UserController(
+            UserRepository userRepository,
+            UserService userService,
+            PlayerSummaryService playerSummaryService) {
         this.userRepository = userRepository;
         this.userService = userService;
+        this.playerSummaryService = playerSummaryService;
     }
 
     @GetMapping("/api/user")
@@ -117,11 +124,11 @@ public class UserController {
     }
 
     @GetMapping("/api/users/player-summary")
-    public ResponseEntity<org.springframework.data.domain.Page<com.youngstersclub.app.dto.PlayerSummaryProjection>> getPlayerSummary(
+    public ResponseEntity<org.springframework.data.domain.Page<PlayerSummaryDto>> getPlayerSummary(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
-        return ResponseEntity.ok(userRepository.getPlayerSummaries(pageable));
+        return ResponseEntity.ok(playerSummaryService.getPlayerSummaries(pageable));
     }
 
     @PostMapping("/api/users/create-customer")

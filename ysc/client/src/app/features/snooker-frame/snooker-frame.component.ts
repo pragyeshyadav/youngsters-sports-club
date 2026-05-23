@@ -143,6 +143,33 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     return this.canUseTeamMode && this.gameMode === 'TEAM';
   }
 
+  get playerCount(): number {
+    return this.framePlayers.length;
+  }
+
+  get supportsDynamicLosers(): boolean {
+    return this.playerCount === 3 || this.playerCount === 5 || this.playerCount === 6;
+  }
+
+  get maxLosersAllowed(): number {
+    if (this.playerCount === 3) {
+      return 2;
+    }
+    if (this.playerCount === 5 || this.playerCount === 6) {
+      return 3;
+    }
+    return 1;
+  }
+
+  get autoWinnerIds(): number[] {
+    if (this.playerCount !== 5 && this.playerCount !== 6) {
+      return [];
+    }
+    return this.framePlayers
+      .map((player) => player.userId)
+      .filter((playerId): playerId is number => !!playerId && !this.loserIds.includes(playerId));
+  }
+
   canEndFrame(): boolean {
     if (this.isTeamMatch) {
       if (this.winnerIds.length !== 2 || this.loserIds.length !== 2) {
@@ -150,6 +177,20 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
       }
       const allSelected = new Set([...this.winnerIds, ...this.loserIds]);
       return allSelected.size === 4;
+    }
+    if (this.playerCount === 3) {
+      if (this.winnerId === null || this.loserIds.length < 1 || this.loserIds.length > 2) {
+        return false;
+      }
+      if (this.loserIds.includes(this.winnerId)) {
+        return false;
+      }
+      return new Set(this.loserIds).size === this.loserIds.length;
+    }
+    if (this.playerCount === 5 || this.playerCount === 6) {
+      return this.loserIds.length >= 1
+        && this.loserIds.length <= 3
+        && new Set(this.loserIds).size === this.loserIds.length;
     }
     return this.winnerId !== null && this.looserId !== null && this.winnerId !== this.looserId;
   }
@@ -180,9 +221,12 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     }
     if (this.loserIds.includes(playerId)) {
       this.loserIds = this.loserIds.filter((id) => id !== playerId);
-    } else if (this.loserIds.length < 2) {
+    } else if (this.loserIds.length < this.maxLosersAllowed) {
       this.loserIds = [...this.loserIds, playerId];
       this.winnerIds = this.winnerIds.filter((id) => id !== playerId);
+      if (this.winnerId === playerId) {
+        this.winnerId = null;
+      }
     }
   }
 
@@ -195,7 +239,11 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
 
     const payload = this.isTeamMatch
       ? { mode: 'TEAM', winnerIds: this.winnerIds, loserIds: this.loserIds }
-      : { mode: 'SINGLE', winnerId: this.winnerId, looserId: this.looserId };
+      : this.playerCount === 3
+        ? { mode: 'SINGLE', winnerId: this.winnerId, loserIds: this.loserIds }
+        : (this.playerCount === 5 || this.playerCount === 6)
+          ? { mode: 'SINGLE', loserIds: this.loserIds }
+          : { mode: 'SINGLE', winnerId: this.winnerId, looserId: this.looserId };
 
     this.http
       .post<EndFrameResponse>(`/api/frame/end/${this.activeFrame.id}`, payload)

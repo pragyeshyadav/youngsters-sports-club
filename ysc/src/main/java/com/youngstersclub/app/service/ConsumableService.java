@@ -170,6 +170,17 @@ public class ConsumableService {
         return total == null ? BigDecimal.ZERO : total;
     }
 
+    public Map<Integer, BigDecimal> getConsumableDueMap(List<Integer> userIds) {
+        Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
+        if (userIds == null || userIds.isEmpty()) {
+            return dues;
+        }
+
+        consumableOrderRepository.getTotalUnpaidDueByUserIds(userIds).forEach(projection ->
+                dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
+        return dues;
+    }
+
     public List<ConsumableOrder> getUnpaidOrdersByDate(Integer userId, LocalDate selectedDate) {
         if (userId == null || selectedDate == null) {
             return List.of();
