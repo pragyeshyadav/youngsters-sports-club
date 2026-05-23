@@ -19,6 +19,15 @@ interface BackendUser {
   role: string;
 }
 
+interface RestartFramePayload {
+  tableId: number;
+  startedBy: number;
+  players: Array<{
+    userId: number;
+    name: string;
+  }>;
+}
+
 interface ActiveFrame {
   id: number;
   tableId: number;
@@ -86,11 +95,15 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   winnerIds: number[] = [];
   loserIds: number[] = [];
   userRole = '';
+  currentUserId: number | null = null;
+  lastEndedTable: Table | null = null;
+  lastEndedPlayers: ActiveFramePlayer[] = [];
   isLoadingTables = false;
   isLoadingCurrentFrame = false;
   isLoadingOngoingFrames = false;
   isOpeningEndPopup = false;
   isEndingFrame = false;
+  isRestartingSameFrame = false;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
@@ -249,6 +262,13 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
       .post<EndFrameResponse>(`/api/frame/end/${this.activeFrame.id}`, payload)
       .subscribe({
         next: (res) => {
+          this.lastEndedTable = this.activeFrame?.tableId
+            ? {
+                id: this.activeFrame.tableId,
+                tableName: this.activeFrame.tableName,
+              }
+            : null;
+          this.lastEndedPlayers = [...this.framePlayers];
           this.clearTimer();
           this.showEndPopup = false;
           this.billAmount = res.amount;
@@ -284,6 +304,75 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     this.showEndPopup = false;
   }
 
+  canRestartSameFrame(): boolean {
+    return this.isPrivileged()
+      && !!this.lastEndedTable?.id
+      && !!this.currentUserId
+      && this.billAmount !== null
+      && this.lastEndedPlayers.length >= 2
+      && !this.activeFrame;
+  }
+
+  startNewFrameWithSameTableAndPlayers(): void {
+    if (!this.canRestartSameFrame() || this.isRestartingSameFrame) {
+      return;
+    }
+
+    if (!this.lastEndedTable?.id || !this.currentUserId) {
+      alert('Unable to start a new frame right now. Please refresh and try again.');
+      return;
+    }
+
+    const payload: RestartFramePayload = {
+      tableId: this.lastEndedTable.id,
+      startedBy: this.currentUserId,
+      players: this.lastEndedPlayers
+        .filter((player) => player.userId !== null && player.userId !== undefined)
+        .map((player) => ({
+          userId: player.userId as number,
+          name: player.playerName,
+        })),
+    };
+
+    this.isRestartingSameFrame = true;
+
+    this.http.post<number>('/api/frame/start', payload).subscribe({
+      next: (frameId) => {
+        this.billAmount = null;
+        this.billDuration = null;
+        this.activeFrame = {
+          id: frameId,
+          tableId: this.lastEndedTable?.id ?? 0,
+          tableName: this.lastEndedTable?.tableName ?? '',
+          startTime: new Date().toISOString(),
+          status: 'STARTED',
+        };
+        this.players = [...this.lastEndedPlayers];
+        this.framePlayers = [...this.lastEndedPlayers];
+        this.showEndPopup = false;
+        this.gameMode = 'SINGLE';
+        this.winnerId = null;
+        this.looserId = null;
+        this.winnerIds = [];
+        this.loserIds = [];
+        this.timerSeconds = 0;
+        this.isRestartingSameFrame = false;
+        this.startTimerFromServerTime();
+        if (this.isPrivileged()) {
+          this.loadOngoingFrames();
+        }
+        this.loadTables();
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to start new frame with same table and players', err);
+        this.isRestartingSameFrame = false;
+        alert('Unable to start a new frame right now');
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
   get formattedTime(): string {
     const mins = Math.floor(this.timerSeconds / 60);
     const secs = this.timerSeconds % 60;
@@ -312,6 +401,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     this.http.get<BackendUser>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
         this.userRole = user.role ?? '';
+        this.currentUserId = user.id ?? null;
         if (this.isPrivileged()) {
           this.activeFrame = null;
           this.players = [];

@@ -85,6 +85,21 @@
   cursor: pointer;
 }
 
+.restart-frame-btn {
+  margin: 0 auto 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: min(100%, 360px);
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f766e;
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+}
+
 .running-frames__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
