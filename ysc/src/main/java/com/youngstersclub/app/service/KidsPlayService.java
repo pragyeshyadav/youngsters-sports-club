@@ -20,7 +20,9 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -151,6 +153,17 @@ public class KidsPlayService {
         }
         BigDecimal due = kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIdAndDate(parentUserId, selectedDate);
         return due == null ? BigDecimal.ZERO : due;
+    }
+
+    public Map<Integer, BigDecimal> getKidsDueMap(List<Integer> userIds) {
+        Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
+        if (userIds == null || userIds.isEmpty()) {
+            return dues;
+        }
+
+        kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIds(userIds).forEach(projection ->
+                dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
+        return dues;
     }
 
     public List<KidsPlaySession> getUnpaidSessions(Integer parentUserId) {

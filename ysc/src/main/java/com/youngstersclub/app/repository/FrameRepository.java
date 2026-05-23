@@ -165,6 +165,11 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         Long getWins();
     }
 
+    interface UserDueProjection {
+        Integer getUserId();
+        BigDecimal getAmount();
+    }
+
     interface TodayEarningsProjection {
         Integer getUserId();
         BigDecimal getTotalEarnings();
@@ -187,6 +192,38 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         LIMIT 10
     """, nativeQuery = true)
     List<TopPlayerProjection> findTopPlayersOfCurrentMonth();
+
+    @Query(value = """
+        SELECT
+            due.user_id AS userId,
+            COALESCE(SUM(due.amount), 0) AS amount
+        FROM (
+            SELECT
+                f.looser AS user_id,
+                COALESCE(f.payment_due, 0) AS amount
+            FROM frames f
+            WHERE f.looser IS NOT NULL
+              AND COALESCE(f.payment_due, 0) > 0
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM frame_players fp_check
+                  WHERE fp_check.frame_id = f.id
+                    AND fp_check.amount_due IS NOT NULL
+              )
+
+            UNION ALL
+
+            SELECT
+                fp.user_id AS user_id,
+                COALESCE(fp.amount_due, 0) AS amount
+            FROM frame_players fp
+            WHERE fp.user_id IS NOT NULL
+              AND COALESCE(fp.amount_due, 0) > 0
+        ) due
+        WHERE due.user_id IN (:userIds)
+        GROUP BY due.user_id
+    """, nativeQuery = true)
+    List<UserDueProjection> getTotalDueForUsers(@Param("userIds") List<Integer> userIds);
 
     @Query(value = """
         WITH today_frames AS (

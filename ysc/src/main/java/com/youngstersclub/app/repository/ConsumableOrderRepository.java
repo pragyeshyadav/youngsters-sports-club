@@ -13,6 +13,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder, Long> {
 
+    interface UserConsumableDueProjection {
+        Integer getUserId();
+        BigDecimal getAmount();
+    }
+
     @Query("""
         SELECT co FROM ConsumableOrder co
         WHERE co.user.id = :userId
@@ -51,6 +56,17 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
     BigDecimal getTotalUnpaidDueByUserIdAndDate(
             @Param("userId") Integer userId,
             @Param("selectedDate") LocalDate selectedDate);
+
+    @Query("""
+        SELECT
+            co.user.id AS userId,
+            COALESCE(SUM(co.totalAmount), 0) AS amount
+        FROM ConsumableOrder co
+        WHERE co.user.id IN :userIds
+        AND co.paymentStatus = 'UNPAID'
+        GROUP BY co.user.id
+    """)
+    List<UserConsumableDueProjection> getTotalUnpaidDueByUserIds(@Param("userIds") List<Integer> userIds);
 
     @Query(value = """
         SELECT COALESCE(SUM(coi.total_cost), 0)

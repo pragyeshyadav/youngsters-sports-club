@@ -13,6 +13,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface KidsPlaySessionRepository extends JpaRepository<KidsPlaySession, Long> {
 
+    interface UserKidsDueProjection {
+        Integer getUserId();
+        BigDecimal getAmount();
+    }
+
     @Query("""
         SELECT k FROM KidsPlaySession k
         JOIN FETCH k.child c
@@ -78,6 +83,17 @@ public interface KidsPlaySessionRepository extends JpaRepository<KidsPlaySession
     BigDecimal getTotalUnpaidDueByParentUserIdAndDate(
             @Param("parentUserId") Integer parentUserId,
             @Param("selectedDate") LocalDate selectedDate);
+
+    @Query("""
+        SELECT
+            k.parentUser.id AS userId,
+            COALESCE(SUM(k.totalAmount), 0) AS amount
+        FROM KidsPlaySession k
+        WHERE k.parentUser.id IN :userIds
+        AND k.paymentStatus = 'UNPAID'
+        GROUP BY k.parentUser.id
+    """)
+    List<UserKidsDueProjection> getTotalUnpaidDueByParentUserIds(@Param("userIds") List<Integer> userIds);
 
     @Query(value = """
         SELECT COALESCE(SUM(
