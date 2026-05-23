@@ -1,0 +1,38 @@
+<div class="trigger-panel">
+  <button type="button" class="panel-header whatsapp-trigger-header" (click)="toggle()">
+    <span>📨 Trigger WhatsApp Messages</span>
+    <span class="panel-chevron">{{ isExpanded ? '▲' : '▼' }}</span>
+  </button>
+
+  @if (isExpanded) {
+    <div class="panel-body">
+      <div class="content-card">
+        <p class="panel-message trigger-panel-message">
+          Run the existing daily WhatsApp notification process manually in dry run or actual mode.
+        </p>
+
+        <div class="trigger-actions">
+          <button
+            type="button"
+            class="trigger-btn trigger-btn--dry"
+            [disabled]="isTriggeringWhatsapp"
+            (click)="triggerWhatsappMessages(true)">
+            {{ isTriggeringWhatsapp && activeTriggerMode === 'DRY_RUN'
+              ? 'Triggering Dry Run...'
+              : 'Trigger Daily WhatsApp Messages (Dry Run)' }}
+          </button>
+
+          <button
+            type="button"
+            class="trigger-btn trigger-btn--actual"
+            [disabled]="isTriggeringWhatsapp"
+            (click)="triggerWhatsappMessages(false)">
+            {{ isTriggeringWhatsapp && activeTriggerMode === 'ACTUAL'
+              ? 'Triggering Messages...'
+              : 'Trigger Daily WhatsApp Messages' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  }
+</div>
