@@ -1,6 +1,7 @@
 package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.StartFrameRequest;
+import com.youngstersclub.app.dto.PendingFrameBreakdownDto;
 import com.youngstersclub.app.entity.Frame;
 import com.youngstersclub.app.entity.FramePlayer;
 import com.youngstersclub.app.entity.SnookerTable;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -359,6 +361,22 @@ public class FrameService {
         });
     }
 
+    public List<PendingFrameBreakdownDto> getUserDueFramesByDate(Integer userId, LocalDate selectedDate) {
+        if (userId == null || selectedDate == null) {
+            return List.of();
+        }
+
+        return executeWithRetry("getUserDueFramesByDate", () ->
+                frameRepository.findDueFramesByUserOrderByStartTime(userId).stream()
+                        .filter(frame -> frame.getStartTime() != null && selectedDate.equals(frame.getStartTime().toLocalDate()))
+                        .map(frame -> new PendingFrameBreakdownDto(
+                                frame.getId(),
+                                buildMatchupLabel(frame),
+                                frame.getEndTime() != null ? frame.getEndTime() : frame.getStartTime(),
+                                getDueAmountForUser(frame, userId)))
+                        .toList());
+    }
+
     @Transactional
     public Map<String, Object> endFrame(Integer frameId, com.youngstersclub.app.dto.EndFrameTeamRequest request) {
         if (frameId == null) {
@@ -633,6 +651,73 @@ public class FrameService {
         }
 
         return amounts;
+    }
+
+    private BigDecimal getDueAmountForUser(Frame frame, Integer userId) {
+        if (frame == null || userId == null) {
+            return BigDecimal.ZERO;
+        }
+
+        if (frame.getFramePlayers() != null) {
+            for (FramePlayer framePlayer : frame.getFramePlayers()) {
+                if (framePlayer.getUser() != null
+                        && userId.equals(framePlayer.getUser().getId())
+                        && framePlayer.getAmountDue() != null
+                        && framePlayer.getAmountDue().compareTo(BigDecimal.ZERO) > 0) {
+                    return framePlayer.getAmountDue();
+                }
+            }
+        }
+
+        return frame.getPaymentDue() == null ? BigDecimal.ZERO : frame.getPaymentDue();
+    }
+
+    private String buildMatchupLabel(Frame frame) {
+        if (frame == null) {
+            return "Frame";
+        }
+
+        List<FramePlayer> players = frame.getFramePlayers() == null ? List.of() : frame.getFramePlayers();
+        List<String> winners = players.stream()
+                .filter(player -> Boolean.TRUE.equals(player.getIsWinner()))
+                .map(this::resolvePlayerName)
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .toList();
+        List<String> losers = players.stream()
+                .filter(player -> Boolean.TRUE.equals(player.getIsLoser()))
+                .map(this::resolvePlayerName)
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .toList();
+
+        if (!winners.isEmpty() && !losers.isEmpty()) {
+            return String.join(" & ", winners) + " vs " + String.join(" & ", losers);
+        }
+
+        if (frame.getWinner() != null && frame.getLooser() != null) {
+            return frame.getWinner().getName() + " vs " + frame.getLooser().getName();
+        }
+
+        List<String> allPlayers = players.stream()
+                .map(this::resolvePlayerName)
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .collect(Collectors.toList());
+        if (allPlayers.size() >= 2) {
+            return String.join(" vs ", allPlayers);
+        }
+        return "Frame #" + frame.getId();
+    }
+
+    private String resolvePlayerName(FramePlayer framePlayer) {
+        if (framePlayer == null) {
+            return null;
+        }
+        if (framePlayer.getUser() != null && framePlayer.getUser().getName() != null && !framePlayer.getUser().getName().isBlank()) {
+            return framePlayer.getUser().getName();
+        }
+        return framePlayer.getPlayerName();
     }
 
     @Transactional

@@ -27,7 +27,9 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
     List<ConsumableOrder> findByUserIdAndPaymentStatus(@Param("userId") Integer userId, @Param("paymentStatus") String paymentStatus);
 
     @Query("""
-        SELECT co FROM ConsumableOrder co
+        SELECT DISTINCT co FROM ConsumableOrder co
+        LEFT JOIN FETCH co.items coi
+        LEFT JOIN FETCH coi.item
         WHERE co.user.id = :userId
         AND co.paymentStatus = :paymentStatus
         AND FUNCTION('DATE', co.createdAt) = :selectedDate

@@ -31,6 +31,7 @@ public class PaymentService {
     private final ConsumableOrderRepository consumableOrderRepository;
     private final PaymentRepository paymentRepository;
     private final UserRepository userRepository;
+    private final ConsumableService consumableService;
     private final KidsPlayService kidsPlayService;
     private final com.youngstersclub.app.repository.FramePlayerRepository framePlayerRepository;
     private final UserPaymentSummaryService userPaymentSummaryService;
@@ -41,6 +42,7 @@ public class PaymentService {
             ConsumableOrderRepository consumableOrderRepository,
             PaymentRepository paymentRepository,
             UserRepository userRepository,
+            ConsumableService consumableService,
             KidsPlayService kidsPlayService,
             com.youngstersclub.app.repository.FramePlayerRepository framePlayerRepository,
             UserPaymentSummaryService userPaymentSummaryService,
@@ -49,6 +51,7 @@ public class PaymentService {
         this.consumableOrderRepository = consumableOrderRepository;
         this.paymentRepository = paymentRepository;
         this.userRepository = userRepository;
+        this.consumableService = consumableService;
         this.kidsPlayService = kidsPlayService;
         this.framePlayerRepository = framePlayerRepository;
         this.userPaymentSummaryService = userPaymentSummaryService;
@@ -218,18 +221,33 @@ public class PaymentService {
         PaymentMethod paymentMethod = PaymentMethod.valueOf(request.getPaymentMode().trim().toUpperCase());
         User user = userRepository.findById(request.getUserId()).orElseThrow();
         
-        List<Frame> frames = frameRepository.findDueFramesByUserAndDateOrderByStartTime(request.getUserId(), request.getDate());
-        List<ConsumableOrder> consumableOrders = consumableOrderRepository.findByUserIdAndPaymentStatusAndCreatedDate(
-                request.getUserId(), "UNPAID", request.getDate());
+        List<Frame> frames = frameRepository.findDueFramesByUserOrderByStartTime(request.getUserId()).stream()
+                .filter(frame -> frame.getStartTime() != null && request.getDate().equals(frame.getStartTime().toLocalDate()))
+                .toList();
+        List<ConsumableOrder> consumableOrders = consumableService.getUnpaidOrdersByDate(request.getUserId(), request.getDate());
 
-        BigDecimal totalFrameOutstanding = frameRepository.getTotalDueForUserByDate(request.getUserId(), request.getDate());
-        if (totalFrameOutstanding == null) totalFrameOutstanding = BigDecimal.ZERO;
-        
-        BigDecimal totalConsumableOutstanding = consumableOrderRepository.getTotalUnpaidDueByUserIdAndDate(request.getUserId(), request.getDate());
-        if (totalConsumableOutstanding == null) totalConsumableOutstanding = BigDecimal.ZERO;
+        BigDecimal totalFrameOutstanding = frames.stream()
+                .map(frame -> {
+                    if (frame.getFramePlayers() != null) {
+                        return frame.getFramePlayers().stream()
+                                .filter(fp -> fp.getUser() != null
+                                        && fp.getUser().getId().equals(request.getUserId())
+                                        && fp.getAmountDue() != null
+                                        && fp.getAmountDue().compareTo(BigDecimal.ZERO) > 0)
+                                .map(com.youngstersclub.app.entity.FramePlayer::getAmountDue)
+                                .findFirst()
+                                .orElse(frame.getPaymentDue() == null ? BigDecimal.ZERO : frame.getPaymentDue());
+                    }
+                    return frame.getPaymentDue() == null ? BigDecimal.ZERO : frame.getPaymentDue();
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal totalConsumableOutstanding = consumableOrders.stream()
+                .map(ConsumableOrder::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal totalKidsOutstanding = kidsPlayService.getKidsDueByDate(request.getUserId(), request.getDate());
-        if (totalKidsOutstanding == null) totalKidsOutstanding = BigDecimal.ZERO;
 
         BigDecimal totalOutstanding = totalFrameOutstanding.add(totalConsumableOutstanding).add(totalKidsOutstanding);
         BigDecimal totalSettlement = request.getPaidAmount().add(discount);
