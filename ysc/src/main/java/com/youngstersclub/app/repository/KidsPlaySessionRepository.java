@@ -54,6 +54,7 @@ public interface KidsPlaySessionRepository extends JpaRepository<KidsPlaySession
 
     @Query("""
         SELECT k FROM KidsPlaySession k
+        JOIN FETCH k.child c
         WHERE k.parentUser.id = :parentUserId
         AND k.paymentStatus = 'UNPAID'
         AND k.endTime IS NOT NULL

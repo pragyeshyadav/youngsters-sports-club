@@ -41,6 +41,39 @@ interface DuePlayer {
   due: number | string | null;
 }
 
+interface PendingFrameBreakdown {
+  frameId: number;
+  matchup: string;
+  date: string;
+  dueAmount: number | string | null;
+}
+
+interface PendingConsumableBreakdown {
+  orderId: number;
+  itemName: string;
+  quantity: number;
+  price: number | string | null;
+  totalCost: number | string | null;
+  createdAt: string;
+}
+
+interface PendingKidsPlayBreakdown {
+  sessionId: number;
+  childName: string;
+  date: string;
+  amount: number | string | null;
+}
+
+interface PendingDueBreakdown {
+  frames: PendingFrameBreakdown[];
+  consumables: PendingConsumableBreakdown[];
+  kidsPlay: PendingKidsPlayBreakdown[];
+  frameDue: number | string | null;
+  consumableDue: number | string | null;
+  kidsDue: number | string | null;
+  totalDue: number | string | null;
+}
+
 interface TodayEarnings {
   totalEarnings: number | string | null;
   totalDue: number | string | null;
@@ -162,6 +195,18 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   paymentMode = '';
   isSavingSettlement = false;
   isLoadingSettlementDetails = false;
+  showItemsPopup = false;
+  itemsPlayer: DuePlayer | null = null;
+  isLoadingItemsBreakdown = false;
+  dueBreakdown: PendingDueBreakdown = {
+    frames: [],
+    consumables: [],
+    kidsPlay: [],
+    frameDue: 0,
+    consumableDue: 0,
+    kidsDue: 0,
+    totalDue: 0,
+  };
 
   ngOnInit(): void {
     this.updateViewportState();
@@ -831,9 +876,54 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     });
   }
 
+  openItemsPopup(player: DuePlayer): void {
+    if (!player.userId) {
+      alert('User ID is missing');
+      return;
+    }
+
+    this.itemsPlayer = player;
+    this.showItemsPopup = true;
+    this.isLoadingItemsBreakdown = true;
+    this.dueBreakdown = {
+      frames: [],
+      consumables: [],
+      kidsPlay: [],
+      frameDue: 0,
+      consumableDue: 0,
+      kidsDue: 0,
+      totalDue: 0,
+    };
+
+    this.http.get<PendingDueBreakdown>(`/api/user/payment-breakdown-by-date?userId=${player.userId}&date=${this.selectedEarningsDate}`).subscribe({
+      next: (breakdown) => {
+        this.dueBreakdown = {
+          frames: breakdown?.frames ?? [],
+          consumables: breakdown?.consumables ?? [],
+          kidsPlay: breakdown?.kidsPlay ?? [],
+          frameDue: breakdown?.frameDue ?? 0,
+          consumableDue: breakdown?.consumableDue ?? 0,
+          kidsDue: breakdown?.kidsDue ?? 0,
+          totalDue: breakdown?.totalDue ?? 0,
+        };
+        this.isLoadingItemsBreakdown = false;
+      },
+      error: (err) => {
+        console.error('Failed to load due breakdown', err);
+        this.isLoadingItemsBreakdown = false;
+        alert('Failed to load pending item details');
+      }
+    });
+  }
+
   closeSettlementPopup(): void {
     this.showSettlementPopup = false;
     this.settlementPlayer = null;
+  }
+
+  closeItemsPopup(): void {
+    this.showItemsPopup = false;
+    this.itemsPlayer = null;
   }
 
   getEffectiveSettlement(): number {

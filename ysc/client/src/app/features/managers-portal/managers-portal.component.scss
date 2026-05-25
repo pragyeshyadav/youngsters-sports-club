@@ -323,6 +323,40 @@
   border: 1px solid #fecaca;
 }
 
+.due-player-copy {
+  flex: 1;
+}
+
+.due-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.due-player-buttons {
+  display: flex;
+  gap: 0.55rem;
+}
+
+.mini-action-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.88rem;
+}
+
+.mini-action-btn--settle {
+  background: rgba(20, 83, 45, 0.12);
+  color: #14532d;
+}
+
+.mini-action-btn--items {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
 .settled-payment-list {
   display: flex;
   flex-direction: column;
@@ -719,23 +753,24 @@
     flex-direction: column;
   }
 
+  .due-player-controls {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .due-player-buttons {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .mini-action-btn {
+    width: 100%;
+  }
+
   .metric-value {
     font-size: 1.55rem;
   }
-}
-
-.clickable-row {
-  cursor: pointer;
-  transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-  text-align: left;
-  border: 1px solid #fecaca;
-  font-family: inherit;
-  font-size: 1rem;
-}
-
-.clickable-row:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .modal-backdrop {
@@ -773,6 +808,68 @@
     background: white;
     font-size: 1rem;
   }
+}
+
+.modal--wide {
+  width: min(680px, 100%);
+}
+
+.items-modal-subtitle {
+  margin: -0.2rem 0 0.9rem;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.items-breakdown-scroll {
+  max-height: min(65vh, 520px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.breakdown-section {
+  padding: 0.9rem 1rem;
+  border-radius: 0.85rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.breakdown-section__header {
+  color: #0f172a;
+  font-weight: 800;
+}
+
+.breakdown-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.breakdown-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.8rem;
+  background: white;
+  border: 1px solid #e2e8f0;
+}
+
+.breakdown-copy {
+  display: flex;
+  flex-direction: column;
+}
+
+.breakdown-title {
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.breakdown-meta {
+  color: #64748b;
+  font-size: 0.85rem;
 }
 
 .modal-total {

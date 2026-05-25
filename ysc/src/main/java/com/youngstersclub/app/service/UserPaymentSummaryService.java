@@ -1,5 +1,9 @@
 package com.youngstersclub.app.service;
 
+import com.youngstersclub.app.dto.ConsumableDueRowDto;
+import com.youngstersclub.app.dto.PendingDueBreakdownDto;
+import com.youngstersclub.app.dto.PendingFrameBreakdownDto;
+import com.youngstersclub.app.dto.PendingKidsPlayBreakdownDto;
 import com.youngstersclub.app.dto.UserPaymentSummaryDto;
 import com.youngstersclub.app.repository.FrameRepository;
 import java.math.BigDecimal;
@@ -13,14 +17,17 @@ import org.springframework.stereotype.Service;
 public class UserPaymentSummaryService {
 
     private final FrameRepository frameRepository;
+    private final FrameService frameService;
     private final ConsumableService consumableService;
     private final KidsPlayService kidsPlayService;
 
     public UserPaymentSummaryService(
             FrameRepository frameRepository,
+            FrameService frameService,
             ConsumableService consumableService,
             KidsPlayService kidsPlayService) {
         this.frameRepository = frameRepository;
+        this.frameService = frameService;
         this.consumableService = consumableService;
         this.kidsPlayService = kidsPlayService;
     }
@@ -35,11 +42,26 @@ public class UserPaymentSummaryService {
     }
 
     public UserPaymentSummaryDto getPaymentSummaryByDate(Integer userId, LocalDate selectedDate) {
-        BigDecimal frameDue = (userId == null || selectedDate == null)
-                ? BigDecimal.ZERO
-                : frameRepository.getTotalDueForUserByDate(userId, selectedDate);
-        BigDecimal consumableDue = consumableService.getConsumableDueByDate(userId, selectedDate);
-        BigDecimal kidsDue = kidsPlayService.getKidsDueByDate(userId, selectedDate);
+        if (userId == null || selectedDate == null) {
+            return new UserPaymentSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        }
+
+        List<PendingFrameBreakdownDto> frames = frameService.getUserDueFramesByDate(userId, selectedDate);
+        List<ConsumableDueRowDto> consumables = consumableService.getDueConsumablesByDate(userId, selectedDate);
+        List<PendingKidsPlayBreakdownDto> kidsPlay = kidsPlayService.getKidsDueBreakdownByDate(userId, selectedDate);
+
+        BigDecimal frameDue = frames.stream()
+                .map(PendingFrameBreakdownDto::getDueAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal consumableDue = consumables.stream()
+                .map(ConsumableDueRowDto::getTotalCost)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal kidsDue = kidsPlay.stream()
+                .map(PendingKidsPlayBreakdownDto::getAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         return new UserPaymentSummaryDto(frameDue, consumableDue, kidsDue);
     }
 
@@ -66,5 +88,21 @@ public class UserPaymentSummaryService {
         }
 
         return summaries;
+    }
+
+    public PendingDueBreakdownDto getPendingDueBreakdownByDate(Integer userId, LocalDate selectedDate) {
+        UserPaymentSummaryDto summary = getPaymentSummaryByDate(userId, selectedDate);
+        List<PendingFrameBreakdownDto> frames = frameService.getUserDueFramesByDate(userId, selectedDate);
+        List<ConsumableDueRowDto> consumables = consumableService.getDueConsumablesByDate(userId, selectedDate);
+        List<PendingKidsPlayBreakdownDto> kidsPlay = kidsPlayService.getKidsDueBreakdownByDate(userId, selectedDate);
+
+        return new PendingDueBreakdownDto(
+                frames,
+                consumables,
+                kidsPlay,
+                summary.getFrameDue(),
+                summary.getConsumableDue(),
+                summary.getKidsDue(),
+                summary.getTotalDue());
     }
 }

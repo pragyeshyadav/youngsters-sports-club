@@ -166,8 +166,10 @@ public class ConsumableService {
         if (userId == null || selectedDate == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal total = consumableOrderRepository.getTotalUnpaidDueByUserIdAndDate(userId, selectedDate);
-        return total == null ? BigDecimal.ZERO : total;
+        return getUnpaidOrdersByDate(userId, selectedDate).stream()
+                .map(ConsumableOrder::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     public Map<Integer, BigDecimal> getConsumableDueMap(List<Integer> userIds) {
@@ -185,7 +187,26 @@ public class ConsumableService {
         if (userId == null || selectedDate == null) {
             return List.of();
         }
-        return consumableOrderRepository.findByUserIdAndPaymentStatusAndCreatedDate(userId, "UNPAID", selectedDate);
+        return consumableOrderRepository.findByUserIdAndPaymentStatus(userId, "UNPAID").stream()
+                .filter(order -> order.getCreatedAt() != null && selectedDate.equals(order.getCreatedAt().toLocalDate()))
+                .toList();
+    }
+
+    public List<ConsumableDueRowDto> getDueConsumablesByDate(Integer userId, LocalDate selectedDate) {
+        if (userId == null || selectedDate == null) {
+            return List.of();
+        }
+
+        return getUnpaidOrdersByDate(userId, selectedDate).stream()
+                .flatMap(order -> order.getItems().stream()
+                        .map(item -> new ConsumableDueRowDto(
+                                order.getId(),
+                                item.getItem() != null ? item.getItem().getName() : null,
+                                item.getQuantity(),
+                                item.getPrice(),
+                                item.getTotalCost(),
+                                order.getCreatedAt())))
+                .toList();
     }
 
     public List<ConsumableDueRowDto> getDueConsumables(Integer userId) {

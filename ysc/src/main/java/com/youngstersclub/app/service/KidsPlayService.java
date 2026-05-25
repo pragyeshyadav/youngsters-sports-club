@@ -1,6 +1,7 @@
 package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.KidsSessionEndRequest;
+import com.youngstersclub.app.dto.PendingKidsPlayBreakdownDto;
 import com.youngstersclub.app.dto.KidsSessionResponseDto;
 import com.youngstersclub.app.dto.KidsSessionStartRequest;
 import com.youngstersclub.app.entity.Child;
@@ -151,8 +152,10 @@ public class KidsPlayService {
         if (parentUserId == null || selectedDate == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal due = kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIdAndDate(parentUserId, selectedDate);
-        return due == null ? BigDecimal.ZERO : due;
+        return getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
+                .map(KidsPlaySession::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     public Map<Integer, BigDecimal> getKidsDueMap(List<Integer> userIds) {
@@ -177,7 +180,23 @@ public class KidsPlayService {
         if (parentUserId == null || selectedDate == null) {
             return List.of();
         }
-        return kidsPlaySessionRepository.findUnpaidByParentUserIdAndEndDateOrderByStartTime(parentUserId, selectedDate);
+        return getUnpaidSessions(parentUserId).stream()
+                .filter(session -> session.getStartTime() != null && selectedDate.equals(session.getStartTime().toLocalDate()))
+                .toList();
+    }
+
+    public List<PendingKidsPlayBreakdownDto> getKidsDueBreakdownByDate(Integer parentUserId, LocalDate selectedDate) {
+        if (parentUserId == null || selectedDate == null) {
+            return List.of();
+        }
+
+        return getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
+                .map(session -> new PendingKidsPlayBreakdownDto(
+                        session.getId(),
+                        session.getChild() != null ? session.getChild().getName() : null,
+                        session.getEndTime() != null ? session.getEndTime() : session.getStartTime(),
+                        session.getTotalAmount()))
+                .toList();
     }
 
     @Transactional

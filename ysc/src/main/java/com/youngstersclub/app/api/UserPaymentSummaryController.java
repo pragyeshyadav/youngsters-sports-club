@@ -1,5 +1,6 @@
 package com.youngstersclub.app.api;
 
+import com.youngstersclub.app.dto.PendingDueBreakdownDto;
 import com.youngstersclub.app.dto.UserPaymentSummaryDto;
 import com.youngstersclub.app.service.UserPaymentSummaryService;
 import java.time.LocalDate;
@@ -29,5 +30,12 @@ public class UserPaymentSummaryController {
             @RequestParam Integer userId,
             @RequestParam LocalDate date) {
         return ResponseEntity.ok(userPaymentSummaryService.getPaymentSummaryByDate(userId, date));
+    }
+
+    @GetMapping("/payment-breakdown-by-date")
+    public ResponseEntity<PendingDueBreakdownDto> getPaymentBreakdownByDate(
+            @RequestParam Integer userId,
+            @RequestParam LocalDate date) {
+        return ResponseEntity.ok(userPaymentSummaryService.getPendingDueBreakdownByDate(userId, date));
     }
 }

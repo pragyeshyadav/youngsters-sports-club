@@ -56,12 +56,18 @@
                 } @else {
                   <div class="due-player-list">
                     @for (player of todayEarnings.duePlayers; track player.name) {
-                      <button type="button" class="due-player-item clickable-row" (click)="openSettlementPopup(player)">
-                        <div>
+                      <div class="due-player-item due-player-item--actions">
+                        <div class="due-player-copy">
                           <span class="due-player-name">{{ player.name }}</span>
                         </div>
-                        <strong class="text-red">₹{{ player.due ?? 0 }}</strong>
-                      </button>
+                        <div class="due-player-controls">
+                          <strong class="text-red">₹{{ player.due ?? 0 }}</strong>
+                          <div class="due-player-buttons">
+                            <button type="button" class="mini-action-btn mini-action-btn--settle" (click)="openSettlementPopup(player)">Settle</button>
+                            <button type="button" class="mini-action-btn mini-action-btn--items" (click)="openItemsPopup(player)">Items</button>
+                          </div>
+                        </div>
+                      </div>
                     }
                   </div>
                 }
@@ -710,6 +716,106 @@
             {{ isSavingSettlement ? 'Saving...' : 'Save' }}
           </button>
           <button class="cancel-btn" (click)="closeSettlementPopup()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (showItemsPopup) {
+    <div class="modal-backdrop" (click)="closeItemsPopup()">
+      <div class="modal modal--wide" (click)="$event.stopPropagation()">
+        <h3>🧾 Pending Items</h3>
+
+        @if (itemsPlayer) {
+          <p class="items-modal-subtitle">{{ itemsPlayer.name }} · {{ selectedEarningsDate }}</p>
+        }
+
+        @if (isLoadingItemsBreakdown) {
+          <div class="spinner-container compact-spinner">
+            <div class="spinner" aria-label="Loading pending due breakdown"></div>
+          </div>
+        } @else {
+          <div class="items-breakdown-scroll">
+            <div class="breakdown-section">
+              <div class="breakdown-section__header">🎱 Frames</div>
+              @if (dueBreakdown.frames.length === 0) {
+                <p class="panel-message due-breakdown-empty">No pending frames.</p>
+              } @else {
+                <div class="breakdown-list">
+                  @for (frame of dueBreakdown.frames; track frame.frameId) {
+                    <div class="breakdown-item">
+                      <div class="breakdown-copy">
+                        <span class="breakdown-title">{{ frame.matchup }}</span>
+                        <span class="breakdown-meta">{{ frame.date | date: 'dd MMM, hh:mm a' }}</span>
+                      </div>
+                      <strong class="text-red">₹{{ frame.dueAmount ?? 0 }}</strong>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="breakdown-section">
+              <div class="breakdown-section__header">🍔 Consumables</div>
+              @if (dueBreakdown.consumables.length === 0) {
+                <p class="panel-message due-breakdown-empty">No unpaid consumables.</p>
+              } @else {
+                <div class="breakdown-list">
+                  @for (item of dueBreakdown.consumables; track item.orderId + '-' + item.itemName + '-' + item.createdAt) {
+                    <div class="breakdown-item">
+                      <div class="breakdown-copy">
+                        <span class="breakdown-title">{{ item.itemName }} x{{ item.quantity }}</span>
+                        <span class="breakdown-meta">{{ item.createdAt | date: 'dd MMM, hh:mm a' }}</span>
+                      </div>
+                      <strong class="text-red">₹{{ item.totalCost ?? 0 }}</strong>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="breakdown-section">
+              <div class="breakdown-section__header">🧒 Kids Play</div>
+              @if (dueBreakdown.kidsPlay.length === 0) {
+                <p class="panel-message due-breakdown-empty">No pending kids play sessions.</p>
+              } @else {
+                <div class="breakdown-list">
+                  @for (session of dueBreakdown.kidsPlay; track session.sessionId) {
+                    <div class="breakdown-item">
+                      <div class="breakdown-copy">
+                        <span class="breakdown-title">{{ session.childName }}</span>
+                        <span class="breakdown-meta">{{ session.date | date: 'dd MMM, hh:mm a' }}</span>
+                      </div>
+                      <strong class="text-red">₹{{ session.amount ?? 0 }}</strong>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="settlement-preview">
+              <p class="preview-row">
+                <span>Total Frame Due</span>
+                <strong>₹{{ dueBreakdown.frameDue ?? 0 }}</strong>
+              </p>
+              <p class="preview-row">
+                <span>Total Consumable Due</span>
+                <strong>₹{{ dueBreakdown.consumableDue ?? 0 }}</strong>
+              </p>
+              <p class="preview-row">
+                <span>Total Kids Play Due</span>
+                <strong>₹{{ dueBreakdown.kidsDue ?? 0 }}</strong>
+              </p>
+              <p class="preview-row preview-row--highlight">
+                <span>Grand Total</span>
+                <strong>₹{{ dueBreakdown.totalDue ?? 0 }}</strong>
+              </p>
+            </div>
+          </div>
+        }
+
+        <div class="modal-actions">
+          <button class="cancel-btn" (click)="closeItemsPopup()">Close</button>
         </div>
       </div>
     </div>
