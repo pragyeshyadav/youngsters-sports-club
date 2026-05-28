@@ -179,33 +179,54 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
       return [];
     }
     return this.framePlayers
-      .map((player) => player.userId)
+      .map((player) => this.resolveFramePlayerId(player))
       .filter((playerId): playerId is number => !!playerId && !this.loserIds.includes(playerId));
   }
 
   canEndFrame(): boolean {
+    const eligiblePlayerIds = this.getEligibleFramePlayerIds();
+    if (eligiblePlayerIds.length < 2) {
+      return false;
+    }
+
     if (this.isTeamMatch) {
-      if (this.winnerIds.length !== 2 || this.loserIds.length !== 2) {
+      const winnerIds = this.getNormalizedSelection(this.winnerIds);
+      const loserIds = this.getNormalizedSelection(this.loserIds);
+      if (winnerIds.length !== 2 || loserIds.length !== 2) {
         return false;
       }
-      const allSelected = new Set([...this.winnerIds, ...this.loserIds]);
-      return allSelected.size === 4;
+      const allSelected = new Set([...winnerIds, ...loserIds]);
+      return allSelected.size === 4 && eligiblePlayerIds.every((playerId) => allSelected.has(playerId));
     }
     if (this.playerCount === 3) {
-      if (this.winnerId === null || this.loserIds.length < 1 || this.loserIds.length > 2) {
+      if (this.winnerId === null) {
         return false;
       }
-      if (this.loserIds.includes(this.winnerId)) {
+      const winnerId = Number(this.winnerId);
+      const loserIds = this.getNormalizedSelection(this.loserIds);
+      if (!eligiblePlayerIds.includes(winnerId) || loserIds.length < 1 || loserIds.length > 2) {
         return false;
       }
-      return new Set(this.loserIds).size === this.loserIds.length;
+      if (loserIds.includes(winnerId)) {
+        return false;
+      }
+      return loserIds.every((loserId) => eligiblePlayerIds.includes(loserId));
     }
     if (this.playerCount === 5 || this.playerCount === 6) {
-      return this.loserIds.length >= 1
-        && this.loserIds.length <= 3
-        && new Set(this.loserIds).size === this.loserIds.length;
+      const loserIds = this.getNormalizedSelection(this.loserIds);
+      return loserIds.length >= 1
+        && loserIds.length <= 3
+        && loserIds.every((loserId) => eligiblePlayerIds.includes(loserId))
+        && loserIds.length < eligiblePlayerIds.length;
     }
-    return this.winnerId !== null && this.looserId !== null && this.winnerId !== this.looserId;
+    if (this.winnerId === null || this.looserId === null) {
+      return false;
+    }
+    const winnerId = Number(this.winnerId);
+    const loserId = Number(this.looserId);
+    return eligiblePlayerIds.includes(winnerId)
+      && eligiblePlayerIds.includes(loserId)
+      && winnerId !== loserId;
   }
 
   onGameModeChange(mode: FrameGameMode): void {
@@ -241,6 +262,21 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
         this.winnerId = null;
       }
     }
+  }
+
+  resolveFramePlayerId(player: ActiveFramePlayer): number | null {
+    const rawId = player.userId ?? null;
+    return typeof rawId === 'number' && Number.isFinite(rawId) ? rawId : null;
+  }
+
+  private getEligibleFramePlayerIds(): number[] {
+    return this.framePlayers
+      .map((player) => this.resolveFramePlayerId(player))
+      .filter((playerId): playerId is number => playerId !== null);
+  }
+
+  private getNormalizedSelection(ids: number[]): number[] {
+    return [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
   }
 
   confirmEndFrame(): void {
