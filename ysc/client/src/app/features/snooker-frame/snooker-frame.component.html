@@ -138,12 +138,12 @@
           <label>Winners (Select 2)</label>
           <div class="multi-select-group">
             @for (player of framePlayers; track player.id) {
-              <label class="checkbox-label" [class.disabled]="winnerIds.length >= 2 && !winnerIds.includes($any(player.userId))">
+              <label class="checkbox-label" [class.disabled]="winnerIds.length >= 2 && !winnerIds.includes($any(resolveFramePlayerId(player)))">
                 <input
                   type="checkbox"
-                  [checked]="winnerIds.includes($any(player.userId))"
-                  [disabled]="(winnerIds.length >= 2 && !winnerIds.includes($any(player.userId))) || loserIds.includes($any(player.userId))"
-                  (change)="toggleWinner(player.userId)"
+                  [checked]="winnerIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="(winnerIds.length >= 2 && !winnerIds.includes($any(resolveFramePlayerId(player)))) || loserIds.includes($any(resolveFramePlayerId(player)))"
+                  (change)="toggleWinner(resolveFramePlayerId(player))"
                 />
                 {{ player.playerName }}
               </label>
@@ -153,12 +153,12 @@
           <label>Losers (Select 2)</label>
           <div class="multi-select-group">
             @for (player of framePlayers; track player.id) {
-              <label class="checkbox-label" [class.disabled]="loserIds.length >= 2 && !loserIds.includes($any(player.userId))">
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= 2 && !loserIds.includes($any(resolveFramePlayerId(player)))">
                 <input
                   type="checkbox"
-                  [checked]="loserIds.includes($any(player.userId))"
-                  [disabled]="(loserIds.length >= 2 && !loserIds.includes($any(player.userId))) || winnerIds.includes($any(player.userId))"
-                  (change)="toggleLoser(player.userId)"
+                  [checked]="loserIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="(loserIds.length >= 2 && !loserIds.includes($any(resolveFramePlayerId(player)))) || winnerIds.includes($any(resolveFramePlayerId(player)))"
+                  (change)="toggleLoser(resolveFramePlayerId(player))"
                 />
                 {{ player.playerName }}
               </label>
@@ -174,19 +174,19 @@
           <select id="winner-select" [(ngModel)]="winnerId">
             <option [ngValue]="null">Select Winner</option>
             @for (player of framePlayers; track player.id) {
-              <option [ngValue]="player.userId" [disabled]="loserIds.includes($any(player.userId))">{{ player.playerName }}</option>
+              <option [ngValue]="resolveFramePlayerId(player)" [disabled]="loserIds.includes($any(resolveFramePlayerId(player)))">{{ player.playerName }}</option>
             }
           </select>
 
           <label>Losers (Select 1 or 2)</label>
           <div class="multi-select-group">
             @for (player of framePlayers; track player.id) {
-              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId))">
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))">
                 <input
                   type="checkbox"
-                  [checked]="loserIds.includes($any(player.userId))"
-                  [disabled]="(loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId))) || winnerId === player.userId"
-                  (change)="toggleLoser(player.userId)"
+                  [checked]="loserIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="(loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))) || winnerId === resolveFramePlayerId(player)"
+                  (change)="toggleLoser(resolveFramePlayerId(player))"
                 />
                 {{ player.playerName }}
               </label>
@@ -201,12 +201,12 @@
           <label>Losers (Select up to {{ maxLosersAllowed }})</label>
           <div class="multi-select-group">
             @for (player of framePlayers; track player.id) {
-              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId))">
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))">
                 <input
                   type="checkbox"
-                  [checked]="loserIds.includes($any(player.userId))"
-                  [disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(player.userId))"
-                  (change)="toggleLoser(player.userId)"
+                  [checked]="loserIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))"
+                  (change)="toggleLoser(resolveFramePlayerId(player))"
                 />
                 {{ player.playerName }}
               </label>
@@ -217,7 +217,7 @@
             <label>Winners (Auto)</label>
             <div class="multi-select-group">
               @for (player of framePlayers; track player.id) {
-                @if (autoWinnerIds.includes($any(player.userId))) {
+                @if (autoWinnerIds.includes($any(resolveFramePlayerId(player)))) {
                   <label class="checkbox-label disabled">
                     <input type="checkbox" checked disabled />
                     {{ player.playerName }}
@@ -231,7 +231,7 @@
           <select id="winner-select" [(ngModel)]="winnerId">
             <option [ngValue]="null">Select Winner</option>
             @for (player of framePlayers; track player.id) {
-              <option [ngValue]="player.userId">{{ player.playerName }}</option>
+              <option [ngValue]="resolveFramePlayerId(player)">{{ player.playerName }}</option>
             }
           </select>
 
@@ -239,7 +239,7 @@
           <select id="looser-select" [(ngModel)]="looserId">
             <option [ngValue]="null">Select Loser</option>
             @for (player of framePlayers; track player.id) {
-              <option [ngValue]="player.userId">{{ player.playerName }}</option>
+              <option [ngValue]="resolveFramePlayerId(player)">{{ player.playerName }}</option>
             }
           </select>
         }

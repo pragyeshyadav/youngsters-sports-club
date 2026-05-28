@@ -436,15 +436,18 @@ public class FrameService {
         boolean isTeamGame = "TEAM".equals(requestedMode);
 
         if (!"SINGLE".equals(requestedMode) && !"TEAM".equals(requestedMode)) {
+            log.warn("Invalid game mode {} for frame {}", requestedMode, frameId);
             throw new IllegalArgumentException("Invalid game mode");
         }
 
         if (isTeamGame && !canUseTeamMode) {
+            log.warn("Team mode requested for unsupported frame {} with playerCount {}", frameId, playerCount);
             throw new IllegalArgumentException("Team mode is only available for 4-player frames");
         }
 
         if (isTeamGame) {
             if (winnerIds == null || loserIds == null || winnerIds.size() != 2 || loserIds.size() != 2) {
+                log.warn("Invalid team selection for frame {}. winners={}, losers={}", frameId, winnerIds, loserIds);
                 throw new IllegalArgumentException("Team mode requires exactly 2 winners and 2 losers");
             }
 
@@ -453,10 +456,12 @@ public class FrameService {
             selectedIds.addAll(loserIds);
 
             if (selectedIds.size() != 4) {
+                log.warn("Non-unique team selection for frame {}. winners={}, losers={}", frameId, winnerIds, loserIds);
                 throw new IllegalArgumentException("Winners and losers must be unique in team mode");
             }
 
             if (!framePlayerIds.containsAll(selectedIds)) {
+                log.warn("Team selection contains players outside frame {}. selectedIds={}, framePlayerIds={}", frameId, selectedIds, framePlayerIds);
                 throw new IllegalArgumentException("Selected players do not belong to this frame");
             }
 
@@ -488,18 +493,23 @@ public class FrameService {
 
             if (playerCount == 3) {
                 if (winnerId == null) {
+                    log.warn("Missing winner for 3-player frame {}", frameId);
                     throw new IllegalArgumentException("3-player frames require exactly 1 winner");
                 }
                 if (dynamicLoserIds == null || dynamicLoserIds.isEmpty() || dynamicLoserIds.size() > 2) {
+                    log.warn("Invalid loser selection for 3-player frame {}. losers={}", frameId, dynamicLoserIds);
                     throw new IllegalArgumentException("3-player frames require 1 or 2 losers");
                 }
                 if (dynamicLoserIds.contains(winnerId)) {
+                    log.warn("Winner overlaps losers for 3-player frame {}. winner={}, losers={}", frameId, winnerId, dynamicLoserIds);
                     throw new IllegalArgumentException("Winner and losers must be different players");
                 }
                 if (!framePlayerIds.contains(winnerId) || !framePlayerIds.containsAll(dynamicLoserIds)) {
+                    log.warn("3-player selection contains players outside frame {}. winner={}, losers={}, framePlayers={}", frameId, winnerId, dynamicLoserIds, framePlayerIds);
                     throw new IllegalArgumentException("Selected players do not belong to this frame");
                 }
                 if (new HashSet<>(dynamicLoserIds).size() != dynamicLoserIds.size()) {
+                    log.warn("Duplicate losers selected for 3-player frame {}. losers={}", frameId, dynamicLoserIds);
                     throw new IllegalArgumentException("Losers must be unique");
                 }
 
@@ -533,18 +543,22 @@ public class FrameService {
                 }
             } else if (playerCount == 5 || playerCount == 6) {
                 if (dynamicLoserIds == null || dynamicLoserIds.isEmpty() || dynamicLoserIds.size() > 3) {
+                    log.warn("Invalid loser selection for {}-player frame {}. losers={}", playerCount, frameId, dynamicLoserIds);
                     throw new IllegalArgumentException("5 or 6-player frames require 1 to 3 losers");
                 }
                 if (!framePlayerIds.containsAll(dynamicLoserIds)) {
+                    log.warn("Multi-player selection contains players outside frame {}. losers={}, framePlayers={}", frameId, dynamicLoserIds, framePlayerIds);
                     throw new IllegalArgumentException("Selected players do not belong to this frame");
                 }
                 if (new HashSet<>(dynamicLoserIds).size() != dynamicLoserIds.size()) {
+                    log.warn("Duplicate losers selected for frame {}. losers={}", frameId, dynamicLoserIds);
                     throw new IllegalArgumentException("Losers must be unique");
                 }
 
                 Set<Integer> winnerIdSet = new HashSet<>(framePlayerIds);
                 winnerIdSet.removeAll(dynamicLoserIds);
                 if (winnerIdSet.isEmpty()) {
+                    log.warn("No winners remain after loser selection for frame {}. losers={}, framePlayers={}", frameId, dynamicLoserIds, framePlayerIds);
                     throw new IllegalArgumentException("At least one winner is required");
                 }
 
@@ -574,14 +588,17 @@ public class FrameService {
                 }
             } else {
                 if (winnerId == null || looserId == null) {
+                    log.warn("Single mode selection incomplete for frame {}. winner={}, loser={}", frameId, winnerId, looserId);
                     throw new IllegalArgumentException("Single mode requires exactly 1 winner and 1 loser");
                 }
 
                 if (winnerId.equals(looserId)) {
+                    log.warn("Winner and loser are identical for frame {}. playerId={}", frameId, winnerId);
                     throw new IllegalArgumentException("Winner and loser must be different players");
                 }
 
                 if (!framePlayerIds.contains(winnerId) || !framePlayerIds.contains(looserId)) {
+                    log.warn("Single mode selection contains players outside frame {}. winner={}, loser={}, framePlayers={}", frameId, winnerId, looserId, framePlayerIds);
                     throw new IllegalArgumentException("Selected players do not belong to this frame");
                 }
 
