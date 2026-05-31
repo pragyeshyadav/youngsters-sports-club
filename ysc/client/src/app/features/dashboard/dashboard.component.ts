@@ -16,6 +16,17 @@ interface PaymentSummary {
   totalDue: number | string | null;
 }
 
+interface PhoneVerificationUser {
+  id: number;
+  name: string;
+  phone: string;
+}
+
+interface PhoneVerificationResponse {
+  exists: boolean;
+  user?: PhoneVerificationUser | null;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -54,6 +65,10 @@ export class DashboardComponent implements OnInit {
   feedbackText: string = '';
   isWithinClubRange: boolean = false;
   locationChecked: boolean = false;
+  showPhoneMergePopup: boolean = false;
+  phoneMergeCandidate: PhoneVerificationUser | null = null;
+  phoneValidationMessage: string = '';
+  isSavingPhone = false;
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -142,17 +157,64 @@ export class DashboardComponent implements OnInit {
       return;
     }
 
-    this.http.post('/api/user/phone', {
+    this.phoneValidationMessage = '';
+    this.isSavingPhone = true;
+    this.http.post<PhoneVerificationResponse>('/api/user/verify-phone', {
+      phoneNumber: cleanedPhone,
+    }).subscribe({
+      next: (response) => {
+        if (response?.exists && response.user) {
+          this.phoneMergeCandidate = response.user;
+          this.showPhoneMergePopup = true;
+          this.isSavingPhone = false;
+          this.cdr.markForCheck();
+          return;
+        }
+
+        this.savePhoneNormally(cleanedPhone);
+      },
+      error: (err) => {
+        console.error('Failed to verify phone number', err);
+        this.isSavingPhone = false;
+        alert(err?.error?.message || 'Unable to verify phone number right now');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  closePhoneMergePopup(): void {
+    this.showPhoneMergePopup = false;
+    this.phoneMergeCandidate = null;
+  }
+
+  useDifferentPhoneNumber(): void {
+    this.phoneValidationMessage = 'Please enter a different phone number';
+    this.closePhoneMergePopup();
+    this.cdr.markForCheck();
+  }
+
+  confirmPhoneMerge(): void {
+    if (!this.authUser?.email || !this.phone) {
+      return;
+    }
+
+    this.isSavingPhone = true;
+    this.http.post<any>('/api/user/merge-account', {
       email: this.authUser.email,
-      phone: this.phone
-    }, { responseType: 'text' }).subscribe((res: any) => {
-      this.user = {
-        ...this.user,
-        phone: this.phone,
-      };
-      alert(res);
-      this.showPhoneInput = false;
-      this.cdr.markForCheck();
+      phoneNumber: this.phone.trim(),
+    }).subscribe({
+      next: (mergedUser) => {
+        this.isSavingPhone = false;
+        this.closePhoneMergePopup();
+        this.applyResolvedUser(mergedUser, this.phone.trim());
+        alert('Existing account updated successfully');
+      },
+      error: (err) => {
+        console.error('Failed to merge user accounts', err);
+        this.isSavingPhone = false;
+        alert(err?.error?.message || 'Unable to update existing account right now');
+        this.cdr.markForCheck();
+      },
     });
   }
 
@@ -187,6 +249,52 @@ export class DashboardComponent implements OnInit {
           this.cdr.markForCheck();
         }
       });
+  }
+
+  private savePhoneNormally(cleanedPhone: string): void {
+    this.http.post('/api/user/phone', {
+      email: this.authUser.email,
+      phone: cleanedPhone
+    }, { responseType: 'text' }).subscribe({
+      next: (res: any) => {
+        this.isSavingPhone = false;
+        this.applyResolvedUser(this.user, cleanedPhone);
+        alert(res);
+      },
+      error: (err) => {
+        console.error('Failed to save phone number', err);
+        this.isSavingPhone = false;
+        alert(err?.error?.message || 'Unable to save phone number right now');
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  private applyResolvedUser(resolvedUser: any, phoneNumber: string): void {
+    this.user = {
+      ...resolvedUser,
+      phone: phoneNumber,
+    };
+    this.showPhoneInput = false;
+    this.phoneValidationMessage = '';
+    this.phone = '';
+
+    const mergedStoredUser = {
+      ...this.authUser,
+      email: resolvedUser?.email ?? this.authUser?.email,
+      name: resolvedUser?.name ?? this.authUser?.name,
+      picture: resolvedUser?.profilePic ?? this.authUser?.picture,
+      phone: phoneNumber,
+    };
+    localStorage.setItem('user', JSON.stringify(mergedStoredUser));
+    this.authUser = mergedStoredUser;
+    this.auth.updateSessionUser({
+      email: mergedStoredUser.email,
+      name: mergedStoredUser.name,
+      profileImageUrl: mergedStoredUser.picture,
+      phone: phoneNumber,
+    });
+    this.cdr.markForCheck();
   }
 
   onFrameAction() {

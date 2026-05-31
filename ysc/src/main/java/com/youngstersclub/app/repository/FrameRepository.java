@@ -3,6 +3,7 @@ package com.youngstersclub.app.repository;
 import com.youngstersclub.app.entity.Frame;
 import com.youngstersclub.app.enums.FrameStatus;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -51,11 +52,16 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
     List<Frame> findUserFrameHistory(@Param("userId") Integer userId);
 
     @Query("""
-        SELECT COALESCE(SUM(f.paymentDue), 0)
+        SELECT COALESCE(SUM(
+            CASE 
+                WHEN fp.id IS NOT NULL AND fp.amountDue IS NOT NULL THEN fp.amountDue
+                ELSE f.paymentDue
+            END
+        ), 0)
         FROM Frame f
-        WHERE f.looser.id = :userId
-        AND f.paymentDue IS NOT NULL
-        AND f.paymentDue > 0
+        LEFT JOIN f.framePlayers fp ON fp.user.id = :userId AND fp.amountDue IS NOT NULL
+        WHERE (f.looser.id = :userId AND (fp.id IS NULL OR fp.amountDue IS NULL) AND f.paymentDue > 0)
+           OR (fp.user.id = :userId AND fp.amountDue IS NOT NULL AND fp.amountDue > 0)
     """)
     BigDecimal getTotalDueForUser(@Param("userId") Integer userId);
 
@@ -98,22 +104,24 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         SELECT DISTINCT f FROM Frame f
         LEFT JOIN FETCH f.winner
         LEFT JOIN FETCH f.looser
-        LEFT JOIN f.framePlayers fp
-        WHERE f.paymentDue IS NOT NULL
-        AND f.paymentDue > 0
-        AND (
-            f.looser.id = :userId
-            OR fp.user.id = :userId
+        LEFT JOIN FETCH f.framePlayers fp
+        WHERE (
+            (f.looser.id = :userId AND f.paymentDue IS NOT NULL AND f.paymentDue > 0 AND NOT EXISTS (SELECT 1 FROM FramePlayer fpi WHERE fpi.frame = f AND fpi.amountDue IS NOT NULL))
+            OR
+            (fp.user.id = :userId AND fp.amountDue IS NOT NULL AND fp.amountDue > 0)
         )
         ORDER BY f.startTime DESC
     """)
     List<Frame> findDueFramesByUser(@Param("userId") Integer userId);
 
     @Query("""
-        SELECT f FROM Frame f
-        WHERE f.looser.id = :userId
-        AND f.paymentDue IS NOT NULL
-        AND f.paymentDue > 0
+        SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.framePlayers fp
+        WHERE (
+            (f.looser.id = :userId AND f.paymentDue IS NOT NULL AND f.paymentDue > 0 AND NOT EXISTS (SELECT 1 FROM FramePlayer fpi WHERE fpi.frame = f AND fpi.amountDue IS NOT NULL))
+            OR
+            (fp.user.id = :userId AND fp.amountDue IS NOT NULL AND fp.amountDue > 0)
+        )
         ORDER BY f.startTime ASC
     """)
     List<Frame> findDueFramesByUserOrderByStartTime(@Param("userId") Integer userId);
@@ -157,7 +165,13 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         Long getWins();
     }
 
+    interface UserDueProjection {
+        Integer getUserId();
+        BigDecimal getAmount();
+    }
+
     interface TodayEarningsProjection {
+        Integer getUserId();
         BigDecimal getTotalEarnings();
         BigDecimal getTotalDue();
         String getPlayerName();
@@ -175,9 +189,41 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
             AND DATE_TRUNC('month', f.start_time) = DATE_TRUNC('month', CURRENT_DATE)
         GROUP BY u.id, u.name
         ORDER BY wins DESC
-        LIMIT 3
+        LIMIT 10
     """, nativeQuery = true)
     List<TopPlayerProjection> findTopPlayersOfCurrentMonth();
+
+    @Query(value = """
+        SELECT
+            due.user_id AS userId,
+            COALESCE(SUM(due.amount), 0) AS amount
+        FROM (
+            SELECT
+                f.looser AS user_id,
+                COALESCE(f.payment_due, 0) AS amount
+            FROM frames f
+            WHERE f.looser IS NOT NULL
+              AND COALESCE(f.payment_due, 0) > 0
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM frame_players fp_check
+                  WHERE fp_check.frame_id = f.id
+                    AND fp_check.amount_due IS NOT NULL
+              )
+
+            UNION ALL
+
+            SELECT
+                fp.user_id AS user_id,
+                COALESCE(fp.amount_due, 0) AS amount
+            FROM frame_players fp
+            WHERE fp.user_id IS NOT NULL
+              AND COALESCE(fp.amount_due, 0) > 0
+        ) due
+        WHERE due.user_id IN (:userIds)
+        GROUP BY due.user_id
+    """, nativeQuery = true)
+    List<UserDueProjection> getTotalDueForUsers(@Param("userIds") List<Integer> userIds);
 
     @Query(value = """
         WITH today_frames AS (
@@ -245,6 +291,19 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
             FROM today_frames tf
             WHERE tf.looser IS NOT NULL
               AND tf.payment_due > 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM frame_players fp WHERE fp.frame_id = tf.id AND fp.amount_due IS NOT NULL
+              )
+
+            UNION ALL
+
+            SELECT
+                fp.user_id AS user_id,
+                COALESCE(fp.amount_due, 0) AS due_amount
+            FROM frame_players fp
+            JOIN today_frames tf ON fp.frame_id = tf.id
+            WHERE fp.user_id IS NOT NULL
+              AND fp.amount_due > 0
 
             UNION ALL
 
@@ -270,6 +329,7 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ),
         due_players AS (
             SELECT
+                u.id AS user_id,
                 u.name AS player_name,
                 SUM(de.due_amount) AS due_amount
             FROM due_entries de
@@ -277,6 +337,7 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
             GROUP BY u.id, u.name
         )
         SELECT
+            dp.user_id AS userId,
             t.total_earnings AS totalEarnings,
             t.total_due AS totalDue,
             dp.player_name AS playerName,
@@ -286,4 +347,161 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ORDER BY dp.due_amount DESC NULLS LAST
     """, nativeQuery = true)
     List<TodayEarningsProjection> findTodayEarningsAnalytics();
+
+    @Query(value = """
+        WITH selected_frames AS (
+            SELECT
+                f.id,
+                f.looser,
+                f.status,
+                COALESCE(f.total_amount, 0) AS total_amount,
+                COALESCE(f.payment_due, 0) AS payment_due
+            FROM frames f
+            WHERE DATE(f.start_time) = :selectedDate
+        ),
+        frame_totals AS (
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'ENDED' THEN total_amount ELSE 0 END), 0) AS total_earnings,
+                COALESCE(SUM(payment_due), 0) AS total_due
+            FROM selected_frames
+        ),
+        selected_consumable_orders AS (
+            SELECT
+                co.id,
+                co.payment_status,
+                COALESCE(co.total_amount, 0) AS outstanding_due,
+                COALESCE(SUM(coi.total_cost), 0) AS gross_amount
+            FROM consumable_orders co
+            LEFT JOIN consumable_order_items coi ON coi.order_id = co.id
+            WHERE DATE(co.created_at) = :selectedDate
+            GROUP BY co.id, co.payment_status, co.total_amount
+        ),
+        consumable_totals AS (
+            SELECT
+                COALESCE(SUM(gross_amount), 0) AS total_earnings,
+                COALESCE(SUM(CASE WHEN outstanding_due > 0 AND payment_status <> 'PAID' THEN outstanding_due ELSE 0 END), 0) AS total_due
+            FROM selected_consumable_orders
+        ),
+        selected_kids_sessions AS (
+            SELECT
+                k.status,
+                k.payment_status,
+                COALESCE(k.total_amount, 0) AS total_amount
+            FROM kids_play_sessions k
+            WHERE DATE(k.start_time) = :selectedDate
+        ),
+        kids_totals AS (
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'ENDED' THEN total_amount ELSE 0 END), 0) AS total_earnings,
+                COALESCE(SUM(CASE WHEN total_amount > 0 AND payment_status <> 'PAID' THEN total_amount ELSE 0 END), 0) AS total_due
+            FROM selected_kids_sessions
+        ),
+        totals AS (
+            SELECT
+                COALESCE(ft.total_earnings, 0) + COALESCE(ct.total_earnings, 0) + COALESCE(kt.total_earnings, 0) AS total_earnings,
+                COALESCE(ft.total_due, 0) + COALESCE(ct.total_due, 0) + COALESCE(kt.total_due, 0) AS total_due
+            FROM frame_totals ft
+            CROSS JOIN consumable_totals ct
+            CROSS JOIN kids_totals kt
+        ),
+        due_entries AS (
+            SELECT
+                sf.looser AS user_id,
+                COALESCE(sf.payment_due, 0) AS due_amount
+            FROM selected_frames sf
+            WHERE sf.looser IS NOT NULL
+              AND sf.payment_due > 0
+              AND NOT EXISTS (
+                  SELECT 1 FROM frame_players fp WHERE fp.frame_id = sf.id AND fp.amount_due IS NOT NULL
+              )
+
+            UNION ALL
+
+            SELECT
+                fp.user_id AS user_id,
+                COALESCE(fp.amount_due, 0) AS due_amount
+            FROM frame_players fp
+            JOIN selected_frames sf ON fp.frame_id = sf.id
+            WHERE fp.user_id IS NOT NULL
+              AND fp.amount_due > 0
+
+            UNION ALL
+
+            SELECT
+                co.user_id AS user_id,
+                COALESCE(co.total_amount, 0) AS due_amount
+            FROM consumable_orders co
+            WHERE DATE(co.created_at) = :selectedDate
+              AND COALESCE(co.total_amount, 0) > 0
+              AND co.payment_status <> 'PAID'
+
+            UNION ALL
+
+            SELECT
+                k.parent_user_id AS user_id,
+                COALESCE(k.total_amount, 0) AS due_amount
+            FROM kids_play_sessions k
+            WHERE DATE(k.start_time) = :selectedDate
+              AND COALESCE(k.total_amount, 0) > 0
+              AND k.payment_status <> 'PAID'
+        ),
+        due_players AS (
+            SELECT
+                u.id AS user_id,
+                u.name AS player_name,
+                SUM(de.due_amount) AS due_amount
+            FROM due_entries de
+            JOIN users u ON de.user_id = u.id
+            GROUP BY u.id, u.name
+        )
+        SELECT
+            dp.user_id AS userId,
+            t.total_earnings AS totalEarnings,
+            t.total_due AS totalDue,
+            dp.player_name AS playerName,
+            dp.due_amount AS dueAmount
+        FROM totals t
+        LEFT JOIN due_players dp ON TRUE
+        ORDER BY dp.due_amount DESC NULLS LAST
+    """, nativeQuery = true)
+    List<TodayEarningsProjection> findEarningsAnalyticsByDate(@Param("selectedDate") LocalDate selectedDate);
+
+    @Query("""
+        SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.framePlayers fp
+        WHERE f.status = com.youngstersclub.app.enums.FrameStatus.ENDED
+        AND f.endTime IS NOT NULL
+        AND FUNCTION('DATE', f.endTime) = :selectedDate
+        AND (
+            (f.looser.id = :userId AND f.paymentDue IS NOT NULL AND f.paymentDue > 0 AND NOT EXISTS (SELECT 1 FROM FramePlayer fpi WHERE fpi.frame = f AND fpi.amountDue IS NOT NULL))
+            OR
+            (fp.user.id = :userId AND fp.amountDue IS NOT NULL AND fp.amountDue > 0)
+        )
+        ORDER BY f.startTime ASC
+    """)
+    List<Frame> findDueFramesByUserAndDateOrderByStartTime(
+            @Param("userId") Integer userId,
+            @Param("selectedDate") LocalDate selectedDate);
+
+    @Query("""
+        SELECT COALESCE(SUM(
+            CASE 
+                WHEN fp.id IS NOT NULL AND fp.amountDue IS NOT NULL THEN fp.amountDue
+                ELSE f.paymentDue
+            END
+        ), 0)
+        FROM Frame f
+        LEFT JOIN f.framePlayers fp ON fp.user.id = :userId AND fp.amountDue IS NOT NULL
+        WHERE f.status = com.youngstersclub.app.enums.FrameStatus.ENDED
+        AND f.endTime IS NOT NULL
+        AND FUNCTION('DATE', f.endTime) = :selectedDate
+        AND (
+            (f.looser.id = :userId AND (fp.id IS NULL OR fp.amountDue IS NULL) AND f.paymentDue > 0)
+            OR
+            (fp.user.id = :userId AND fp.amountDue IS NOT NULL AND fp.amountDue > 0)
+        )
+    """)
+    BigDecimal getTotalDueForUserByDate(
+            @Param("userId") Integer userId,
+            @Param("selectedDate") LocalDate selectedDate);
 }

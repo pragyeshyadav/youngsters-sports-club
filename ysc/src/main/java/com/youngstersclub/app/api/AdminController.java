@@ -1,9 +1,21 @@
 package com.youngstersclub.app.api;
 
 import com.youngstersclub.app.dto.AdminMonthlyEarningsDto;
+import com.youngstersclub.app.dto.ConsumableStockCreateRequest;
+import com.youngstersclub.app.dto.ConsumableStockCreateResponseDto;
+import com.youngstersclub.app.dto.ConsumableStockReportRowDto;
+import com.youngstersclub.app.dto.MessageResponseDto;
+import com.youngstersclub.app.dto.TriggerWhatsappRequest;
+import com.youngstersclub.app.service.ConsumableService;
 import com.youngstersclub.app.service.AdminAnalyticsService;
+import com.youngstersclub.app.service.DailyCustomerEngagementService;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,11 +23,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/admin")
 public class AdminController {
+    private static final Logger log = LoggerFactory.getLogger(AdminController.class);
 
     private final AdminAnalyticsService adminAnalyticsService;
+    private final ConsumableService consumableService;
+    private final DailyCustomerEngagementService dailyCustomerEngagementService;
 
-    public AdminController(AdminAnalyticsService adminAnalyticsService) {
+    public AdminController(
+            AdminAnalyticsService adminAnalyticsService,
+            ConsumableService consumableService,
+            DailyCustomerEngagementService dailyCustomerEngagementService) {
         this.adminAnalyticsService = adminAnalyticsService;
+        this.consumableService = consumableService;
+        this.dailyCustomerEngagementService = dailyCustomerEngagementService;
     }
 
     @GetMapping("/monthly-earnings")
@@ -23,5 +43,31 @@ public class AdminController {
             @RequestParam int month,
             @RequestParam int year) {
         return ResponseEntity.ok(adminAnalyticsService.getMonthlyEarnings(month, year));
+    }
+
+    @PostMapping("/consumables/stock")
+    public ResponseEntity<ConsumableStockCreateResponseDto> addConsumableStock(
+            @RequestBody ConsumableStockCreateRequest request) {
+        return ResponseEntity.ok(consumableService.addStock(request));
+    }
+
+    @GetMapping("/consumables/stock-report")
+    public ResponseEntity<List<ConsumableStockReportRowDto>> getConsumableStockReport(
+            @RequestParam int month,
+            @RequestParam int year) {
+        return ResponseEntity.ok(consumableService.getStockReport(month, year));
+    }
+
+    @PostMapping("/trigger-whatsapp")
+    public ResponseEntity<MessageResponseDto> triggerWhatsappMessages(@RequestBody(required = false) TriggerWhatsappRequest request) {
+        boolean isDryRun = request != null && request.isDryRun();
+
+        try {
+            dailyCustomerEngagementService.triggerDailyWhatsappNotifications(isDryRun);
+        } catch (Exception ex) {
+            log.error("Failed to queue manual WhatsApp trigger. Mode: {}. Reason: {}", isDryRun ? "DRY RUN" : "ACTUAL RUN", ex.getMessage(), ex);
+        }
+
+        return ResponseEntity.ok(new MessageResponseDto("Process triggered successfully"));
     }
 }

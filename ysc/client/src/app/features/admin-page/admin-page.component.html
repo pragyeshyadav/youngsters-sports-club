@@ -11,6 +11,175 @@
 
     @if (canViewAdminReport) {
       <div class="admin-panel">
+        <button type="button" class="panel-header stock-header" (click)="toggleAddStockPanel()">
+          <span>📦 Add Stock Items</span>
+          <span class="panel-chevron">{{ isAddStockExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isAddStockExpanded) {
+          <div class="panel-body">
+            <div class="stock-form-grid">
+              <div class="stock-card">
+                <label class="search-label" for="stock-item-search">Select Item</label>
+                <input
+                  id="stock-item-search"
+                  type="text"
+                  [(ngModel)]="stockItemSearchText"
+                  (input)="searchStockItems()"
+                  placeholder="Search item (min 3 characters)"
+                  autocomplete="off"
+                  class="search-input"
+                />
+
+                @if (isLoadingStockItems) {
+                  <div class="spinner-container compact-spinner">
+                    <div class="spinner" aria-label="Loading stock items"></div>
+                  </div>
+                } @else if (stockItems.length > 0) {
+                  <div class="dropdown">
+                    @for (item of stockItems; track item.id) {
+                      <button type="button" class="dropdown-item" (click)="selectStockItem(item)">
+                        <span class="dropdown-title">{{ item.name }}</span>
+                        <span class="dropdown-subtitle">₹{{ item.price ?? 0 }}</span>
+                      </button>
+                    }
+                  </div>
+                }
+              </div>
+
+              <div class="stock-card">
+                <label class="search-label" for="stock-quantity-select">Quantity</label>
+                <select id="stock-quantity-select" [(ngModel)]="selectedStockQuantity" class="search-input">
+                  @for (qty of stockQuantityOptions; track qty) {
+                    <option [ngValue]="qty">{{ qty }}</option>
+                  }
+                </select>
+
+                @if (selectedStockItem) {
+                  <div class="selected-item-chip">
+                    <strong>{{ selectedStockItem.name }}</strong>
+                    <span>₹{{ selectedStockItem.price ?? 0 }}</span>
+                  </div>
+                } @else {
+                  <p class="panel-message">Select a consumable item to add stock.</p>
+                }
+              </div>
+            </div>
+
+            @if (stockError) {
+              <p class="panel-message error-message">{{ stockError }}</p>
+            }
+
+            <button
+              type="button"
+              class="submit-btn stock-submit-btn"
+              [disabled]="!canSaveStock()"
+              (click)="saveStock()">
+              @if (isSavingStock) {
+                <span class="button-spinner" aria-hidden="true"></span>
+                <span>Saving Stock...</span>
+              } @else {
+                <span>Save Stock</span>
+              }
+            </button>
+          </div>
+        }
+      </div>
+
+      <div class="admin-panel">
+        <button type="button" class="panel-header consumable-report-header" (click)="toggleConsumableReport()">
+          <span>📋 Consumable Item Report</span>
+          <span class="panel-chevron">{{ isConsumableReportExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isConsumableReportExpanded) {
+          <div class="panel-body">
+            <div class="filters-row">
+              <div class="filter-field">
+                <label for="consumable-report-month-filter">Month</label>
+                <select id="consumable-report-month-filter" [(ngModel)]="selectedConsumableReportMonth" (change)="onConsumableReportFilterChange()">
+                  @for (month of monthOptions; track month.value) {
+                    <option [ngValue]="month.value">{{ month.label }}</option>
+                  }
+                </select>
+              </div>
+
+              <div class="filter-field">
+                <label for="consumable-report-year-filter">Year</label>
+                <select id="consumable-report-year-filter" [(ngModel)]="selectedConsumableReportYear" (change)="onConsumableReportFilterChange()">
+                  @for (year of yearOptions; track year) {
+                    <option [ngValue]="year">{{ year }}</option>
+                  }
+                </select>
+              </div>
+            </div>
+
+            @if (isLoadingConsumableReport) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading consumable report"></div>
+              </div>
+            } @else if (consumableReportError) {
+              <p class="panel-message error-message">{{ consumableReportError }}</p>
+            } @else if (consumableStockReport.length === 0) {
+              <p class="panel-message">No consumable items found for the selected month.</p>
+            } @else {
+              <div class="stock-report-table-wrap">
+                <table class="stock-report-table">
+                  <thead>
+                    <tr>
+                      <th>Item Name</th>
+                      <th>Stock Added</th>
+                      <th>Sold Quantity</th>
+                      <th>Available Stock</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of consumableStockReport; track row.itemId) {
+                      <tr>
+                        <td>{{ row.itemName }}</td>
+                        <td>{{ row.stockAdded ?? 0 }}</td>
+                        <td>{{ row.soldQuantity ?? 0 }}</td>
+                        <td>
+                          <span class="stock-pill" [ngClass]="getStockStateClass(row.availableStock)">
+                            {{ row.availableStock ?? 0 }}
+                          </span>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="stock-report-cards">
+                @for (row of consumableStockReport; track row.itemId) {
+                  <div class="stock-report-card">
+                    <div class="stock-report-card__header">
+                      <strong>{{ row.itemName }}</strong>
+                      <span class="stock-pill" [ngClass]="getStockStateClass(row.availableStock)">
+                        {{ row.availableStock ?? 0 }}
+                      </span>
+                    </div>
+                    <div class="stock-report-card__row">
+                      <span>Stock Added</span>
+                      <strong>{{ row.stockAdded ?? 0 }}</strong>
+                    </div>
+                    <div class="stock-report-card__row">
+                      <span>Sold Quantity</span>
+                      <strong>{{ row.soldQuantity ?? 0 }}</strong>
+                    </div>
+                    <div class="stock-report-card__row">
+                      <span>Available Stock</span>
+                      <strong>{{ row.availableStock ?? 0 }}</strong>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="admin-panel">
         <button type="button" class="panel-header report-header" (click)="toggleMonthlyReport()">
           <span>📊 Monthly Earning Report</span>
           <span class="panel-chevron">{{ isMonthlyReportExpanded ? '▲' : '▼' }}</span>
@@ -96,6 +265,8 @@
           </div>
         }
       </div>
+
+      <app-trigger-whatsapp-panel></app-trigger-whatsapp-panel>
     } @else {
       <p class="access-message">This report is available only for admin users.</p>
     }

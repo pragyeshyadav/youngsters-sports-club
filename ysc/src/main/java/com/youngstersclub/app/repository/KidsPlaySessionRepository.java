@@ -2,6 +2,7 @@ package com.youngstersclub.app.repository;
 
 import com.youngstersclub.app.entity.KidsPlaySession;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,6 +12,11 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface KidsPlaySessionRepository extends JpaRepository<KidsPlaySession, Long> {
+
+    interface UserKidsDueProjection {
+        Integer getUserId();
+        BigDecimal getAmount();
+    }
 
     @Query("""
         SELECT k FROM KidsPlaySession k
@@ -47,12 +53,48 @@ public interface KidsPlaySessionRepository extends JpaRepository<KidsPlaySession
     List<KidsPlaySession> findUnpaidByParentUserIdOrderByStartTime(@Param("parentUserId") Integer parentUserId);
 
     @Query("""
+        SELECT k FROM KidsPlaySession k
+        JOIN FETCH k.child c
+        WHERE k.parentUser.id = :parentUserId
+        AND k.paymentStatus = 'UNPAID'
+        AND k.endTime IS NOT NULL
+        AND FUNCTION('DATE', k.endTime) = :selectedDate
+        ORDER BY k.startTime ASC
+    """)
+    List<KidsPlaySession> findUnpaidByParentUserIdAndEndDateOrderByStartTime(
+            @Param("parentUserId") Integer parentUserId,
+            @Param("selectedDate") LocalDate selectedDate);
+
+    @Query("""
         SELECT COALESCE(SUM(k.totalAmount), 0)
         FROM KidsPlaySession k
         WHERE k.parentUser.id = :parentUserId
         AND k.paymentStatus = 'UNPAID'
     """)
     BigDecimal getTotalUnpaidDueByParentUserId(@Param("parentUserId") Integer parentUserId);
+
+    @Query("""
+        SELECT COALESCE(SUM(k.totalAmount), 0)
+        FROM KidsPlaySession k
+        WHERE k.parentUser.id = :parentUserId
+        AND k.paymentStatus = 'UNPAID'
+        AND k.endTime IS NOT NULL
+        AND FUNCTION('DATE', k.endTime) = :selectedDate
+    """)
+    BigDecimal getTotalUnpaidDueByParentUserIdAndDate(
+            @Param("parentUserId") Integer parentUserId,
+            @Param("selectedDate") LocalDate selectedDate);
+
+    @Query("""
+        SELECT
+            k.parentUser.id AS userId,
+            COALESCE(SUM(k.totalAmount), 0) AS amount
+        FROM KidsPlaySession k
+        WHERE k.parentUser.id IN :userIds
+        AND k.paymentStatus = 'UNPAID'
+        GROUP BY k.parentUser.id
+    """)
+    List<UserKidsDueProjection> getTotalUnpaidDueByParentUserIds(@Param("userIds") List<Integer> userIds);
 
     @Query(value = """
         SELECT COALESCE(SUM(

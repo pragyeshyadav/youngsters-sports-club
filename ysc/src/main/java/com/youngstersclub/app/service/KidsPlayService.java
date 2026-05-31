@@ -1,6 +1,7 @@
 package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.KidsSessionEndRequest;
+import com.youngstersclub.app.dto.PendingKidsPlayBreakdownDto;
 import com.youngstersclub.app.dto.KidsSessionResponseDto;
 import com.youngstersclub.app.dto.KidsSessionStartRequest;
 import com.youngstersclub.app.entity.Child;
@@ -18,8 +19,11 @@ import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -144,11 +148,55 @@ public class KidsPlayService {
         return due == null ? BigDecimal.ZERO : due;
     }
 
+    public BigDecimal getKidsDueByDate(Integer parentUserId, LocalDate selectedDate) {
+        if (parentUserId == null || selectedDate == null) {
+            return BigDecimal.ZERO;
+        }
+        return getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
+                .map(KidsPlaySession::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public Map<Integer, BigDecimal> getKidsDueMap(List<Integer> userIds) {
+        Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
+        if (userIds == null || userIds.isEmpty()) {
+            return dues;
+        }
+
+        kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIds(userIds).forEach(projection ->
+                dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
+        return dues;
+    }
+
     public List<KidsPlaySession> getUnpaidSessions(Integer parentUserId) {
         if (parentUserId == null) {
             return List.of();
         }
         return kidsPlaySessionRepository.findUnpaidByParentUserIdOrderByStartTime(parentUserId);
+    }
+
+    public List<KidsPlaySession> getUnpaidSessionsByDate(Integer parentUserId, LocalDate selectedDate) {
+        if (parentUserId == null || selectedDate == null) {
+            return List.of();
+        }
+        return getUnpaidSessions(parentUserId).stream()
+                .filter(session -> session.getStartTime() != null && selectedDate.equals(session.getStartTime().toLocalDate()))
+                .toList();
+    }
+
+    public List<PendingKidsPlayBreakdownDto> getKidsDueBreakdownByDate(Integer parentUserId, LocalDate selectedDate) {
+        if (parentUserId == null || selectedDate == null) {
+            return List.of();
+        }
+
+        return getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
+                .map(session -> new PendingKidsPlayBreakdownDto(
+                        session.getId(),
+                        session.getChild() != null ? session.getChild().getName() : null,
+                        session.getEndTime() != null ? session.getEndTime() : session.getStartTime(),
+                        session.getTotalAmount()))
+                .toList();
     }
 
     @Transactional

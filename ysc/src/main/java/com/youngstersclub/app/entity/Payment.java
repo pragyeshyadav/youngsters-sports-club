@@ -5,6 +5,7 @@ import com.youngstersclub.app.enums.PaymentStatus;
 import jakarta.persistence.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -39,6 +40,9 @@ public class Payment {
     @Column(name = "paid_at")
     private LocalDateTime paymentTime;
 
+    @Column(name = "reference_date")
+    private LocalDate referenceDate;
+
     public Payment() {}
 
     public Integer getId() { return id; }
@@ -57,4 +61,6 @@ public class Payment {
     public void setPaymentMethod(PaymentMethod paymentMethod) { this.paymentMethod = paymentMethod; }
     public LocalDateTime getPaymentTime() { return paymentTime; }
     public void setPaymentTime(LocalDateTime paymentTime) { this.paymentTime = paymentTime; }
+    public LocalDate getReferenceDate() { return referenceDate; }
+    public void setReferenceDate(LocalDate referenceDate) { this.referenceDate = referenceDate; }
 }

@@ -35,6 +35,20 @@
           <p>Duration: {{ billDuration }} mins</p>
           <p>Total Amount: ₹{{ billAmount }}</p>
         </div>
+
+        @if (canRestartSameFrame()) {
+          <button
+            type="button"
+            class="change-table-btn restart-frame-btn"
+            (click)="startNewFrameWithSameTableAndPlayers()"
+            [disabled]="isRestartingSameFrame">
+            @if (isRestartingSameFrame) {
+              <span>Starting New Frame...</span>
+            } @else {
+              <span>Start New Frame (Same Table &amp; Players)</span>
+            }
+          </button>
+        }
       }
 
       @if (isPrivileged()) {
@@ -107,27 +121,138 @@
       <div class="modal" (click)="$event.stopPropagation()">
         <h3>Select Winner &amp; Loser</h3>
 
-        <label for="winner-select">Winner</label>
-        <select id="winner-select" [(ngModel)]="winnerId">
-          <option [ngValue]="null">Select Winner</option>
-          @for (player of framePlayers; track player.id) {
-            <option [ngValue]="player.userId">{{ player.playerName }}</option>
-          }
-        </select>
+        @if (canUseTeamMode) {
+          <label for="game-mode-select">Game Mode</label>
+          <select id="game-mode-select" [ngModel]="gameMode" (ngModelChange)="onGameModeChange($event)">
+            <option value="SINGLE">Single</option>
+            <option value="TEAM">Team</option>
+          </select>
+        }
 
-        <label for="looser-select">Loser</label>
-        <select id="looser-select" [(ngModel)]="looserId">
-          <option [ngValue]="null">Select Loser</option>
-          @for (player of framePlayers; track player.id) {
-            <option [ngValue]="player.userId">{{ player.playerName }}</option>
+        @if (isTeamMatch) {
+          <div class="team-match-notice">
+            <p><strong>Team Match (2 vs 2)</strong></p>
+            <p class="subtitle">Select exactly 2 winners and 2 losers.</p>
+          </div>
+
+          <label>Winners (Select 2)</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id) {
+              <label class="checkbox-label" [class.disabled]="winnerIds.length >= 2 && !winnerIds.includes($any(resolveFramePlayerId(player)))">
+                <input
+                  type="checkbox"
+                  [checked]="winnerIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="(winnerIds.length >= 2 && !winnerIds.includes($any(resolveFramePlayerId(player)))) || loserIds.includes($any(resolveFramePlayerId(player)))"
+                  (change)="toggleWinner(resolveFramePlayerId(player))"
+                />
+                {{ player.playerName }}
+              </label>
+            }
+          </div>
+
+          <label>Losers (Select 2)</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id) {
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= 2 && !loserIds.includes($any(resolveFramePlayerId(player)))">
+                <input
+                  type="checkbox"
+                  [checked]="loserIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="(loserIds.length >= 2 && !loserIds.includes($any(resolveFramePlayerId(player)))) || winnerIds.includes($any(resolveFramePlayerId(player)))"
+                  (change)="toggleLoser(resolveFramePlayerId(player))"
+                />
+                {{ player.playerName }}
+              </label>
+            }
+          </div>
+        } @else if (playerCount === 3) {
+          <div class="team-match-notice">
+            <p><strong>3 Player Match</strong></p>
+            <p class="subtitle">Select 1 winner and 1 or 2 losers. The bill will be split equally across selected losers.</p>
+          </div>
+
+          <label for="winner-select">Winner</label>
+          <select id="winner-select" [(ngModel)]="winnerId">
+            <option [ngValue]="null">Select Winner</option>
+            @for (player of framePlayers; track player.id) {
+              <option [ngValue]="resolveFramePlayerId(player)" [disabled]="loserIds.includes($any(resolveFramePlayerId(player)))">{{ player.playerName }}</option>
+            }
+          </select>
+
+          <label>Losers (Select 1 or 2)</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id) {
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))">
+                <input
+                  type="checkbox"
+                  [checked]="loserIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="(loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))) || winnerId === resolveFramePlayerId(player)"
+                  (change)="toggleLoser(resolveFramePlayerId(player))"
+                />
+                {{ player.playerName }}
+              </label>
+            }
+          </div>
+        } @else if (playerCount === 5 || playerCount === 6) {
+          <div class="team-match-notice">
+            <p><strong>Multi Player Match</strong></p>
+            <p class="subtitle">Select 1 to 3 losers. Remaining players will be treated as winners and the bill will be split equally across selected losers.</p>
+          </div>
+
+          <label>Losers (Select up to {{ maxLosersAllowed }})</label>
+          <div class="multi-select-group">
+            @for (player of framePlayers; track player.id) {
+              <label class="checkbox-label" [class.disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))">
+                <input
+                  type="checkbox"
+                  [checked]="loserIds.includes($any(resolveFramePlayerId(player)))"
+                  [disabled]="loserIds.length >= maxLosersAllowed && !loserIds.includes($any(resolveFramePlayerId(player)))"
+                  (change)="toggleLoser(resolveFramePlayerId(player))"
+                />
+                {{ player.playerName }}
+              </label>
+            }
+          </div>
+
+          @if (autoWinnerIds.length > 0) {
+            <label>Winners (Auto)</label>
+            <div class="multi-select-group">
+              @for (player of framePlayers; track player.id) {
+                @if (autoWinnerIds.includes($any(resolveFramePlayerId(player)))) {
+                  <label class="checkbox-label disabled">
+                    <input type="checkbox" checked disabled />
+                    {{ player.playerName }}
+                  </label>
+                }
+              }
+            </div>
           }
-        </select>
+        } @else {
+          <label for="winner-select">Winner</label>
+          <select id="winner-select" [(ngModel)]="winnerId">
+            <option [ngValue]="null">Select Winner</option>
+            @for (player of framePlayers; track player.id) {
+              <option [ngValue]="resolveFramePlayerId(player)">{{ player.playerName }}</option>
+            }
+          </select>
+
+          <label for="looser-select">Loser</label>
+          <select id="looser-select" [(ngModel)]="looserId">
+            <option [ngValue]="null">Select Loser</option>
+            @for (player of framePlayers; track player.id) {
+              <option [ngValue]="resolveFramePlayerId(player)">{{ player.playerName }}</option>
+            }
+          </select>
+        }
 
         <div class="modal-actions">
-          <button class="confirm-btn" [disabled]="!canEndFrame()" (click)="confirmEndFrame()">
-            Confirm End Frame
+          <button class="confirm-btn" [disabled]="!canEndFrame() || isEndingFrame" (click)="confirmEndFrame()">
+            @if (isEndingFrame) {
+              <span>Ending Frame...</span>
+            } @else {
+              <span>Confirm End Frame</span>
+            }
           </button>
-          <button class="cancel-btn" (click)="closeEndPopup()">Cancel</button>
+          <button class="cancel-btn" [disabled]="isEndingFrame" (click)="closeEndPopup()">Cancel</button>
         </div>
       </div>
     </div>

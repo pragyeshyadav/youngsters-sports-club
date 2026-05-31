@@ -94,8 +94,8 @@ public class FrameController {
     }
 
     @PostMapping("/end/{frameId}")
-    public ResponseEntity<?> endFrame(@PathVariable Integer frameId, @RequestBody Map<String, Integer> request) {
-        return ResponseEntity.ok(frameService.endFrame(frameId, request.get("winnerId"), request.get("looserId")));
+    public ResponseEntity<?> endFrame(@PathVariable Integer frameId, @RequestBody com.youngstersclub.app.dto.EndFrameTeamRequest request) {
+        return ResponseEntity.ok(frameService.endFrame(frameId, request));
     }
 
     @PostMapping("/reject/{frameId}")

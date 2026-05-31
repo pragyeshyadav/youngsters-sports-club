@@ -17,6 +17,18 @@
 
         @if (isEarningsExpanded) {
           <div class="panel-body earnings-body">
+            <div class="earnings-filter-bar">
+              <label for="earnings-date">Select Date</label>
+              <input
+                id="earnings-date"
+                type="date"
+                [(ngModel)]="selectedEarningsDate"
+                [min]="minEarningsDate"
+                [max]="maxEarningsDate"
+                (change)="onEarningsDateChange()"
+              />
+            </div>
+
             @if (isLoadingEarnings) {
               <div class="spinner-container compact-spinner">
                 <div class="spinner" aria-label="Loading today's earnings"></div>
@@ -40,15 +52,43 @@
                 </div>
 
                 @if (todayEarnings.duePlayers.length === 0) {
-                  <p class="panel-message due-breakdown-empty">No pending payments for today's frames.</p>
+                  <p class="panel-message due-breakdown-empty">No pending payments found for the selected date.</p>
                 } @else {
                   <div class="due-player-list">
                     @for (player of todayEarnings.duePlayers; track player.name) {
-                      <div class="due-player-item">
-                        <div>
+                      <div class="due-player-item due-player-item--actions">
+                        <div class="due-player-copy">
                           <span class="due-player-name">{{ player.name }}</span>
                         </div>
-                        <strong class="text-red">₹{{ player.due ?? 0 }}</strong>
+                        <div class="due-player-controls">
+                          <strong class="text-red">₹{{ player.due ?? 0 }}</strong>
+                          <div class="due-player-buttons">
+                            <button type="button" class="mini-action-btn mini-action-btn--settle" (click)="openSettlementPopup(player)">Settle</button>
+                            <button type="button" class="mini-action-btn mini-action-btn--items" (click)="openItemsPopup(player)">Items</button>
+                          </div>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+
+              <div class="settled-payments-card">
+                <div class="due-breakdown-header">
+                  <span>💰 Settled Payments</span>
+                </div>
+
+                @if (todayEarnings.settledPayments.length === 0) {
+                  <p class="panel-message due-breakdown-empty">No settled payments for selected date.</p>
+                } @else {
+                  <div class="settled-payment-list">
+                    @for (payment of todayEarnings.settledPayments; track payment.userName + '-' + payment.date + '-' + payment.paidAmount) {
+                      <div class="settled-payment-item">
+                        <div class="settled-payment-copy">
+                          <span class="due-player-name">{{ payment.userName }}</span>
+                          <span class="settled-payment-discount">Discount: ₹{{ payment.discount ?? 0 }}</span>
+                        </div>
+                        <strong class="text-green">₹{{ payment.paidAmount ?? 0 }}</strong>
                       </div>
                     }
                   </div>
@@ -391,8 +431,393 @@
       }
     </div>
 
+    <div class="portal-panel add-child-panel">
+      <button type="button" class="panel-header add-child-header" (click)="toggleAddChild()">
+        <span>👧 Add Child</span>
+        <span class="panel-chevron">{{ isAddChildExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isAddChildExpanded) {
+        <div class="panel-body add-customer-body">
+          <div class="customer-form-card">
+            <div class="customer-field customer-search-field">
+              <label for="child-parent-search">Search Parent</label>
+              <input
+                id="child-parent-search"
+                type="text"
+                [(ngModel)]="childParentSearch"
+                (ngModelChange)="onChildParentSearchInput()"
+                placeholder="Search parent by name (min 3 characters)"
+                autocomplete="off"
+              />
+
+              @if (isSearchingChildParent) {
+                <div class="customer-search-status">Searching parents...</div>
+              } @else if (childParentSearch.trim().length >= 3 && childParentResults.length > 0) {
+                <div class="customer-search-results">
+                  @for (parent of childParentResults; track parent.id) {
+                    <button type="button" class="customer-search-result" (click)="selectChildParent(parent)">
+                      <span class="customer-search-name">{{ parent.name }}</span>
+                      <span class="customer-search-meta">{{ parent.email || 'No email' }}</span>
+                    </button>
+                  }
+                </div>
+              } @else if (childParentSearch.trim().length >= 3 && !selectedChildParent) {
+                <div class="customer-search-status">No parents found.</div>
+              }
+            </div>
+
+            @if (selectedChildParent) {
+              <div class="selected-customer-banner">
+                <strong>Selected Parent: {{ selectedChildParent.name }}</strong>
+                <button type="button" class="clear-inline-btn" (click)="clearSelectedChildParent()">Clear</button>
+              </div>
+
+              @if (isLoadingParentChildren) {
+                <div class="spinner-container compact-spinner">
+                  <div class="spinner" aria-label="Loading children"></div>
+                </div>
+              } @else if (parentChildren.length === 0) {
+                <p class="panel-message update-customer-empty">No children added yet.</p>
+              } @else {
+                <div class="existing-children-list">
+                  @for (child of parentChildren; track child.id) {
+                    <div class="existing-child-item">
+                      <div>
+                        <strong>{{ child.name }}</strong>
+                        <span>{{ child.dateOfBirth ? (child.dateOfBirth | date: 'd MMM y') : 'DOB not added' }}</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+
+              <div class="customer-form-grid child-form-grid">
+                <div class="customer-field">
+                  <label for="manager-child-name">Child Name</label>
+                  <input
+                    id="manager-child-name"
+                    type="text"
+                    [(ngModel)]="childForm.name"
+                    placeholder="Enter child name"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div class="customer-field">
+                  <label for="manager-child-dob">Date of Birth</label>
+                  <input
+                    id="manager-child-dob"
+                    type="date"
+                    [(ngModel)]="childForm.dateOfBirth"
+                    autocomplete="off"
+                  />
+                </div>
+              </div>
+
+              @if (!childForm.name.trim()) {
+                <p class="customer-validation-message">Parent and child name are required.</p>
+              }
+
+              <button
+                type="button"
+                class="save-customer-btn add-child-save-btn"
+                [disabled]="!isChildFormValid()"
+                (click)="saveChild()">
+                {{ isSavingChild ? 'Saving Child...' : 'Save Child' }}
+              </button>
+            } @else {
+              <p class="panel-message update-customer-empty">Select a parent to add and view children.</p>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
+    <div class="portal-panel update-customer-panel">
+      <button type="button" class="panel-header update-customer-header" (click)="toggleUpdateCustomer()">
+        <span>📝 Update Customer</span>
+        <span class="panel-chevron">{{ isUpdateCustomerExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isUpdateCustomerExpanded) {
+        <div class="panel-body add-customer-body">
+          <div class="customer-form-card">
+            <div class="customer-field customer-search-field">
+              <label for="update-customer-search">Search Customer</label>
+              <input
+                id="update-customer-search"
+                type="text"
+                [(ngModel)]="updateCustomerSearch"
+                (ngModelChange)="onUpdateCustomerSearchInput()"
+                placeholder="Search customer by name (min 3 characters)"
+                autocomplete="off"
+              />
+
+              @if (isSearchingUpdateCustomers) {
+                <div class="customer-search-status">Searching customers...</div>
+              } @else if (updateCustomerSearch.trim().length >= 3 && updateCustomerResults.length > 0) {
+                <div class="customer-search-results">
+                  @for (customer of updateCustomerResults; track customer.id) {
+                    <button type="button" class="customer-search-result" (click)="selectUpdateCustomer(customer)">
+                      <span class="customer-search-name">{{ customer.name }}</span>
+                      <span class="customer-search-meta">{{ customer.email || 'No email' }}</span>
+                    </button>
+                  }
+                </div>
+              } @else if (updateCustomerSearch.trim().length >= 3 && !selectedUpdateCustomer) {
+                <div class="customer-search-status">No customers found.</div>
+              }
+            </div>
+
+            @if (selectedUpdateCustomer) {
+              <div class="selected-customer-banner">
+                <strong>{{ selectedUpdateCustomer.name }}</strong>
+                <span>{{ isManualUpdateCustomer() ? 'Manual customer' : 'Google customer' }}</span>
+              </div>
+
+              <div class="customer-form-grid">
+                <div class="customer-field">
+                  <label for="update-customer-name">Name</label>
+                  <input
+                    id="update-customer-name"
+                    type="text"
+                    [(ngModel)]="updateCustomerForm.name"
+                    placeholder="Enter customer name"
+                    [disabled]="!isManualUpdateCustomer()"
+                    [class.readonly-field]="!isManualUpdateCustomer()"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div class="customer-field">
+                  <label for="update-customer-email">Email</label>
+                  <input
+                    id="update-customer-email"
+                    type="email"
+                    [(ngModel)]="updateCustomerForm.email"
+                    placeholder="Email (Optional)"
+                    [disabled]="!isManualUpdateCustomer()"
+                    [class.readonly-field]="!isManualUpdateCustomer()"
+                    autocomplete="off"
+                  />
+                </div>
+
+                <div class="customer-field">
+                  <label for="update-customer-phone">Phone Number</label>
+                  <input
+                    id="update-customer-phone"
+                    type="text"
+                    [ngModel]="updateCustomerForm.phone"
+                    (ngModelChange)="updateCustomerForm.phone = $event"
+                    (input)="onUpdateCustomerPhoneInput($event)"
+                    placeholder="Enter 10 digit phone number"
+                    autocomplete="off"
+                    maxlength="10"
+                  />
+                </div>
+              </div>
+
+              @if (hasUpdateCustomerMissingFields()) {
+                <p class="customer-validation-message">
+                  {{ isManualUpdateCustomer() ? 'Name and phone number are required.' : 'Phone number is required.' }}
+                </p>
+              } @else if (hasUpdateCustomerEmailError()) {
+                <p class="customer-validation-message">Enter a valid email address.</p>
+              } @else if (hasUpdateCustomerPhoneError()) {
+                <p class="customer-validation-message">Phone number must be exactly 10 digits.</p>
+              }
+
+              <button
+                type="button"
+                class="save-customer-btn"
+                [disabled]="!isUpdateCustomerFormValid()"
+                (click)="updateCustomer()">
+                {{ isUpdatingCustomer ? 'Updating Customer...' : 'Update Customer' }}
+              </button>
+            } @else {
+              <p class="panel-message update-customer-empty">Select a customer to update their details.</p>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
     <button type="button" class="settle-btn" (click)="goToSettlement()">
       💳 Settle Customer Payment
     </button>
   </div>
+
+  @if (showSettlementPopup) {
+    <div class="modal-backdrop" (click)="closeSettlementPopup()">
+      <div class="modal" (click)="$event.stopPropagation()">
+        <h3>💳 Settle Payment</h3>
+
+        <div class="modal-summary">
+          <p class="modal-total">Frame Due: ₹{{ settlementFrameDue }}</p>
+          <p class="modal-total">Consumable Due: ₹{{ settlementConsumableDue }}</p>
+          <p class="modal-total">Kids Play Due: ₹{{ settlementKidsDue }}</p>
+          <p class="modal-total modal-total--highlight">Total Due: ₹{{ settlementTotalDue }}</p>
+        </div>
+
+        <input
+          type="number"
+          [(ngModel)]="settleAmount"
+          placeholder="Enter amount"
+          min="1"
+          [max]="settlementTotalDue"
+        />
+
+        <input
+          type="number"
+          [(ngModel)]="discountAmount"
+          placeholder="Enter discount"
+          min="0"
+          [max]="getMaxDiscount()"
+        />
+
+        <select [(ngModel)]="paymentMode">
+          <option value="">Select Payment Mode</option>
+          <option value="CASH">Cash</option>
+          <option value="UPI">UPI</option>
+        </select>
+
+        <div class="settlement-preview">
+          <p class="preview-row">
+            <span>Paid Amount</span>
+            <strong>₹{{ settleAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Discount</span>
+            <strong>₹{{ discountAmount ?? 0 }}</strong>
+          </p>
+          <p class="preview-row preview-row--highlight">
+            <span>Effective Settlement</span>
+            <strong>₹{{ getEffectiveSettlement() }}</strong>
+          </p>
+          <p class="preview-row">
+            <span>Remaining Due</span>
+            <strong>₹{{ getRemainingDue() }}</strong>
+          </p>
+        </div>
+
+        @if (settleAmount && settleAmount <= 0) {
+          <p class="validation-message">Paid amount must be greater than zero.</p>
+        } @else if ((discountAmount ?? 0) < 0) {
+          <p class="validation-message">Discount cannot be negative.</p>
+        } @else if ((discountAmount ?? 0) > getMaxDiscount()) {
+          <p class="validation-message">Discount cannot exceed 60% of total due.</p>
+        } @else if (getEffectiveSettlement() > settlementTotalDue) {
+          <p class="validation-message">Paid amount plus discount cannot exceed total due.</p>
+        }
+
+        <div class="modal-actions">
+          <button class="save-btn" [disabled]="!canSaveSettlement()" (click)="saveSettlement()">
+            {{ isSavingSettlement ? 'Saving...' : 'Save' }}
+          </button>
+          <button class="cancel-btn" (click)="closeSettlementPopup()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (showItemsPopup) {
+    <div class="modal-backdrop" (click)="closeItemsPopup()">
+      <div class="modal modal--wide" (click)="$event.stopPropagation()">
+        <h3>🧾 Pending Items</h3>
+
+        @if (itemsPlayer) {
+          <p class="items-modal-subtitle">{{ itemsPlayer.name }} · {{ selectedEarningsDate }}</p>
+        }
+
+        @if (isLoadingItemsBreakdown) {
+          <div class="spinner-container compact-spinner">
+            <div class="spinner" aria-label="Loading pending due breakdown"></div>
+          </div>
+        } @else {
+          <div class="items-breakdown-scroll">
+            <div class="breakdown-section">
+              <div class="breakdown-section__header">🎱 Frames</div>
+              @if (dueBreakdown.frames.length === 0) {
+                <p class="panel-message due-breakdown-empty">No pending frames.</p>
+              } @else {
+                <div class="breakdown-list">
+                  @for (frame of dueBreakdown.frames; track frame.frameId) {
+                    <div class="breakdown-item">
+                      <div class="breakdown-copy">
+                        <span class="breakdown-title">{{ frame.matchup }}</span>
+                        <span class="breakdown-meta">{{ frame.date | date: 'dd MMM, hh:mm a' }}</span>
+                      </div>
+                      <strong class="text-red">₹{{ frame.dueAmount ?? 0 }}</strong>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="breakdown-section">
+              <div class="breakdown-section__header">🍔 Consumables</div>
+              @if (dueBreakdown.consumables.length === 0) {
+                <p class="panel-message due-breakdown-empty">No unpaid consumables.</p>
+              } @else {
+                <div class="breakdown-list">
+                  @for (item of dueBreakdown.consumables; track item.orderId + '-' + item.itemName + '-' + item.createdAt) {
+                    <div class="breakdown-item">
+                      <div class="breakdown-copy">
+                        <span class="breakdown-title">{{ item.itemName }} x{{ item.quantity }}</span>
+                        <span class="breakdown-meta">{{ item.createdAt | date: 'dd MMM, hh:mm a' }}</span>
+                      </div>
+                      <strong class="text-red">₹{{ item.totalCost ?? 0 }}</strong>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="breakdown-section">
+              <div class="breakdown-section__header">🧒 Kids Play</div>
+              @if (dueBreakdown.kidsPlay.length === 0) {
+                <p class="panel-message due-breakdown-empty">No pending kids play sessions.</p>
+              } @else {
+                <div class="breakdown-list">
+                  @for (session of dueBreakdown.kidsPlay; track session.sessionId) {
+                    <div class="breakdown-item">
+                      <div class="breakdown-copy">
+                        <span class="breakdown-title">{{ session.childName }}</span>
+                        <span class="breakdown-meta">{{ session.date | date: 'dd MMM, hh:mm a' }}</span>
+                      </div>
+                      <strong class="text-red">₹{{ session.amount ?? 0 }}</strong>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <div class="settlement-preview">
+              <p class="preview-row">
+                <span>Total Frame Due</span>
+                <strong>₹{{ dueBreakdown.frameDue ?? 0 }}</strong>
+              </p>
+              <p class="preview-row">
+                <span>Total Consumable Due</span>
+                <strong>₹{{ dueBreakdown.consumableDue ?? 0 }}</strong>
+              </p>
+              <p class="preview-row">
+                <span>Total Kids Play Due</span>
+                <strong>₹{{ dueBreakdown.kidsDue ?? 0 }}</strong>
+              </p>
+              <p class="preview-row preview-row--highlight">
+                <span>Grand Total</span>
+                <strong>₹{{ dueBreakdown.totalDue ?? 0 }}</strong>
+              </p>
+            </div>
+          </div>
+        }
+
+        <div class="modal-actions">
+          <button class="cancel-btn" (click)="closeItemsPopup()">Close</button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

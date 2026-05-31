@@ -44,8 +44,11 @@
                  placeholder="Enter 10 digit phone number"
                  maxlength="10"
                  class="phone-input"/>
-          <button (click)="savePhone()" class="btn-save">
-            Save Phone Number
+          @if (phoneValidationMessage) {
+            <p class="phone-validation-message">{{ phoneValidationMessage }}</p>
+          }
+          <button (click)="savePhone()" class="btn-save" [disabled]="isSavingPhone">
+            {{ isSavingPhone ? 'Checking...' : 'Save Phone Number' }}
           </button>
         </div>
       }
@@ -162,3 +165,24 @@
     </section>
   }
 </div>
+
+@if (showPhoneMergePopup && phoneMergeCandidate) {
+  <div class="modal-backdrop" (click)="closePhoneMergePopup()">
+    <div class="phone-merge-modal" (click)="$event.stopPropagation()">
+      <h3>Account already exists</h3>
+      <p class="phone-merge-copy">We found an existing customer with this phone number.</p>
+      <div class="phone-merge-summary">
+        <p><strong>Existing Name:</strong> {{ phoneMergeCandidate.name }}</p>
+        <p><strong>Phone Number:</strong> {{ phoneMergeCandidate.phone }}</p>
+      </div>
+      <div class="phone-merge-actions">
+        <button type="button" class="btn-save merge-confirm-btn" [disabled]="isSavingPhone" (click)="confirmPhoneMerge()">
+          {{ isSavingPhone ? 'Updating...' : 'Update Existing Account' }}
+        </button>
+        <button type="button" class="merge-cancel-btn" [disabled]="isSavingPhone" (click)="useDifferentPhoneNumber()">
+          Use Different Number
+        </button>
+      </div>
+    </div>
+  </div>
+}

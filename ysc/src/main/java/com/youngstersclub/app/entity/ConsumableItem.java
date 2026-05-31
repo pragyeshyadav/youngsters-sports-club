@@ -44,6 +44,9 @@ public class ConsumableItem {
     @OneToMany(mappedBy = "item", fetch = FetchType.LAZY)
     private List<ConsumableOrderItem> orderItems = new ArrayList<>();
 
+    @OneToMany(mappedBy = "item", fetch = FetchType.LAZY)
+    private List<ConsumableItemStock> stockEntries = new ArrayList<>();
+
     public Long getId() {
         return id;
     }
@@ -90,6 +93,14 @@ public class ConsumableItem {
 
     public void setOrderItems(List<ConsumableOrderItem> orderItems) {
         this.orderItems = orderItems;
+    }
+
+    public List<ConsumableItemStock> getStockEntries() {
+        return stockEntries;
+    }
+
+    public void setStockEntries(List<ConsumableItemStock> stockEntries) {
+        this.stockEntries = stockEntries;
     }
 
     @Override

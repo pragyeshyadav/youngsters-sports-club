@@ -19,6 +19,15 @@ interface BackendUser {
   role: string;
 }
 
+interface RestartFramePayload {
+  tableId: number;
+  startedBy: number;
+  players: Array<{
+    userId: number;
+    name: string;
+  }>;
+}
+
 interface ActiveFrame {
   id: number;
   tableId: number;
@@ -55,6 +64,8 @@ interface OngoingFrameSummary {
   players: string[];
 }
 
+type FrameGameMode = 'SINGLE' | 'TEAM';
+
 @Component({
   selector: 'app-snooker-frame',
   standalone: true,
@@ -78,12 +89,21 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   billAmount: number | null = null;
   billDuration: number | null = null;
   showEndPopup = false;
+  gameMode: FrameGameMode = 'SINGLE';
   winnerId: number | null = null;
   looserId: number | null = null;
+  winnerIds: number[] = [];
+  loserIds: number[] = [];
   userRole = '';
+  currentUserId: number | null = null;
+  lastEndedTable: Table | null = null;
+  lastEndedPlayers: ActiveFramePlayer[] = [];
   isLoadingTables = false;
   isLoadingCurrentFrame = false;
   isLoadingOngoingFrames = false;
+  isOpeningEndPopup = false;
+  isEndingFrame = false;
+  isRestartingSameFrame = false;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
@@ -101,43 +121,190 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   }
 
   openEndPopup(): void {
-    if (!this.activeFrame?.id) {
+    if (!this.activeFrame?.id || this.isOpeningEndPopup || this.isEndingFrame) {
       return;
     }
 
     this.showEndPopup = true;
+    this.gameMode = 'SINGLE';
     this.winnerId = null;
     this.looserId = null;
+    this.winnerIds = [];
+    this.loserIds = [];
+    this.isOpeningEndPopup = true;
 
     this.http.get<ActiveFramePlayer[]>(`/api/frame/${this.activeFrame.id}/players`).subscribe({
       next: (res) => {
         this.framePlayers = res.filter((player) => player.userId !== null && player.userId !== undefined);
+        this.isOpeningEndPopup = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
         console.error('Failed to load frame players', err);
         this.framePlayers = [];
+        this.isOpeningEndPopup = false;
         this.cdr.markForCheck();
       },
     });
   }
 
+  get canUseTeamMode(): boolean {
+    return this.framePlayers.length === 4;
+  }
+
+  get isTeamMatch(): boolean {
+    return this.canUseTeamMode && this.gameMode === 'TEAM';
+  }
+
+  get playerCount(): number {
+    return this.framePlayers.length;
+  }
+
+  get supportsDynamicLosers(): boolean {
+    return this.playerCount === 3 || this.playerCount === 5 || this.playerCount === 6;
+  }
+
+  get maxLosersAllowed(): number {
+    if (this.playerCount === 3) {
+      return 2;
+    }
+    if (this.playerCount === 5 || this.playerCount === 6) {
+      return 3;
+    }
+    return 1;
+  }
+
+  get autoWinnerIds(): number[] {
+    if (this.playerCount !== 5 && this.playerCount !== 6) {
+      return [];
+    }
+    return this.framePlayers
+      .map((player) => this.resolveFramePlayerId(player))
+      .filter((playerId): playerId is number => !!playerId && !this.loserIds.includes(playerId));
+  }
+
   canEndFrame(): boolean {
-    return this.winnerId !== null && this.looserId !== null && this.winnerId !== this.looserId;
+    const eligiblePlayerIds = this.getEligibleFramePlayerIds();
+    if (eligiblePlayerIds.length < 2) {
+      return false;
+    }
+
+    if (this.isTeamMatch) {
+      const winnerIds = this.getNormalizedSelection(this.winnerIds);
+      const loserIds = this.getNormalizedSelection(this.loserIds);
+      if (winnerIds.length !== 2 || loserIds.length !== 2) {
+        return false;
+      }
+      const allSelected = new Set([...winnerIds, ...loserIds]);
+      return allSelected.size === 4 && eligiblePlayerIds.every((playerId) => allSelected.has(playerId));
+    }
+    if (this.playerCount === 3) {
+      if (this.winnerId === null) {
+        return false;
+      }
+      const winnerId = Number(this.winnerId);
+      const loserIds = this.getNormalizedSelection(this.loserIds);
+      if (!eligiblePlayerIds.includes(winnerId) || loserIds.length < 1 || loserIds.length > 2) {
+        return false;
+      }
+      if (loserIds.includes(winnerId)) {
+        return false;
+      }
+      return loserIds.every((loserId) => eligiblePlayerIds.includes(loserId));
+    }
+    if (this.playerCount === 5 || this.playerCount === 6) {
+      const loserIds = this.getNormalizedSelection(this.loserIds);
+      return loserIds.length >= 1
+        && loserIds.length <= 3
+        && loserIds.every((loserId) => eligiblePlayerIds.includes(loserId))
+        && loserIds.length < eligiblePlayerIds.length;
+    }
+    if (this.winnerId === null || this.looserId === null) {
+      return false;
+    }
+    const winnerId = Number(this.winnerId);
+    const loserId = Number(this.looserId);
+    return eligiblePlayerIds.includes(winnerId)
+      && eligiblePlayerIds.includes(loserId)
+      && winnerId !== loserId;
+  }
+
+  onGameModeChange(mode: FrameGameMode): void {
+    this.gameMode = mode;
+    this.winnerId = null;
+    this.looserId = null;
+    this.winnerIds = [];
+    this.loserIds = [];
+  }
+
+  toggleWinner(playerId: number | undefined | null): void {
+    if (!playerId) {
+      return;
+    }
+    if (this.winnerIds.includes(playerId)) {
+      this.winnerIds = this.winnerIds.filter((id) => id !== playerId);
+    } else if (this.winnerIds.length < 2) {
+      this.winnerIds = [...this.winnerIds, playerId];
+      this.loserIds = this.loserIds.filter((id) => id !== playerId);
+    }
+  }
+
+  toggleLoser(playerId: number | undefined | null): void {
+    if (!playerId) {
+      return;
+    }
+    if (this.loserIds.includes(playerId)) {
+      this.loserIds = this.loserIds.filter((id) => id !== playerId);
+    } else if (this.loserIds.length < this.maxLosersAllowed) {
+      this.loserIds = [...this.loserIds, playerId];
+      this.winnerIds = this.winnerIds.filter((id) => id !== playerId);
+      if (this.winnerId === playerId) {
+        this.winnerId = null;
+      }
+    }
+  }
+
+  resolveFramePlayerId(player: ActiveFramePlayer): number | null {
+    const rawId = player.userId ?? null;
+    return typeof rawId === 'number' && Number.isFinite(rawId) ? rawId : null;
+  }
+
+  private getEligibleFramePlayerIds(): number[] {
+    return this.framePlayers
+      .map((player) => this.resolveFramePlayerId(player))
+      .filter((playerId): playerId is number => playerId !== null);
+  }
+
+  private getNormalizedSelection(ids: number[]): number[] {
+    return [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
   }
 
   confirmEndFrame(): void {
-    if (!this.activeFrame?.id || !this.canEndFrame()) {
+    if (!this.activeFrame?.id || !this.canEndFrame() || this.isEndingFrame) {
       return;
     }
 
+    this.isEndingFrame = true;
+
+    const payload = this.isTeamMatch
+      ? { mode: 'TEAM', winnerIds: this.winnerIds, loserIds: this.loserIds }
+      : this.playerCount === 3
+        ? { mode: 'SINGLE', winnerId: this.winnerId, loserIds: this.loserIds }
+        : (this.playerCount === 5 || this.playerCount === 6)
+          ? { mode: 'SINGLE', loserIds: this.loserIds }
+          : { mode: 'SINGLE', winnerId: this.winnerId, looserId: this.looserId };
+
     this.http
-      .post<EndFrameResponse>(`/api/frame/end/${this.activeFrame.id}`, {
-        winnerId: this.winnerId,
-        looserId: this.looserId,
-      })
+      .post<EndFrameResponse>(`/api/frame/end/${this.activeFrame.id}`, payload)
       .subscribe({
         next: (res) => {
+          this.lastEndedTable = this.activeFrame?.tableId
+            ? {
+                id: this.activeFrame.tableId,
+                tableName: this.activeFrame.tableName,
+              }
+            : null;
+          this.lastEndedPlayers = [...this.framePlayers];
           this.clearTimer();
           this.showEndPopup = false;
           this.billAmount = res.amount;
@@ -146,8 +313,12 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
           this.players = [];
           this.framePlayers = [];
           this.timerSeconds = 0;
+          this.gameMode = 'SINGLE';
           this.winnerId = null;
           this.looserId = null;
+          this.winnerIds = [];
+          this.loserIds = [];
+          this.isEndingFrame = false;
           if (this.isPrivileged()) {
             this.loadOngoingFrames();
           }
@@ -156,13 +327,86 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Failed to end frame', err);
+          this.isEndingFrame = false;
           alert('Unable to end frame right now');
         },
       });
   }
 
   closeEndPopup(): void {
+    if (this.isEndingFrame) {
+      return;
+    }
     this.showEndPopup = false;
+  }
+
+  canRestartSameFrame(): boolean {
+    return this.isPrivileged()
+      && !!this.lastEndedTable?.id
+      && !!this.currentUserId
+      && this.billAmount !== null
+      && this.lastEndedPlayers.length >= 2
+      && !this.activeFrame;
+  }
+
+  startNewFrameWithSameTableAndPlayers(): void {
+    if (!this.canRestartSameFrame() || this.isRestartingSameFrame) {
+      return;
+    }
+
+    if (!this.lastEndedTable?.id || !this.currentUserId) {
+      alert('Unable to start a new frame right now. Please refresh and try again.');
+      return;
+    }
+
+    const payload: RestartFramePayload = {
+      tableId: this.lastEndedTable.id,
+      startedBy: this.currentUserId,
+      players: this.lastEndedPlayers
+        .filter((player) => player.userId !== null && player.userId !== undefined)
+        .map((player) => ({
+          userId: player.userId as number,
+          name: player.playerName,
+        })),
+    };
+
+    this.isRestartingSameFrame = true;
+
+    this.http.post<number>('/api/frame/start', payload).subscribe({
+      next: (frameId) => {
+        this.billAmount = null;
+        this.billDuration = null;
+        this.activeFrame = {
+          id: frameId,
+          tableId: this.lastEndedTable?.id ?? 0,
+          tableName: this.lastEndedTable?.tableName ?? '',
+          startTime: new Date().toISOString(),
+          status: 'STARTED',
+        };
+        this.players = [...this.lastEndedPlayers];
+        this.framePlayers = [...this.lastEndedPlayers];
+        this.showEndPopup = false;
+        this.gameMode = 'SINGLE';
+        this.winnerId = null;
+        this.looserId = null;
+        this.winnerIds = [];
+        this.loserIds = [];
+        this.timerSeconds = 0;
+        this.isRestartingSameFrame = false;
+        this.startTimerFromServerTime();
+        if (this.isPrivileged()) {
+          this.loadOngoingFrames();
+        }
+        this.loadTables();
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to start new frame with same table and players', err);
+        this.isRestartingSameFrame = false;
+        alert('Unable to start a new frame right now');
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   get formattedTime(): string {
@@ -193,6 +437,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     this.http.get<BackendUser>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
         this.userRole = user.role ?? '';
+        this.currentUserId = user.id ?? null;
         if (this.isPrivileged()) {
           this.activeFrame = null;
           this.players = [];

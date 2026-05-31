@@ -1,6 +1,6 @@
 <div class="top-rankers-panel">
   <div class="panel-header">
-    <h3>🏆 Top 3 Rankers of the Month</h3>
+    <h3>🏆 Top 10 Rankers of the Month</h3>
     <p class="subtitle">🔥 Win more frames to climb the leaderboard!<br>🏆 Rank #1 wins ₹1000 & Rank #2 wins ₹500 voucher every month!</p>
   </div>
 
@@ -19,12 +19,14 @@
           <div class="rank-card" 
                [class.rank-1]="i === 0" 
                [class.rank-2]="i === 1" 
-               [class.rank-3]="i === 2">
+               [class.rank-3]="i === 2"
+               [class.rank-standard]="i >= 3">
             <div class="rank-header">
               <span class="rank-badge">
                 @if (i === 0) { 🥇 #1 }
                 @if (i === 1) { 🥈 #2 }
                 @if (i === 2) { 🥉 #3 }
+                @if (i >= 3) { #{{ i + 1 }} }
               </span>
               @if (i === 0) {
                 <span class="winner-label">Winner</span>
