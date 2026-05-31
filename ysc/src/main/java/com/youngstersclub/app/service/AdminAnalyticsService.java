@@ -17,14 +17,17 @@ public class AdminAnalyticsService {
     private final FrameRepository frameRepository;
     private final ConsumableOrderRepository consumableOrderRepository;
     private final KidsPlaySessionRepository kidsPlaySessionRepository;
+    private final GameActivityService gameActivityService;
 
     public AdminAnalyticsService(
             FrameRepository frameRepository,
             ConsumableOrderRepository consumableOrderRepository,
-            KidsPlaySessionRepository kidsPlaySessionRepository) {
+            KidsPlaySessionRepository kidsPlaySessionRepository,
+            GameActivityService gameActivityService) {
         this.frameRepository = frameRepository;
         this.consumableOrderRepository = consumableOrderRepository;
         this.kidsPlaySessionRepository = kidsPlaySessionRepository;
+        this.gameActivityService = gameActivityService;
     }
 
     public AdminMonthlyEarningsDto getMonthlyEarnings(int month, int year) {
@@ -47,7 +50,10 @@ public class AdminAnalyticsService {
                 selectedEffectiveEnd.plusDays(1).atStartOfDay()));
         BigDecimal kidsZoneEarnings = sumOrZero(kidsPlaySessionRepository.getPaidEarningsBetween(
                 selectedMonthStart.atStartOfDay(),
-                selectedEffectiveEnd.plusDays(1).atStartOfDay()));
+                selectedEffectiveEnd.plusDays(1).atStartOfDay()))
+                .add(gameActivityService.getPaidEarningsBetween(
+                        selectedMonthStart.atStartOfDay(),
+                        selectedEffectiveEnd.plusDays(1).atStartOfDay()));
         Map<String, BigDecimal> snookerTableBreakdown = frameRepository
                 .getCompletedEarningsByTableBetween(
                         selectedMonthStart.atStartOfDay(),
@@ -74,7 +80,9 @@ public class AdminAnalyticsService {
                 ? BigDecimal.ZERO
                 : sumOrZero(kidsPlaySessionRepository.getPaidEarningsBetween(
                         previousMonthStart.atStartOfDay(),
-                        previousEffectiveEnd.plusDays(1).atStartOfDay()));
+                        previousEffectiveEnd.plusDays(1).atStartOfDay())).add(gameActivityService.getPaidEarningsBetween(
+                                previousMonthStart.atStartOfDay(),
+                                previousEffectiveEnd.plusDays(1).atStartOfDay()));
 
         BigDecimal previousMonthTotal = previousSnooker.add(previousConsumables).add(previousKids);
 

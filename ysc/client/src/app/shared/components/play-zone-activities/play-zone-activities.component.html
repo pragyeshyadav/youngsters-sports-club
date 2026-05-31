@@ -1,0 +1,144 @@
+<div class="play-zone-panel">
+  <button type="button" class="panel-header play-zone-header" (click)="toggle()">
+    <span>🎮 Add Play Zone Activities</span>
+    <span class="panel-chevron">{{ isExpanded ? '▲' : '▼' }}</span>
+  </button>
+
+  @if (isExpanded) {
+    <div class="panel-body play-zone-body">
+      <div class="play-zone-grid">
+        <div class="play-zone-card">
+          <label class="search-label" for="play-zone-parent-search">Search Parent Customer</label>
+          <input
+            id="play-zone-parent-search"
+            type="text"
+            [(ngModel)]="parentSearchText"
+            (input)="searchParents()"
+            placeholder="Search parent (min 3 characters)"
+            autocomplete="off"
+            class="search-input"
+          />
+
+          @if (isLoadingParents) {
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading parent customers"></div>
+            </div>
+          } @else if (parentUsers.length > 0) {
+            <div class="dropdown">
+              @for (user of parentUsers; track user.id) {
+                <button type="button" class="dropdown-item" (click)="selectParent(user)">
+                  <span class="dropdown-title">{{ user.name }}</span>
+                  <span class="dropdown-subtitle">{{ user.email }}</span>
+                </button>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="play-zone-card">
+          <label class="search-label" for="play-zone-game-search">Select Game Activity</label>
+          <input
+            id="play-zone-game-search"
+            type="text"
+            [(ngModel)]="gameSearchText"
+            (input)="searchGames()"
+            [disabled]="!selectedParentUser"
+            placeholder="Search game (min 3 characters)"
+            autocomplete="off"
+            class="search-input"
+          />
+
+          @if (isLoadingGames) {
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading game activities"></div>
+            </div>
+          } @else if (activityGames.length > 0) {
+            <div class="dropdown">
+              @for (game of activityGames; track game.id) {
+                <button type="button" class="dropdown-item" (click)="selectGame(game)">
+                  <span class="dropdown-title">{{ game.gameName }}</span>
+                  <span class="dropdown-subtitle">₹{{ game.basePricePerMinute ?? 0 }}/min</span>
+                </button>
+              }
+            </div>
+          }
+
+          <div class="play-zone-actions">
+            <select [(ngModel)]="selectedDuration" [disabled]="!selectedParentUser">
+              @for (duration of durationOptions; track duration) {
+                <option [ngValue]="duration">{{ duration }} mins</option>
+              }
+            </select>
+
+            @if (isSoftPlaySelected()) {
+              <select [(ngModel)]="selectedKidCount" [disabled]="!selectedParentUser">
+                @for (count of kidsOptions; track count) {
+                  <option [ngValue]="count">{{ count }} kids</option>
+                }
+              </select>
+            }
+
+            <button
+              type="button"
+              class="action-btn add-activity-action"
+              [disabled]="!selectedParentUser || !selectedGame"
+              (click)="addActivity()">
+              Add Activity
+            </button>
+          </div>
+        </div>
+      </div>
+
+      @if (selectedParentUser) {
+        <div class="selected-user-card">
+          <strong>{{ selectedParentUser.name }}</strong>
+          <span>{{ selectedParentUser.email }}</span>
+        </div>
+      }
+
+      <div class="play-zone-card">
+        <div class="selected-header">
+          <h3>Selected Activities</h3>
+          <span class="count">{{ selectedActivities.length }}</span>
+        </div>
+
+        @if (selectedActivities.length === 0) {
+          <p class="panel-message">No play zone activities added yet.</p>
+        } @else {
+          <div class="card-container">
+            @for (activity of selectedActivities; track $index) {
+              <div class="selected-activity-item">
+                <div>
+                  <strong>{{ activity.gameName }}</strong>
+                  <div class="dropdown-subtitle">{{ formatActivityMeta(activity) }}</div>
+                  <div class="activity-total">₹{{ activity.totalAmount }}</div>
+                </div>
+                <button type="button" class="action-btn reject-action" (click)="removeActivity($index)">
+                  Remove
+                </button>
+              </div>
+            }
+          </div>
+
+          <div class="play-zone-total-row">
+            <span>Order Total</span>
+            <strong>₹{{ getActivitiesTotal() }}</strong>
+          </div>
+        }
+      </div>
+
+      <button
+        type="button"
+        class="submit-btn play-zone-submit-btn"
+        [disabled]="!selectedParentUser || !createdByUserId || selectedActivities.length === 0 || isSubmitting"
+        (click)="submitActivities()">
+        @if (isSubmitting) {
+          <span class="button-spinner" aria-hidden="true"></span>
+          <span>Submitting Activities...</span>
+        } @else {
+          <span>Submit Activities</span>
+        }
+      </button>
+    </div>
+  }
+</div>

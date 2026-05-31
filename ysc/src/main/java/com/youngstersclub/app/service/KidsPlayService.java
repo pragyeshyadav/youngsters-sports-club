@@ -36,18 +36,21 @@ public class KidsPlayService {
     private final UserRepository userRepository;
     private final ChildService childService;
     private final PaymentRepository paymentRepository;
+    private final GameActivityService gameActivityService;
 
     public KidsPlayService(
             KidsPlaySessionRepository kidsPlaySessionRepository,
             SnookerTableRepository snookerTableRepository,
             UserRepository userRepository,
             ChildService childService,
-            PaymentRepository paymentRepository) {
+            PaymentRepository paymentRepository,
+            GameActivityService gameActivityService) {
         this.kidsPlaySessionRepository = kidsPlaySessionRepository;
         this.snookerTableRepository = snookerTableRepository;
         this.userRepository = userRepository;
         this.childService = childService;
         this.paymentRepository = paymentRepository;
+        this.gameActivityService = gameActivityService;
     }
 
     @Transactional
@@ -144,18 +147,20 @@ public class KidsPlayService {
         if (parentUserId == null) {
             return BigDecimal.ZERO;
         }
-        BigDecimal due = kidsPlaySessionRepository.getTotalUnpaidDueByParentUserId(parentUserId);
-        return due == null ? BigDecimal.ZERO : due;
+        BigDecimal sessionDue = kidsPlaySessionRepository.getTotalUnpaidDueByParentUserId(parentUserId);
+        BigDecimal activityDue = gameActivityService.getActivityDue(parentUserId);
+        return (sessionDue == null ? BigDecimal.ZERO : sessionDue).add(activityDue);
     }
 
     public BigDecimal getKidsDueByDate(Integer parentUserId, LocalDate selectedDate) {
         if (parentUserId == null || selectedDate == null) {
             return BigDecimal.ZERO;
         }
-        return getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
+        BigDecimal sessionDue = getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
                 .map(KidsPlaySession::getTotalAmount)
                 .filter(java.util.Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return sessionDue.add(gameActivityService.getActivityDueByDate(parentUserId, selectedDate));
     }
 
     public Map<Integer, BigDecimal> getKidsDueMap(List<Integer> userIds) {
@@ -166,6 +171,8 @@ public class KidsPlayService {
 
         kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIds(userIds).forEach(projection ->
                 dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
+        gameActivityService.getActivityDueMap(userIds).forEach((userId, amount) ->
+                dues.merge(userId, amount == null ? BigDecimal.ZERO : amount, BigDecimal::add));
         return dues;
     }
 
@@ -189,13 +196,19 @@ public class KidsPlayService {
         if (parentUserId == null || selectedDate == null) {
             return List.of();
         }
-
-        return getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
+        List<PendingKidsPlayBreakdownDto> sessions = getUnpaidSessionsByDate(parentUserId, selectedDate).stream()
                 .map(session -> new PendingKidsPlayBreakdownDto(
                         session.getId(),
                         session.getChild() != null ? session.getChild().getName() : null,
                         session.getEndTime() != null ? session.getEndTime() : session.getStartTime(),
                         session.getTotalAmount()))
+                .toList();
+        List<PendingKidsPlayBreakdownDto> activities = gameActivityService.getActivityDueBreakdownByDate(parentUserId, selectedDate);
+
+        return java.util.stream.Stream.concat(sessions.stream(), activities.stream())
+                .sorted(java.util.Comparator.comparing(
+                        PendingKidsPlayBreakdownDto::getDate,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
                 .toList();
     }
 
@@ -254,6 +267,84 @@ public class KidsPlayService {
             remainingCash = remainingCash.subtract(cashAmount);
             remainingDiscount = remainingDiscount.subtract(discountAmount);
             remainingSettlement = remainingCash.add(remainingDiscount);
+        }
+
+        if (remainingSettlement.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal activitySettled = gameActivityService.settleActivityOrders(
+                    parentUserId,
+                    remainingCash,
+                    remainingDiscount,
+                    user,
+                    paymentMethod);
+            remainingSettlement = remainingSettlement.subtract(activitySettled);
+        }
+
+        return amount.add(discount).subtract(remainingSettlement);
+    }
+
+    @Transactional
+    public BigDecimal settleKidsSessionsByDate(
+            Integer parentUserId,
+            LocalDate selectedDate,
+            BigDecimal amount,
+            BigDecimal discount,
+            User user,
+            PaymentMethod paymentMethod) {
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            amount = BigDecimal.ZERO;
+        }
+        if (discount == null || discount.compareTo(BigDecimal.ZERO) < 0) {
+            discount = BigDecimal.ZERO;
+        }
+        if (amount.add(discount).compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+
+        BigDecimal remainingCash = amount;
+        BigDecimal remainingDiscount = discount;
+        BigDecimal remainingSettlement = amount.add(discount);
+
+        for (KidsPlaySession session : getUnpaidSessionsByDate(parentUserId, selectedDate)) {
+            if (remainingSettlement.compareTo(BigDecimal.ZERO) <= 0) {
+                break;
+            }
+
+            BigDecimal due = session.getTotalAmount();
+            if (due == null || due.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+
+            BigDecimal settlementAmount = remainingSettlement.min(due);
+            BigDecimal cashAmount = remainingCash.min(settlementAmount);
+            BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
+            Payment payment = new Payment();
+            payment.setFrame(null);
+            payment.setUser(user);
+            payment.setAmount(cashAmount);
+            payment.setDiscount(discountAmount);
+            payment.setStatus(PaymentStatus.PAID);
+            payment.setPaymentMethod(paymentMethod);
+            payment.setPaymentTime(TimeUtil.nowIST());
+            paymentRepository.save(payment);
+
+            BigDecimal updatedDue = due.subtract(settlementAmount);
+            session.setTotalAmount(updatedDue);
+            session.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "UNPAID");
+            kidsPlaySessionRepository.save(session);
+            remainingCash = remainingCash.subtract(cashAmount);
+            remainingDiscount = remainingDiscount.subtract(discountAmount);
+            remainingSettlement = remainingCash.add(remainingDiscount);
+        }
+
+        if (remainingSettlement.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal activitySettled = gameActivityService.settleActivityOrdersByDate(
+                    parentUserId,
+                    selectedDate,
+                    remainingCash,
+                    remainingDiscount,
+                    user,
+                    paymentMethod);
+            remainingSettlement = remainingSettlement.subtract(activitySettled);
         }
 
         return amount.add(discount).subtract(remainingSettlement);

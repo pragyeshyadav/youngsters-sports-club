@@ -332,29 +332,13 @@ public class PaymentService {
         }
 
         if (!allocationState.isExhausted()) {
-            for (com.youngstersclub.app.entity.KidsPlaySession session : kidsPlayService.getUnpaidSessionsByDate(request.getUserId(), request.getDate())) {
-                if (allocationState.isExhausted()) break;
-                BigDecimal due = session.getTotalAmount();
-                if (due == null || due.compareTo(BigDecimal.ZERO) <= 0) continue;
-
-                BigDecimal settlementAmount = allocationState.getRemainingSettlement().min(due);
-                BigDecimal cashAmount = allocationState.allocateCash(settlementAmount);
-                BigDecimal discountAmount = settlementAmount.subtract(cashAmount);
-
-                Payment payment = new Payment();
-                payment.setFrame(null);
-                payment.setUser(user);
-                payment.setAmount(cashAmount);
-                payment.setDiscount(discountAmount);
-                payment.setStatus(PaymentStatus.PAID);
-                payment.setPaymentMethod(paymentMethod);
-                payment.setPaymentTime(TimeUtil.nowIST());
-                paymentRepository.save(payment);
-
-                BigDecimal updatedDue = due.subtract(settlementAmount);
-                session.setTotalAmount(updatedDue);
-                session.setPaymentStatus(updatedDue.compareTo(BigDecimal.ZERO) == 0 ? "PAID" : "UNPAID");
-            }
+            kidsPlayService.settleKidsSessionsByDate(
+                    request.getUserId(),
+                    request.getDate(),
+                    allocationState.getRemainingCash(),
+                    allocationState.getRemainingDiscount(),
+                    user,
+                    paymentMethod);
         }
 
         registerPaymentSettlementNotification(user, request.getPaidAmount(), discount);
