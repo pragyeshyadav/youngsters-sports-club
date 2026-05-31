@@ -72,6 +72,7 @@
           }
           @if (isManagerOrAdmin) {
             <app-consumable-items />
+            <app-play-zone-activities [createdByUserId]="managerUserId" />
           }
           <button class="history-btn" (click)="goToGameHistory()">
             📜 My Game History
