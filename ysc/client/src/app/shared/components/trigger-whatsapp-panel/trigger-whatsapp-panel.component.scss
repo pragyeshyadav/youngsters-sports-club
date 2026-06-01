@@ -39,6 +39,10 @@
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
+.content-card + .content-card {
+  margin-top: 1rem;
+}
+
 .panel-message {
   margin: 0;
   color: #64748b;
@@ -77,4 +81,128 @@
 
 .trigger-btn--actual {
   background: linear-gradient(135deg, #14532d 0%, #15803d 48%, #22c55e 100%);
+}
+
+.notification-card__header {
+  text-align: left;
+  margin-bottom: 1rem;
+
+  h3 {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1.05rem;
+  }
+
+  p {
+    margin: 0.35rem 0 0;
+    color: #64748b;
+    line-height: 1.45;
+  }
+}
+
+.notification-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #334155;
+  font-weight: 700;
+}
+
+.notification-textarea,
+.notification-search-input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.95rem;
+  padding: 0.9rem 1rem;
+  font: inherit;
+  color: #0f172a;
+  background: #ffffff;
+  resize: vertical;
+}
+
+.recipient-options {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.recipient-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.selected-customers-section {
+  margin-top: 1rem;
+}
+
+.customer-dropdown {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.customer-dropdown__item {
+  width: 100%;
+  border: 1px solid #dbe4ee;
+  border-radius: 0.9rem;
+  background: #ffffff;
+  padding: 0.8rem 0.9rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.customer-dropdown__title {
+  display: block;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.customer-dropdown__subtitle {
+  display: block;
+  margin-top: 0.2rem;
+  color: #64748b;
+  font-size: 0.86rem;
+}
+
+.selected-customer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+}
+
+.customer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: none;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #1d4ed8;
+  padding: 0.55rem 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.compact-status {
+  margin: 0.6rem 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.trigger-btn--notification {
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 48%, #38bdf8 100%);
+}
+
+@media (max-width: 640px) {
+  .panel-body {
+    padding: 0.85rem;
+  }
+
+  .content-card {
+    padding: 0.9rem;
+  }
 }
