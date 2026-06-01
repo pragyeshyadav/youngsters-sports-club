@@ -1,6 +1,7 @@
 package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -26,6 +27,7 @@ public class BrevoEmailService {
     private static final Logger log = LoggerFactory.getLogger(BrevoEmailService.class);
     private static final String BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
     private static final String SUMMARY_SUBJECT = "Daily WhatsApp Notification Summary";
+    private static final String BROADCAST_SUBJECT = "WhatsApp Notification Broadcast Summary";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
     private static final class CustomerSummary {
@@ -33,6 +35,16 @@ public class BrevoEmailService {
         private final String phone;
 
         private CustomerSummary(String name, String phone) {
+            this.name = name;
+            this.phone = phone;
+        }
+    }
+
+    private static final class UserSummary {
+        private final String name;
+        private final String phone;
+
+        private UserSummary(String name, String phone) {
             this.name = name;
             this.phone = phone;
         }
@@ -98,7 +110,71 @@ public class BrevoEmailService {
         return sentCount;
     }
 
+    public int sendNotificationBroadcastSummaryEmail(
+            List<User> recipients,
+            List<String> adminEmails,
+            String recipientTypeLabel,
+            String message,
+            int successfulSends,
+            int failedSends) {
+        if (adminEmails == null || adminEmails.isEmpty()) {
+            log.warn("Brevo broadcast summary email skipped because no admin recipient emails were found");
+            return 0;
+        }
+
+        if (brevoApiKey == null || brevoApiKey.isBlank() || senderEmail == null || senderEmail.isBlank()) {
+            log.warn("Brevo broadcast summary email skipped because configuration is missing");
+            return 0;
+        }
+
+        List<UserSummary> sortedRecipients = (recipients == null ? List.<User>of() : recipients)
+                .stream()
+                .map(user -> new UserSummary(
+                        sanitizeName(user.getName()),
+                        sanitizePhone(user.getPhone())))
+                .collect(Collectors.toMap(
+                        recipient -> recipient.name.toLowerCase() + "|" + recipient.phone,
+                        recipient -> recipient,
+                        (existing, ignored) -> existing))
+                .values()
+                .stream()
+                .sorted((left, right) -> left.name.compareToIgnoreCase(right.name))
+                .toList();
+
+        String htmlContent = buildBroadcastSummaryHtml(
+                TimeUtil.nowIST().toLocalDate(),
+                sortedRecipients,
+                recipientTypeLabel,
+                message,
+                successfulSends,
+                failedSends);
+
+        int sentCount = 0;
+        for (String adminEmail : sanitizeEmails(adminEmails)) {
+            try {
+                sendToRecipient(adminEmail, BROADCAST_SUBJECT, htmlContent);
+                sentCount++;
+                log.info("Brevo broadcast summary email sent successfully to {}", adminEmail);
+            } catch (RestClientResponseException ex) {
+                log.error(
+                        "Brevo broadcast summary email failed for {}. status: {}, responseBody: {}, reason: {}",
+                        adminEmail,
+                        ex.getStatusCode(),
+                        ex.getResponseBodyAsString(),
+                        ex.getMessage());
+            } catch (Exception ex) {
+                log.error("Brevo broadcast summary email failed for {}. Reason: {}", adminEmail, ex.getMessage(), ex);
+            }
+        }
+
+        return sentCount;
+    }
+
     private void sendToRecipient(String adminEmail, String htmlContent) {
+        sendToRecipient(adminEmail, SUMMARY_SUBJECT, htmlContent);
+    }
+
+    private void sendToRecipient(String adminEmail, String subject, String htmlContent) {
         HttpHeaders headers = new HttpHeaders();
         headers.set("api-key", brevoApiKey);
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -108,7 +184,7 @@ public class BrevoEmailService {
                         "name", "Youngsters Sports Club",
                         "email", senderEmail),
                 "to", List.of(Map.of("email", adminEmail)),
-                "subject", SUMMARY_SUBJECT,
+                "subject", subject,
                 "htmlContent", htmlContent);
 
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
@@ -128,6 +204,34 @@ public class BrevoEmailService {
                 + "<p>Date: " + escapeHtml(currentDate.format(DATE_FORMATTER)) + "</p>"
                 + "<p>Total Users Notified: " + customerSummaries.size() + "</p>"
                 + "<ul>" + customerListHtml + "</ul>";
+    }
+
+    private String buildBroadcastSummaryHtml(
+            LocalDate currentDate,
+            List<UserSummary> recipients,
+            String recipientTypeLabel,
+            String message,
+            int successfulSends,
+            int failedSends) {
+        String recipientListHtml = recipients.isEmpty()
+                ? "<li>No users found.</li>"
+                : recipients.stream()
+                        .map(summary -> "<li>" + escapeHtml(summary.name) + " - " + escapeHtml(summary.phone) + "</li>")
+                        .collect(Collectors.joining());
+
+        return "<h3>WhatsApp Notification Broadcast Summary</h3>"
+                + "<p>WhatsApp notification has been sent successfully.</p>"
+                + "<p>Date: " + escapeHtml(currentDate.format(DATE_FORMATTER)) + "</p>"
+                + "<p>Recipient Type: " + escapeHtml(recipientTypeLabel) + "</p>"
+                + "<p>Recipients Count: " + recipients.size() + "</p>"
+                + "<p>Successful Sends: " + successfulSends + "</p>"
+                + "<p>Failed Sends: " + failedSends + "</p>"
+                + "<p>Message:</p>"
+                + "<div style=\"padding:12px;border-radius:8px;background:#f8fafc;border:1px solid #dbe4ee;white-space:pre-wrap;\">"
+                + escapeHtml(message)
+                + "</div>"
+                + "<p style=\"margin-top:16px;\">Recipients:</p>"
+                + "<ul>" + recipientListHtml + "</ul>";
     }
 
     private List<String> sanitizeEmails(List<String> emails) {

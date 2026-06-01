@@ -24,6 +24,8 @@ public class WhatsAppService {
     private static final String PAYMENT_TEMPLATE_LANGUAGE_CODE = "en";
     private static final String DAILY_VISIT_TEMPLATE_NAME = "daily_visit_thanks_message";
     private static final String DAILY_VISIT_TEMPLATE_LANGUAGE_CODE = "en";
+    private static final String CLUB_NOTIFICATION_TEMPLATE_NAME = "club_customer_notification";
+    private static final String CLUB_NOTIFICATION_TEMPLATE_LANGUAGE_CODE = "en";
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -89,6 +91,29 @@ public class WhatsAppService {
                 DAILY_VISIT_TEMPLATE_LANGUAGE_CODE,
                 List.of(Map.of("type", "text", "text", safeText(name))),
                 null);
+    }
+
+    public boolean sendClubCustomerNotificationMessage(String phoneNumber, String name, String message, Integer userId) {
+        if (accessToken == null || accessToken.isBlank() || phoneNumberId == null || phoneNumberId.isBlank()) {
+            log.warn("Club customer notification skipped for userId: {} because configuration is missing", userId);
+            return false;
+        }
+
+        String normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+        if (normalizedPhoneNumber == null) {
+            log.warn("Club customer notification skipped for userId: {} because phone number is invalid", userId);
+            return false;
+        }
+
+        return sendTemplateMessage(
+                "club customer notification",
+                normalizedPhoneNumber,
+                CLUB_NOTIFICATION_TEMPLATE_NAME,
+                CLUB_NOTIFICATION_TEMPLATE_LANGUAGE_CODE,
+                List.of(
+                        Map.of("type", "text", "text", safeText(name)),
+                        Map.of("type", "text", "text", safeText(message))),
+                userId);
     }
 
     private boolean sendTemplateMessage(

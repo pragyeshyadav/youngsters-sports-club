@@ -5,9 +5,11 @@ import com.youngstersclub.app.dto.ConsumableStockCreateRequest;
 import com.youngstersclub.app.dto.ConsumableStockCreateResponseDto;
 import com.youngstersclub.app.dto.ConsumableStockReportRowDto;
 import com.youngstersclub.app.dto.MessageResponseDto;
+import com.youngstersclub.app.dto.NotificationBroadcastRequest;
 import com.youngstersclub.app.dto.TriggerWhatsappRequest;
 import com.youngstersclub.app.service.ConsumableService;
 import com.youngstersclub.app.service.AdminAnalyticsService;
+import com.youngstersclub.app.service.AdminNotificationBroadcastService;
 import com.youngstersclub.app.service.DailyCustomerEngagementService;
 import java.util.List;
 import org.slf4j.Logger;
@@ -28,14 +30,17 @@ public class AdminController {
     private final AdminAnalyticsService adminAnalyticsService;
     private final ConsumableService consumableService;
     private final DailyCustomerEngagementService dailyCustomerEngagementService;
+    private final AdminNotificationBroadcastService adminNotificationBroadcastService;
 
     public AdminController(
             AdminAnalyticsService adminAnalyticsService,
             ConsumableService consumableService,
-            DailyCustomerEngagementService dailyCustomerEngagementService) {
+            DailyCustomerEngagementService dailyCustomerEngagementService,
+            AdminNotificationBroadcastService adminNotificationBroadcastService) {
         this.adminAnalyticsService = adminAnalyticsService;
         this.consumableService = consumableService;
         this.dailyCustomerEngagementService = dailyCustomerEngagementService;
+        this.adminNotificationBroadcastService = adminNotificationBroadcastService;
     }
 
     @GetMapping("/monthly-earnings")
@@ -69,5 +74,20 @@ public class AdminController {
         }
 
         return ResponseEntity.ok(new MessageResponseDto("Process triggered successfully"));
+    }
+
+    @PostMapping("/send-notification-message")
+    public ResponseEntity<MessageResponseDto> sendNotificationMessage(
+            @RequestBody(required = false) NotificationBroadcastRequest request) {
+        try {
+            adminNotificationBroadcastService.triggerNotificationBroadcast(
+                    request == null ? null : request.getMessage(),
+                    request == null ? null : request.getRecipientType(),
+                    request == null ? null : request.getCustomerIds());
+        } catch (Exception ex) {
+            log.error("Failed to queue notification broadcast. Reason: {}", ex.getMessage(), ex);
+        }
+
+        return ResponseEntity.ok(new MessageResponseDto("Notification process triggered successfully"));
     }
 }
