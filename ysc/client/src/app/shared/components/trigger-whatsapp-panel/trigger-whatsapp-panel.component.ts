@@ -15,6 +15,7 @@ interface CustomerOption {
 }
 
 type RecipientType = 'SNOOKER_PLAYERS' | 'ALL_CUSTOMERS' | 'SELECTED_CUSTOMERS';
+type SchedulerTemplate = 'daily_visit_thanks_message' | 'payment_due_reminder';
 
 @Component({
   selector: 'app-trigger-whatsapp-panel',
@@ -31,6 +32,7 @@ export class TriggerWhatsappPanelComponent {
   isExpanded = false;
   isTriggeringWhatsapp = false;
   activeTriggerMode: 'DRY_RUN' | 'ACTUAL' | null = null;
+  selectedSchedulerTemplate: SchedulerTemplate = 'daily_visit_thanks_message';
   notificationMessage = '';
   recipientType: RecipientType = 'SNOOKER_PLAYERS';
   customerSearchText = '';
@@ -52,7 +54,10 @@ export class TriggerWhatsappPanelComponent {
     this.isTriggeringWhatsapp = true;
     this.activeTriggerMode = dryRun ? 'DRY_RUN' : 'ACTUAL';
 
-    this.http.post<MessageResponse>('/api/admin/trigger-whatsapp', { dryRun }).subscribe({
+    this.http.post<MessageResponse>('/api/admin/trigger-whatsapp', {
+      dryRun,
+      templateName: this.selectedSchedulerTemplate,
+    }).subscribe({
       next: (response) => {
         this.isTriggeringWhatsapp = false;
         this.activeTriggerMode = null;

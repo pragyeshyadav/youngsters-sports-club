@@ -24,6 +24,8 @@ public class WhatsAppService {
     private static final String PAYMENT_TEMPLATE_LANGUAGE_CODE = "en";
     private static final String DAILY_VISIT_TEMPLATE_NAME = "daily_visit_thanks_message";
     private static final String DAILY_VISIT_TEMPLATE_LANGUAGE_CODE = "en";
+    private static final String PAYMENT_DUE_REMINDER_TEMPLATE_NAME = "payment_due_reminder";
+    private static final String PAYMENT_DUE_REMINDER_TEMPLATE_LANGUAGE_CODE = "en";
     private static final String CLUB_NOTIFICATION_TEMPLATE_NAME = "club_customer_notification";
     private static final String CLUB_NOTIFICATION_TEMPLATE_LANGUAGE_CODE = "en";
 
@@ -113,6 +115,29 @@ public class WhatsAppService {
                 List.of(
                         Map.of("type", "text", "text", safeText(name)),
                         Map.of("type", "text", "text", safeText(message))),
+                userId);
+    }
+
+    public boolean sendPaymentDueReminderMessage(String phoneNumber, String name, BigDecimal totalDue, Integer userId) {
+        if (accessToken == null || accessToken.isBlank() || phoneNumberId == null || phoneNumberId.isBlank()) {
+            log.warn("Payment due reminder skipped for userId: {} because configuration is missing", userId);
+            return false;
+        }
+
+        String normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+        if (normalizedPhoneNumber == null) {
+            log.warn("Payment due reminder skipped for userId: {} because phone number is invalid", userId);
+            return false;
+        }
+
+        return sendTemplateMessage(
+                "payment due reminder",
+                normalizedPhoneNumber,
+                PAYMENT_DUE_REMINDER_TEMPLATE_NAME,
+                PAYMENT_DUE_REMINDER_TEMPLATE_LANGUAGE_CODE,
+                List.of(
+                        Map.of("type", "text", "text", safeText(name)),
+                        Map.of("type", "text", "text", formatAmount(totalDue))),
                 userId);
     }
 

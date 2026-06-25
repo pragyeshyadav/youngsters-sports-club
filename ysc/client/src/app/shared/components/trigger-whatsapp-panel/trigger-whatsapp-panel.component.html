@@ -11,6 +11,16 @@
           Run the existing daily WhatsApp notification process manually in dry run or actual mode.
         </p>
 
+        <label class="notification-label" for="scheduler-template-select">Select WhatsApp Template</label>
+        <select
+          id="scheduler-template-select"
+          class="notification-search-input"
+          [(ngModel)]="selectedSchedulerTemplate"
+          [disabled]="isTriggeringWhatsapp">
+          <option value="daily_visit_thanks_message">Daily Visit Thanks Message</option>
+          <option value="payment_due_reminder">Payment Due Reminder</option>
+        </select>
+
         <div class="trigger-actions">
           <button
             type="button"

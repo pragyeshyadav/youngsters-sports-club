@@ -1,10 +1,13 @@
 package com.youngstersclub.app.service;
 
+import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
+import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,9 +18,10 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 @Service
-public class DailyCustomerEngagementService {
+public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(DailyCustomerEngagementService.class);
+    private static final String TEMPLATE_NAME = "daily_visit_thanks_message";
 
     private final UserRepository userRepository;
     private final WhatsAppService whatsAppService;
@@ -46,14 +50,26 @@ public class DailyCustomerEngagementService {
         }
     }
 
-    public void processDailyWhatsappNotifications(boolean isDryRun) {
+    @Override
+    public String getTemplateName() {
+        return TEMPLATE_NAME;
+    }
+
+    @Override
+    public WhatsappTemplateExecutionResultDto execute(boolean isDryRun) {
+        return processDailyWhatsappNotifications(isDryRun);
+    }
+
+    public WhatsappTemplateExecutionResultDto processDailyWhatsappNotifications(boolean isDryRun) {
         LocalDate today = TimeUtil.nowIST().toLocalDate();
+        LocalDateTime executionTime = TimeUtil.nowIST();
         List<UserRepository.DailyVisitedCustomerProjection> visitedCustomers = userRepository.findDailyVisitedCustomers(today);
 
         int totalUsers = visitedCustomers.size();
         int sentCount = 0;
         int failedCount = 0;
         List<UserRepository.DailyVisitedCustomerProjection> processedCustomers = new ArrayList<>();
+        List<WhatsappTemplateExecutionRecipientDto> recipientSummaries = new ArrayList<>();
         String mode = isDryRun ? "DRY RUN" : "ACTUAL RUN";
 
         log.info("Daily visit thank-you job started for date: {}. Mode: {}. Total users identified: {}", today, mode, totalUsers);
@@ -68,6 +84,11 @@ public class DailyCustomerEngagementService {
             if (isDryRun) {
                 processedCustomers.add(customer);
                 sentCount++;
+                recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
+                        customer.getUserId(),
+                        customer.getName(),
+                        customer.getPhone(),
+                        null));
                 continue;
             }
 
@@ -75,6 +96,11 @@ public class DailyCustomerEngagementService {
             if (sent) {
                 sentCount++;
                 processedCustomers.add(customer);
+                recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
+                        customer.getUserId(),
+                        customer.getName(),
+                        customer.getPhone(),
+                        null));
             } else {
                 failedCount++;
                 log.warn("Daily visit thank-you message failed or skipped for userId: {}", customer.getUserId());
@@ -90,6 +116,17 @@ public class DailyCustomerEngagementService {
                 totalUsers,
                 sentCount,
                 failedCount);
+
+        return new WhatsappTemplateExecutionResultDto(
+                TEMPLATE_NAME,
+                isDryRun,
+                executionTime,
+                totalUsers,
+                processedCustomers.size(),
+                Math.max(totalUsers - processedCustomers.size(), 0),
+                sentCount,
+                failedCount,
+                recipientSummaries);
     }
 
     private void sendDailySummaryEmail(List<UserRepository.DailyVisitedCustomerProjection> processedCustomers, boolean isDryRun) {
