@@ -7,12 +7,18 @@ public class WhatsappTemplateExecutionRecipientDto {
     private final String name;
     private final String phone;
     private final BigDecimal amount;
+    private final String detail;
 
     public WhatsappTemplateExecutionRecipientDto(Integer userId, String name, String phone, BigDecimal amount) {
+        this(userId, name, phone, amount, null);
+    }
+
+    public WhatsappTemplateExecutionRecipientDto(Integer userId, String name, String phone, BigDecimal amount, String detail) {
         this.userId = userId;
         this.name = name;
         this.phone = phone;
         this.amount = amount;
+        this.detail = detail;
     }
 
     public Integer getUserId() {
@@ -29,5 +35,9 @@ public class WhatsappTemplateExecutionRecipientDto {
 
     public BigDecimal getAmount() {
         return amount;
+    }
+
+    public String getDetail() {
+        return detail;
     }
 }
