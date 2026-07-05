@@ -15,7 +15,7 @@ interface CustomerOption {
 }
 
 type RecipientType = 'SNOOKER_PLAYERS' | 'ALL_CUSTOMERS' | 'SELECTED_CUSTOMERS';
-type SchedulerTemplate = 'daily_visit_thanks_message' | 'payment_due_reminder';
+type SchedulerTemplate = 'daily_visit_thanks_message' | 'payment_due_reminder' | 'happy_birthday_wishes_offer';
 
 @Component({
   selector: 'app-trigger-whatsapp-panel',

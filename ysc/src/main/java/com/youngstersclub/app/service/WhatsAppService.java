@@ -26,6 +26,8 @@ public class WhatsAppService {
     private static final String DAILY_VISIT_TEMPLATE_LANGUAGE_CODE = "en";
     private static final String PAYMENT_DUE_REMINDER_TEMPLATE_NAME = "payment_due_reminder";
     private static final String PAYMENT_DUE_REMINDER_TEMPLATE_LANGUAGE_CODE = "en";
+    private static final String HAPPY_BIRTHDAY_WISHES_OFFER_TEMPLATE_NAME = "happy_birthday_wishes_offer";
+    private static final String HAPPY_BIRTHDAY_WISHES_OFFER_LANGUAGE_CODE = "en";
     private static final String CLUB_NOTIFICATION_TEMPLATE_NAME = "club_customer_notification";
     private static final String CLUB_NOTIFICATION_TEMPLATE_LANGUAGE_CODE = "en";
 
@@ -138,6 +140,27 @@ public class WhatsAppService {
                 List.of(
                         Map.of("type", "text", "text", safeText(name)),
                         Map.of("type", "text", "text", formatAmount(totalDue))),
+                userId);
+    }
+
+    public boolean sendHappyBirthdayWishesOfferMessage(String phoneNumber, String kidName, Integer userId) {
+        if (accessToken == null || accessToken.isBlank() || phoneNumberId == null || phoneNumberId.isBlank()) {
+            log.warn("Happy birthday wishes offer skipped for userId: {} because configuration is missing", userId);
+            return false;
+        }
+
+        String normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
+        if (normalizedPhoneNumber == null) {
+            log.warn("Happy birthday wishes offer skipped for userId: {} because phone number is invalid", userId);
+            return false;
+        }
+
+        return sendTemplateMessage(
+                "happy birthday wishes offer",
+                normalizedPhoneNumber,
+                HAPPY_BIRTHDAY_WISHES_OFFER_TEMPLATE_NAME,
+                HAPPY_BIRTHDAY_WISHES_OFFER_LANGUAGE_CODE,
+                List.of(Map.of("type", "text", "text", safeText(kidName))),
                 userId);
     }
 
