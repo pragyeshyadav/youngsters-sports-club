@@ -11,6 +11,17 @@
           Run the existing daily WhatsApp notification process manually in dry run or actual mode.
         </p>
 
+        <label class="notification-label" for="scheduler-template-select">Select WhatsApp Template</label>
+        <select
+          id="scheduler-template-select"
+          class="notification-search-input"
+          [(ngModel)]="selectedSchedulerTemplate"
+          [disabled]="isTriggeringWhatsapp">
+          <option value="daily_visit_thanks_message">Daily Visit Thanks Message</option>
+          <option value="payment_due_reminder">Payment Due Reminder</option>
+          <option value="happy_birthday_wishes_offer">Happy Birthday Wishes Offer</option>
+        </select>
+
         <div class="trigger-actions">
           <button
             type="button"
@@ -32,6 +43,98 @@
               : 'Trigger Daily WhatsApp Messages' }}
           </button>
         </div>
+      </div>
+
+      <div class="content-card notification-card">
+        <div class="notification-card__header">
+          <h3>📢 Send Notification Message</h3>
+          <p>Broadcast a custom WhatsApp message to snooker players, all customers, or selected customers.</p>
+        </div>
+
+        <label class="notification-label" for="notification-message">Notification Message</label>
+        <textarea
+          id="notification-message"
+          class="notification-textarea"
+          [(ngModel)]="notificationMessage"
+          rows="5"
+          placeholder="Type your notification message here..."></textarea>
+
+        <div class="recipient-options">
+          <label class="recipient-option">
+            <input
+              type="radio"
+              name="recipientType"
+              [checked]="recipientType === 'SNOOKER_PLAYERS'"
+              (change)="setRecipientType('SNOOKER_PLAYERS')" />
+            <span>Send only Snooker Players</span>
+          </label>
+
+          <label class="recipient-option">
+            <input
+              type="radio"
+              name="recipientType"
+              [checked]="recipientType === 'ALL_CUSTOMERS'"
+              (change)="setRecipientType('ALL_CUSTOMERS')" />
+            <span>Send to All Customers</span>
+          </label>
+
+          <label class="recipient-option">
+            <input
+              type="radio"
+              name="recipientType"
+              [checked]="recipientType === 'SELECTED_CUSTOMERS'"
+              (change)="setRecipientType('SELECTED_CUSTOMERS')" />
+            <span>Send to Selected Customers</span>
+          </label>
+        </div>
+
+        @if (recipientType === 'SELECTED_CUSTOMERS') {
+          <div class="selected-customers-section">
+            <label class="notification-label" for="notification-customer-search">Select Customers</label>
+            <input
+              id="notification-customer-search"
+              type="text"
+              [(ngModel)]="customerSearchText"
+              (input)="searchCustomers()"
+              placeholder="Search customer (min 3 characters)"
+              autocomplete="off"
+              class="notification-search-input" />
+
+            @if (isSearchingCustomers) {
+              <div class="compact-status">Searching customers...</div>
+            } @else if (customerOptions.length > 0) {
+              <div class="customer-dropdown">
+                @for (customer of customerOptions; track customer.id) {
+                  <button type="button" class="customer-dropdown__item" (click)="selectCustomer(customer)">
+                    <span class="customer-dropdown__title">{{ customer.name }}</span>
+                    <span class="customer-dropdown__subtitle">{{ customer.email }}</span>
+                  </button>
+                }
+              </div>
+            }
+
+            @if (selectedCustomers.length > 0) {
+              <div class="selected-customer-chips">
+                @for (customer of selectedCustomers; track customer.id) {
+                  <button type="button" class="customer-chip" (click)="removeCustomer(customer.id)">
+                    <span>{{ customer.name }}</span>
+                    <span aria-hidden="true">✕</span>
+                  </button>
+                }
+              </div>
+            } @else {
+              <p class="compact-status">Select at least one customer.</p>
+            }
+          </div>
+        }
+
+        <button
+          type="button"
+          class="trigger-btn trigger-btn--notification"
+          [disabled]="!canSendNotification()"
+          (click)="sendNotificationMessage()">
+          {{ isSendingNotification ? 'Sending Notification...' : '📨 Send Notification Message' }}
+        </button>
       </div>
     </div>
   }

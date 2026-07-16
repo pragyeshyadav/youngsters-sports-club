@@ -5,10 +5,13 @@ import com.youngstersclub.app.dto.ConsumableStockCreateRequest;
 import com.youngstersclub.app.dto.ConsumableStockCreateResponseDto;
 import com.youngstersclub.app.dto.ConsumableStockReportRowDto;
 import com.youngstersclub.app.dto.MessageResponseDto;
+import com.youngstersclub.app.dto.NotificationBroadcastRequest;
 import com.youngstersclub.app.dto.TriggerWhatsappRequest;
 import com.youngstersclub.app.service.ConsumableService;
 import com.youngstersclub.app.service.AdminAnalyticsService;
+import com.youngstersclub.app.service.AdminNotificationBroadcastService;
 import com.youngstersclub.app.service.DailyCustomerEngagementService;
+import com.youngstersclub.app.service.WhatsAppTemplateExecutionService;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,15 +30,18 @@ public class AdminController {
 
     private final AdminAnalyticsService adminAnalyticsService;
     private final ConsumableService consumableService;
-    private final DailyCustomerEngagementService dailyCustomerEngagementService;
+    private final WhatsAppTemplateExecutionService whatsAppTemplateExecutionService;
+    private final AdminNotificationBroadcastService adminNotificationBroadcastService;
 
     public AdminController(
             AdminAnalyticsService adminAnalyticsService,
             ConsumableService consumableService,
-            DailyCustomerEngagementService dailyCustomerEngagementService) {
+            WhatsAppTemplateExecutionService whatsAppTemplateExecutionService,
+            AdminNotificationBroadcastService adminNotificationBroadcastService) {
         this.adminAnalyticsService = adminAnalyticsService;
         this.consumableService = consumableService;
-        this.dailyCustomerEngagementService = dailyCustomerEngagementService;
+        this.whatsAppTemplateExecutionService = whatsAppTemplateExecutionService;
+        this.adminNotificationBroadcastService = adminNotificationBroadcastService;
     }
 
     @GetMapping("/monthly-earnings")
@@ -61,13 +67,36 @@ public class AdminController {
     @PostMapping("/trigger-whatsapp")
     public ResponseEntity<MessageResponseDto> triggerWhatsappMessages(@RequestBody(required = false) TriggerWhatsappRequest request) {
         boolean isDryRun = request != null && request.isDryRun();
+        String templateName = request == null || request.getTemplateName() == null || request.getTemplateName().isBlank()
+                ? "daily_visit_thanks_message"
+                : request.getTemplateName();
 
         try {
-            dailyCustomerEngagementService.triggerDailyWhatsappNotifications(isDryRun);
+            whatsAppTemplateExecutionService.triggerTemplateExecution(templateName, isDryRun);
         } catch (Exception ex) {
-            log.error("Failed to queue manual WhatsApp trigger. Mode: {}. Reason: {}", isDryRun ? "DRY RUN" : "ACTUAL RUN", ex.getMessage(), ex);
+            log.error(
+                    "Failed to queue manual WhatsApp trigger. templateName: {}, mode: {}. Reason: {}",
+                    templateName,
+                    isDryRun ? "DRY RUN" : "ACTUAL RUN",
+                    ex.getMessage(),
+                    ex);
         }
 
         return ResponseEntity.ok(new MessageResponseDto("Process triggered successfully"));
+    }
+
+    @PostMapping("/send-notification-message")
+    public ResponseEntity<MessageResponseDto> sendNotificationMessage(
+            @RequestBody(required = false) NotificationBroadcastRequest request) {
+        try {
+            adminNotificationBroadcastService.triggerNotificationBroadcast(
+                    request == null ? null : request.getMessage(),
+                    request == null ? null : request.getRecipientType(),
+                    request == null ? null : request.getCustomerIds());
+        } catch (Exception ex) {
+            log.error("Failed to queue notification broadcast. Reason: {}", ex.getMessage(), ex);
+        }
+
+        return ResponseEntity.ok(new MessageResponseDto("Notification process triggered successfully"));
     }
 }

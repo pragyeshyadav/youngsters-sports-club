@@ -22,8 +22,24 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     Optional<User> findByEmail(String email);
     Optional<User> findByGoogleId(String googleId);
     Optional<User> findByPhone(String phone);
+    List<User> findByRoleAndIsActiveTrue(UserRole role);
     List<User> findByRoleInAndIsActiveTrue(List<UserRole> roles);
+    List<User> findByIdInAndRoleAndIsActiveTrue(List<Integer> ids, UserRole role);
     List<User> findTop10ByNameContainingIgnoreCaseOrderByNameAsc(String name);
+
+    @Query("""
+           SELECT DISTINCT u
+           FROM User u
+           WHERE u.role = :role
+             AND COALESCE(u.isActive, true) = true
+             AND EXISTS (
+                 SELECT fp.id
+                 FROM FramePlayer fp
+                 WHERE fp.user.id = u.id
+             )
+           ORDER BY u.name ASC
+           """)
+    List<User> findDistinctUsersWithFrameParticipation(@Param("role") UserRole role);
 
     @Query(value = """
            SELECT

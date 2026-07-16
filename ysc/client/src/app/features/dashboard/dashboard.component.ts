@@ -9,6 +9,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 import { ConsumableItemsComponent } from '../../shared/components/consumable-items/consumable-items.component';
+import { PlayZoneActivitiesComponent } from '../../shared/components/play-zone-activities/play-zone-activities.component';
 import { AvailableTablesComponent } from './available-tables/available-tables.component';
 import { TopRankersComponent } from './top-rankers/top-rankers.component';
 
@@ -30,7 +31,7 @@ interface PhoneVerificationResponse {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, ConsumableItemsComponent, AvailableTablesComponent, TopRankersComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, ConsumableItemsComponent, PlayZoneActivitiesComponent, AvailableTablesComponent, TopRankersComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -69,6 +70,7 @@ export class DashboardComponent implements OnInit {
   phoneMergeCandidate: PhoneVerificationUser | null = null;
   phoneValidationMessage: string = '';
   isSavingPhone = false;
+  managerUserId: number | null = null;
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -90,6 +92,7 @@ export class DashboardComponent implements OnInit {
           console.log('User API response:', res);  // DEBUG
 
           this.user = res;
+          this.managerUserId = this.user?.id ?? null;
           this.userRole = this.user?.role ?? '';
           this.isAdmin = this.user?.role === 'ADMIN' || this.user?.role === 'SUPER_ADMIN';
           this.isManagerOrAdmin =

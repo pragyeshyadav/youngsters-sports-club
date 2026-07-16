@@ -16,7 +16,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EntityScan(basePackages = "com.youngstersclub.app.entity")
 @EnableJpaRepositories(basePackages = "com.youngstersclub.app.repository")
 @EnableScheduling
-@EnableAsync
+@EnableAsync(proxyTargetClass = true)
 public class YoungstersSportsClubApplication {
 
   private static final Logger log = LoggerFactory.getLogger(YoungstersSportsClubApplication.class);

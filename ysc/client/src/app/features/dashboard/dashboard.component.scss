@@ -134,6 +134,12 @@
   margin-top: 20px;
 }
 
+app-consumable-items,
+app-play-zone-activities {
+  display: block;
+  width: min(100%, 40rem);
+}
+
 .phone-input {
   padding: 10px;
   width: 250px;
