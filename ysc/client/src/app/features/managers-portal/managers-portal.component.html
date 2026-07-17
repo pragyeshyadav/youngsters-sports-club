@@ -431,6 +431,209 @@
       }
     </div>
 
+    <div class="portal-panel onboard-customer-panel">
+      <button type="button" class="panel-header onboard-customer-header" (click)="toggleOnboardExistingUser()">
+        <span>👤 Onboard Existing User</span>
+        <span class="panel-chevron">{{ isOnboardExistingExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isOnboardExistingExpanded) {
+        <div class="panel-body add-customer-body">
+          <div class="customer-form-card">
+            @if (isLoadingOnboardingContext && !onboardingContext) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading onboarding context"></div>
+              </div>
+            } @else {
+              <div class="customer-field customer-search-field">
+                <label for="onboard-customer-search">Search Existing Customer</label>
+                <input
+                  id="onboard-customer-search"
+                  type="text"
+                  [(ngModel)]="onboardingSearch"
+                  (ngModelChange)="onOnboardingSearchInput()"
+                  placeholder="Search by name, phone, or email (min 3 characters)"
+                  autocomplete="off"
+                />
+
+                @if (isSearchingOnboardingCustomers) {
+                  <div class="customer-search-status">Searching customers...</div>
+                } @else if (onboardingSearch.trim().length >= 3 && onboardingSearchResults.length > 0) {
+                  <div class="customer-search-results">
+                    @for (customer of onboardingSearchResults; track customer.id) {
+                      <button type="button" class="customer-search-result" (click)="selectOnboardingCandidate(customer)">
+                        <span class="customer-search-name">{{ customer.name }}</span>
+                        <span class="customer-search-meta">
+                          {{ customer.phone || 'No phone' }} · {{ customer.email || 'No email' }}
+                        </span>
+                      </button>
+                    }
+                  </div>
+                } @else if (onboardingSearch.trim().length >= 3 && !selectedOnboardingCandidate) {
+                  <div class="customer-search-status">No matching customers found.</div>
+                }
+              </div>
+
+              @if (isLoadingOnboardingCustomer) {
+                <div class="spinner-container compact-spinner">
+                  <div class="spinner" aria-label="Loading customer memberships"></div>
+                </div>
+              } @else if (selectedOnboardingCandidate) {
+                <div class="onboarding-summary-card">
+                  <div class="onboarding-summary-card__header">
+                    <div>
+                      <strong>{{ selectedOnboardingCandidate.name }}</strong>
+                      <span>{{ selectedOnboardingCandidate.phone || 'No phone' }} · {{ selectedOnboardingCandidate.email || 'No email' }}</span>
+                    </div>
+                    <button type="button" class="clear-inline-btn" (click)="clearSelectedOnboardingCandidate()">Clear</button>
+                  </div>
+
+                  <div class="membership-overview">
+                    <span class="membership-overview__label">Current organization memberships</span>
+                    @if (selectedOnboardingCandidate.memberships.length === 0) {
+                      <p class="panel-message update-customer-empty">No organization memberships found yet.</p>
+                    } @else {
+                      <div class="membership-list">
+                        @for (membership of selectedOnboardingCandidate.memberships; track (membership.organizationId ?? $index)) {
+                          <div class="membership-item">
+                            <strong>{{ membership.organizationName || 'Unknown organization' }}</strong>
+                            <span>
+                              {{ membership.active ? 'Active' : 'Inactive' }} · {{ membership.role || 'CUSTOMER' }}
+                              @if (membership.baseBranchName) {
+                                · Base Branch: {{ membership.baseBranchName }}
+                              }
+                            </span>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                </div>
+
+                <div class="customer-form-grid onboarding-grid">
+                  <div class="customer-field">
+                    <label for="onboarding-organization">Organization</label>
+                    @if (onboardingContext?.organizationSelectable) {
+                      <select
+                        id="onboarding-organization"
+                        [(ngModel)]="selectedOnboardingOrganizationId"
+                        (ngModelChange)="onOnboardingOrganizationChange()">
+                        @for (organization of onboardingContext?.organizations ?? []; track organization.id) {
+                          <option [ngValue]="organization.id">{{ organization.name }}</option>
+                        }
+                      </select>
+                    } @else {
+                      <input
+                        id="onboarding-organization"
+                        type="text"
+                        [value]="getSelectedOnboardingOrganizationName() || onboardingContext?.currentOrganizationName || ''"
+                        class="readonly-field"
+                        disabled
+                      />
+                    }
+                  </div>
+
+                  <div class="customer-field">
+                    <label for="onboarding-role">Actor Role</label>
+                    <input
+                      id="onboarding-role"
+                      type="text"
+                      [value]="onboardingContext?.actorRole || ''"
+                      class="readonly-field"
+                      disabled
+                    />
+                  </div>
+                </div>
+
+                <div class="branch-selection-card">
+                  <div class="branch-selection-card__header">
+                    <strong>Select Branch{{ onboardingContext?.multipleBranchSelectionAllowed ? 'es' : '' }}</strong>
+                    <span>
+                      {{ onboardingContext?.multipleBranchSelectionAllowed ? 'Multiple branches allowed' : 'Select one permitted branch' }}
+                    </span>
+                  </div>
+
+                  @if (getAvailableOnboardingBranches().length === 0) {
+                    <p class="panel-message update-customer-empty">No active branches available for onboarding.</p>
+                  } @else {
+                    <div class="branch-option-list">
+                      @for (branch of getAvailableOnboardingBranches(); track branch.id) {
+                        <button
+                          type="button"
+                          class="branch-option-chip"
+                          [class.branch-option-chip--selected]="isOnboardingBranchSelected(branch.id)"
+                          [disabled]="isExistingMembershipBranch(branch.id)"
+                          (click)="toggleOnboardingBranch(branch.id)">
+                          {{ branch.name }}
+                        </button>
+                      }
+                    </div>
+                  }
+
+                  @if (selectedOnboardingBranchIds.length > 0) {
+                    <div class="selected-branch-chip-list">
+                      @for (branch of getSelectedOnboardingBranches(); track branch.id) {
+                        <button
+                          type="button"
+                          class="selected-branch-chip"
+                          [disabled]="isExistingMembershipBranch(branch.id)"
+                          (click)="removeOnboardingBranch(branch.id)">
+                          <span>{{ branch.name }}</span>
+                          @if (!isExistingMembershipBranch(branch.id)) {
+                            <span>✕</span>
+                          }
+                        </button>
+                      }
+                    </div>
+                  }
+                </div>
+
+                @if (shouldShowOnboardingBaseBranchSelector()) {
+                  <div class="customer-field onboarding-base-branch-field">
+                    <label for="onboarding-base-branch">Base Branch</label>
+                    <select
+                      id="onboarding-base-branch"
+                      [(ngModel)]="selectedOnboardingBaseBranchId"
+                      (ngModelChange)="onOnboardingBaseBranchChange()">
+                      <option [ngValue]="null">Select base branch</option>
+                      @for (branch of getSelectedOnboardingBranches(); track branch.id) {
+                        <option [ngValue]="branch.id">{{ branch.name }}</option>
+                      }
+                    </select>
+                  </div>
+                } @else if (hasExistingMembershipForSelectedOrganization()) {
+                  <div class="selected-customer-banner selected-customer-banner--neutral">
+                    <strong>Existing membership detected</strong>
+                    <span>Base Branch: {{ getSelectedOrganizationMembership()?.baseBranchName || '-' }}</span>
+                  </div>
+                }
+
+                @if (!selectedOnboardingOrganizationId) {
+                  <p class="customer-validation-message">Select an organization to continue.</p>
+                } @else if (selectedOnboardingBranchIds.length === 0) {
+                  <p class="customer-validation-message">Select at least one valid branch.</p>
+                } @else if (shouldShowOnboardingBaseBranchSelector() && !selectedOnboardingBaseBranchId) {
+                  <p class="customer-validation-message">Select a base branch for the new organization membership.</p>
+                }
+
+                <button
+                  type="button"
+                  class="save-customer-btn onboard-customer-btn"
+                  [disabled]="!canSubmitOnboarding()"
+                  (click)="onboardExistingCustomer()">
+                  {{ isSavingOnboardingCustomer ? 'Onboarding Customer...' : 'Onboard Customer' }}
+                </button>
+              } @else {
+                <p class="panel-message update-customer-empty">
+                  Select an existing global customer to onboard them into the current organization and branch scope.
+                </p>
+              }
+            }
+          </div>
+        </div>
+      }
+    </div>
+
     <div class="portal-panel add-child-panel">
       <button type="button" class="panel-header add-child-header" (click)="toggleAddChild()">
         <span>👧 Add Child</span>

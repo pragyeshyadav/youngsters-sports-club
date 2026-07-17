@@ -5,7 +5,9 @@ import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
 import { AuthUser } from '../../core/models/auth.models';
+import { BranchOption, OrganizationContext, OrganizationOption } from '../../core/models/organization-context.models';
 import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 import { ConsumableItemsComponent } from '../../shared/components/consumable-items/consumable-items.component';
@@ -45,6 +47,7 @@ export class DashboardComponent implements OnInit {
   private readonly http = inject(HttpClient);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly router = inject(Router);
+  private readonly organizationContextService = inject(OrganizationContextService);
 
   readonly user$: Observable<AuthUser | null> = this.auth.user$;
 
@@ -71,6 +74,22 @@ export class DashboardComponent implements OnInit {
   phoneValidationMessage: string = '';
   isSavingPhone = false;
   managerUserId: number | null = null;
+  organizationContext: OrganizationContext | null = null;
+  isLoadingContext = false;
+  isSavingContext = false;
+  showOrganizationSetup = false;
+  showContextSwitcher = false;
+  contextErrorMessage = '';
+  currentOrganizationName = '';
+  currentBranchName = '';
+  availableOrganizations: OrganizationOption[] = [];
+  availableBranches: BranchOption[] = [];
+  selectedOrganizationId: number | null = null;
+  selectedBranchId: number | null = null;
+  switchOrganizations: OrganizationOption[] = [];
+  switchBranches: BranchOption[] = [];
+  switchOrganizationId: number | null = null;
+  switchBranchId: number | null = null;
 
   ngOnInit() {
     console.log('Dashboard loaded');
@@ -100,31 +119,7 @@ export class DashboardComponent implements OnInit {
             this.user?.role === 'ADMIN' ||
             this.user?.role === 'SUPER_ADMIN';
 
-          if (!this.user.phone) {
-            this.showPhoneInput = true;
-          }
-
-          this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.user.id}`)
-            .subscribe({
-              next: (summary) => {
-                this.totalDue = typeof summary?.totalDue === 'number' ? summary.totalDue : Number(summary?.totalDue ?? 0);
-                this.showDueSection = this.totalDue > 300;
-                this.cdr.markForCheck();
-              },
-              error: (err) => {
-                console.error('Failed to fetch total due:', err);
-              }
-            });
-
-          if (this.userRole === 'CUSTOMER') {
-            this.checkOngoingFrame();
-            this.checkUserLocation();
-          } else {
-            this.locationChecked = true;
-            this.isWithinClubRange = true;
-          }
-          
-          this.cdr.markForCheck();
+          this.loadOrganizationContext();
         },
         error: (err) => {
           console.error('API failed:', err);
@@ -142,6 +137,11 @@ export class DashboardComponent implements OnInit {
   }
 
   savePhone() {
+    if (!this.hasResolvedOrganizationSelection()) {
+      alert('Please select your organization and base branch first');
+      return;
+    }
+
     if (!this.phone || this.phone.length !== 10) {
       alert('Enter valid phone number');
       return;
@@ -205,6 +205,8 @@ export class DashboardComponent implements OnInit {
     this.http.post<any>('/api/user/merge-account', {
       email: this.authUser.email,
       phoneNumber: this.phone.trim(),
+      organizationId: this.selectedOrganizationId,
+      branchId: this.selectedBranchId,
     }).subscribe({
       next: (mergedUser) => {
         this.isSavingPhone = false;
@@ -257,6 +259,8 @@ export class DashboardComponent implements OnInit {
   private savePhoneNormally(cleanedPhone: string): void {
     this.http.post('/api/user/phone', {
       email: this.authUser.email,
+      organizationId: this.selectedOrganizationId,
+      branchId: this.selectedBranchId,
       phone: cleanedPhone
     }, { responseType: 'text' }).subscribe({
       next: (res: any) => {
@@ -297,7 +301,238 @@ export class DashboardComponent implements OnInit {
       profileImageUrl: mergedStoredUser.picture,
       phone: phoneNumber,
     });
+    this.loadOrganizationContext();
+  }
+
+  private loadOrganizationContext(): void {
+    if (!this.authUser?.email) {
+      return;
+    }
+
+    this.isLoadingContext = true;
+    this.contextErrorMessage = '';
+    this.organizationContextService.loadContext(this.authUser.email).subscribe({
+      next: (context) => {
+        this.isLoadingContext = false;
+        this.organizationContext = context;
+        this.availableOrganizations = context.availableOrganizations ?? [];
+        this.switchOrganizations = context.availableOrganizations ?? [];
+        this.currentOrganizationName = context.currentOrganization?.name ?? '';
+        this.currentBranchName = context.currentBranch?.name ?? '';
+        this.switchOrganizationId = context.currentOrganization?.id ?? null;
+        this.switchBranchId = context.currentBranch?.id ?? null;
+        this.switchBranches = context.accessibleBranches ?? [];
+
+        if (!context.hasPersistedContext || context.requiresSelection) {
+          this.prepareOrganizationSetup(context);
+          this.showPhoneInput = false;
+          this.totalDue = 0;
+          this.showDueSection = false;
+          this.cdr.markForCheck();
+          return;
+        }
+
+        this.showOrganizationSetup = false;
+        this.selectedOrganizationId = context.currentOrganization?.id ?? null;
+        this.selectedBranchId = context.currentBranch?.id ?? null;
+        this.availableBranches = context.accessibleBranches ?? [];
+        this.showPhoneInput = !this.user?.phone;
+        this.bootstrapContextAwareState();
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load organization context', err);
+        this.isLoadingContext = false;
+        this.contextErrorMessage = err?.error?.message || 'Unable to load organization context right now';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  private prepareOrganizationSetup(context: OrganizationContext): void {
+    this.showOrganizationSetup = true;
+    this.availableOrganizations = context.availableOrganizations ?? [];
+
+    if (this.availableOrganizations.length === 1) {
+      this.selectedOrganizationId = this.availableOrganizations[0].id;
+      this.loadBranchesForSelectedOrganization(this.selectedOrganizationId);
+      return;
+    }
+
+    this.selectedOrganizationId = null;
+    this.selectedBranchId = null;
+    this.availableBranches = [];
+  }
+
+  private bootstrapContextAwareState(): void {
+    if (!this.user?.id) {
+      return;
+    }
+
+    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.user.id}`)
+      .subscribe({
+        next: (summary) => {
+          this.totalDue = typeof summary?.totalDue === 'number'
+            ? summary.totalDue
+            : Number(summary?.totalDue ?? 0);
+          this.showDueSection = this.totalDue > 300;
+          this.cdr.markForCheck();
+        },
+        error: (err) => {
+          console.error('Failed to fetch total due:', err);
+        }
+      });
+
+    if (this.userRole === 'CUSTOMER') {
+      this.checkOngoingFrame();
+      this.checkUserLocation();
+    } else {
+      this.locationChecked = true;
+      this.isWithinClubRange = true;
+    }
+  }
+
+  onOrganizationSelectionChange(rawOrganizationId: string | number | null): void {
+    const organizationId = Number(rawOrganizationId);
+    this.selectedOrganizationId = Number.isFinite(organizationId) ? organizationId : null;
+    this.selectedBranchId = null;
+    this.availableBranches = [];
+    if (this.selectedOrganizationId) {
+      this.loadBranchesForSelectedOrganization(this.selectedOrganizationId);
+    }
+  }
+
+  private loadBranchesForSelectedOrganization(organizationId: number): void {
+    if (!this.authUser?.email) {
+      return;
+    }
+
+    this.organizationContextService.getBranches(this.authUser.email, organizationId).subscribe({
+      next: (branches) => {
+        this.availableBranches = branches ?? [];
+        this.selectedBranchId = this.availableBranches.length === 1 ? this.availableBranches[0].id : null;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load branches', err);
+        this.contextErrorMessage = err?.error?.message || 'Unable to load branches right now';
+        this.availableBranches = [];
+        this.selectedBranchId = null;
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  onBranchSelectionChange(rawBranchId: string | number | null): void {
+    const branchId = Number(rawBranchId);
+    this.selectedBranchId = Number.isFinite(branchId) ? branchId : null;
+  }
+
+  hasResolvedOrganizationSelection(): boolean {
+    return !!this.selectedOrganizationId && !!this.selectedBranchId;
+  }
+
+  continueWithOrganizationSelection(): void {
+    if (!this.hasResolvedOrganizationSelection()) {
+      alert('Please select your organization and base branch');
+      return;
+    }
+
+    if (this.user?.phone) {
+      this.applyOrganizationContextChange(this.selectedOrganizationId!, this.selectedBranchId!, true);
+      return;
+    }
+
+    this.showOrganizationSetup = false;
+    this.showPhoneInput = true;
     this.cdr.markForCheck();
+  }
+
+  toggleContextSwitcher(): void {
+    this.showContextSwitcher = !this.showContextSwitcher;
+    this.cdr.markForCheck();
+  }
+
+  onSwitchOrganizationChange(rawOrganizationId: string | number | null): void {
+    const organizationId = Number(rawOrganizationId);
+    this.switchOrganizationId = Number.isFinite(organizationId) ? organizationId : null;
+    this.switchBranchId = null;
+    this.switchBranches = [];
+
+    if (!this.switchOrganizationId || !this.authUser?.email) {
+      return;
+    }
+
+    this.organizationContextService.getBranches(this.authUser.email, this.switchOrganizationId).subscribe({
+      next: (branches) => {
+        this.switchBranches = branches ?? [];
+        this.switchBranchId = this.switchBranches.length === 1 ? this.switchBranches[0].id : null;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load branch switch options', err);
+        this.contextErrorMessage = err?.error?.message || 'Unable to load branch options right now';
+        this.cdr.markForCheck();
+      }
+    });
+  }
+
+  onSwitchBranchChange(rawBranchId: string | number | null): void {
+    const branchId = Number(rawBranchId);
+    this.switchBranchId = Number.isFinite(branchId) ? branchId : null;
+  }
+
+  changeOrganizationContext(): void {
+    if (!this.switchOrganizationId || !this.switchBranchId) {
+      alert('Please select organization and branch');
+      return;
+    }
+
+    this.applyOrganizationContextChange(this.switchOrganizationId, this.switchBranchId, false);
+  }
+
+  private applyOrganizationContextChange(
+    organizationId: number,
+    branchId: number,
+    fromSetupFlow: boolean,
+  ): void {
+    if (!this.authUser?.email) {
+      return;
+    }
+
+    this.isSavingContext = true;
+    this.contextErrorMessage = '';
+    this.organizationContextService.changeContext(this.authUser.email, organizationId, branchId).subscribe({
+      next: (context) => {
+        this.isSavingContext = false;
+        this.organizationContext = context;
+        this.currentOrganizationName = context.currentOrganization?.name ?? '';
+        this.currentBranchName = context.currentBranch?.name ?? '';
+        this.selectedOrganizationId = context.currentOrganization?.id ?? null;
+        this.selectedBranchId = context.currentBranch?.id ?? null;
+        this.switchOrganizationId = context.currentOrganization?.id ?? null;
+        this.switchBranchId = context.currentBranch?.id ?? null;
+        this.availableOrganizations = context.availableOrganizations ?? [];
+        this.switchOrganizations = context.availableOrganizations ?? [];
+        this.availableBranches = context.accessibleBranches ?? [];
+        this.switchBranches = context.accessibleBranches ?? [];
+        this.showOrganizationSetup = false;
+        this.showContextSwitcher = false;
+
+        if (!fromSetupFlow || this.user?.phone) {
+          this.bootstrapContextAwareState();
+        }
+
+        this.showPhoneInput = fromSetupFlow ? !this.user?.phone : false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to change organization context', err);
+        this.isSavingContext = false;
+        this.contextErrorMessage = err?.error?.message || 'Unable to change organization context right now';
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   onFrameAction() {

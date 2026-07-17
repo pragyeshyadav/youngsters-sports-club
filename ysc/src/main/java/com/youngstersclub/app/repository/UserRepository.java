@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Pageable;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +27,19 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     List<User> findByRoleInAndIsActiveTrue(List<UserRole> roles);
     List<User> findByIdInAndRoleAndIsActiveTrue(List<Integer> ids, UserRole role);
     List<User> findTop10ByNameContainingIgnoreCaseOrderByNameAsc(String name);
+
+    @Query("""
+           SELECT u
+           FROM User u
+           WHERE COALESCE(u.isActive, true) = true
+             AND (
+                 LOWER(COALESCE(u.name, '')) LIKE LOWER(CONCAT('%', :query, '%'))
+                 OR LOWER(COALESCE(u.email, '')) LIKE LOWER(CONCAT('%', :query, '%'))
+                 OR (:digitsQuery <> '' AND COALESCE(u.phone, '') LIKE CONCAT('%', :digitsQuery, '%'))
+             )
+           ORDER BY u.name ASC
+           """)
+    List<User> searchActiveUsers(@Param("query") String query, @Param("digitsQuery") String digitsQuery, Pageable pageable);
 
     @Query("""
            SELECT DISTINCT u

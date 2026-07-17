@@ -109,6 +109,60 @@ interface ChildProfile {
   school?: string | null;
 }
 
+interface OnboardingBranchOption {
+  id: number;
+  name: string;
+}
+
+interface OnboardingOrganizationOption {
+  id: number;
+  name: string;
+}
+
+interface CustomerMembershipSummary {
+  organizationId: number | null;
+  organizationName: string | null;
+  role: string | null;
+  active: boolean;
+  baseBranchId: number | null;
+  baseBranchName: string | null;
+  accessibleBranches: OnboardingBranchOption[];
+}
+
+interface CustomerOnboardingCandidate {
+  userId: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  memberships: CustomerMembershipSummary[];
+}
+
+interface CustomerOnboardingContext {
+  actorRole: string | null;
+  organizationSelectable: boolean;
+  multipleBranchSelectionAllowed: boolean;
+  currentOrganizationId: number | null;
+  currentOrganizationName: string | null;
+  currentBranchId: number | null;
+  currentBranchName: string | null;
+  organizations: OnboardingOrganizationOption[];
+  branches: OnboardingBranchOption[];
+}
+
+interface CustomerOnboardingResponse {
+  userId: number;
+  customerName: string;
+  organizationId: number;
+  organizationName: string;
+  organizationUserId: number;
+  membershipCreated: boolean;
+  membershipReactivated: boolean;
+  baseBranchId: number | null;
+  baseBranchName: string | null;
+  branchesAdded: OnboardingBranchOption[];
+  alreadyAccessibleBranches: OnboardingBranchOption[];
+}
+
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
@@ -121,6 +175,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private resizeHandler: (() => void) | null = null;
   private readonly today = new Date();
+  private onboardingSearchTimeoutId: number | null = null;
 
   isOngoingExpanded = false;
   ongoingFrames: OngoingFrame[] = [];
@@ -176,6 +231,18 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     email: '',
     phone: '',
   };
+  isOnboardExistingExpanded = false;
+  isLoadingOnboardingContext = false;
+  isSearchingOnboardingCustomers = false;
+  isLoadingOnboardingCustomer = false;
+  isSavingOnboardingCustomer = false;
+  onboardingSearch = '';
+  onboardingSearchResults: CustomerSearchResult[] = [];
+  selectedOnboardingCandidate: CustomerOnboardingCandidate | null = null;
+  onboardingContext: CustomerOnboardingContext | null = null;
+  selectedOnboardingOrganizationId: number | null = null;
+  selectedOnboardingBranchIds: number[] = [];
+  selectedOnboardingBaseBranchId: number | null = null;
 
   isPlayersExpanded = false;
   isLoadingPlayers = false;
@@ -227,6 +294,10 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     if (this.resizeHandler) {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
+    }
+    if (this.onboardingSearchTimeoutId !== null) {
+      window.clearTimeout(this.onboardingSearchTimeoutId);
+      this.onboardingSearchTimeoutId = null;
     }
   }
 
@@ -409,6 +480,14 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.isUpdateCustomerExpanded = !this.isUpdateCustomerExpanded;
   }
 
+  toggleOnboardExistingUser(): void {
+    this.isOnboardExistingExpanded = !this.isOnboardExistingExpanded;
+
+    if (this.isOnboardExistingExpanded && !this.isLoadingOnboardingContext && !this.onboardingContext) {
+      this.loadOnboardingContext();
+    }
+  }
+
   onCustomerMobileInput(event: Event): void {
     const inputElement = event.target as HTMLInputElement;
     const sanitized = inputElement.value.replace(/[^0-9]/g, '').slice(0, 10);
@@ -540,6 +619,194 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       inputElement.value = sanitized;
     }
     this.updateCustomerForm.phone = sanitized;
+  }
+
+  onOnboardingSearchInput(): void {
+    const query = this.onboardingSearch.trim();
+
+    if (this.onboardingSearchTimeoutId !== null) {
+      window.clearTimeout(this.onboardingSearchTimeoutId);
+      this.onboardingSearchTimeoutId = null;
+    }
+
+    if (query.length < 3) {
+      this.isSearchingOnboardingCustomers = false;
+      this.onboardingSearchResults = [];
+      if (!query) {
+        this.clearSelectedOnboardingCandidate();
+      }
+      return;
+    }
+
+    this.isSearchingOnboardingCustomers = true;
+    this.onboardingSearchTimeoutId = window.setTimeout(() => {
+      this.http.get<CustomerSearchResult[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+        next: (users) => {
+          this.onboardingSearchResults = this.mapSearchResults(users, query, true);
+          this.isSearchingOnboardingCustomers = false;
+        },
+        error: (err) => {
+          console.error('Failed to search onboarding customers', err);
+          this.onboardingSearchResults = [];
+          this.isSearchingOnboardingCustomers = false;
+        },
+      });
+      this.onboardingSearchTimeoutId = null;
+    }, 250);
+  }
+
+  selectOnboardingCandidate(user: CustomerSearchResult): void {
+    this.isLoadingOnboardingCustomer = true;
+    this.selectedOnboardingCandidate = null;
+    this.onboardingSearch = this.buildOnboardingSearchLabel(user);
+    this.onboardingSearchResults = [];
+
+    this.http.get<CustomerOnboardingCandidate>(`/api/manager/customer-onboarding/customer?userId=${user.id}`).subscribe({
+      next: (candidate) => {
+        this.selectedOnboardingCandidate = candidate;
+        this.isLoadingOnboardingCustomer = false;
+        this.syncOnboardingSelectionWithMembership();
+      },
+      error: (err) => {
+        console.error('Failed to load onboarding candidate', err);
+        this.isLoadingOnboardingCustomer = false;
+        this.selectedOnboardingCandidate = null;
+        alert(err?.error?.message || 'Unable to load customer membership details right now');
+      },
+    });
+  }
+
+  clearSelectedOnboardingCandidate(): void {
+    this.selectedOnboardingCandidate = null;
+    this.onboardingSearch = '';
+    this.onboardingSearchResults = [];
+    this.selectedOnboardingBranchIds = [];
+    this.selectedOnboardingBaseBranchId = null;
+  }
+
+  onOnboardingOrganizationChange(): void {
+    if (!this.selectedOnboardingOrganizationId) {
+      this.selectedOnboardingBranchIds = [];
+      this.selectedOnboardingBaseBranchId = null;
+      return;
+    }
+    this.loadOnboardingContext(this.selectedOnboardingOrganizationId);
+  }
+
+  toggleOnboardingBranch(branchId: number): void {
+    if (!this.onboardingContext) {
+      return;
+    }
+
+    if (this.isExistingMembershipBranch(branchId)) {
+      return;
+    }
+
+    if (!this.onboardingContext.multipleBranchSelectionAllowed) {
+      this.selectedOnboardingBranchIds = [branchId];
+      this.syncOnboardingBaseBranchSelection();
+      return;
+    }
+
+    if (this.selectedOnboardingBranchIds.includes(branchId)) {
+      this.selectedOnboardingBranchIds = this.selectedOnboardingBranchIds.filter((id) => id !== branchId);
+    } else {
+      this.selectedOnboardingBranchIds = [...this.selectedOnboardingBranchIds, branchId];
+    }
+
+    this.syncOnboardingBaseBranchSelection();
+  }
+
+  removeOnboardingBranch(branchId: number): void {
+    if (this.isExistingMembershipBranch(branchId)) {
+      return;
+    }
+    this.selectedOnboardingBranchIds = this.selectedOnboardingBranchIds.filter((id) => id !== branchId);
+    this.syncOnboardingBaseBranchSelection();
+  }
+
+  onOnboardingBaseBranchChange(): void {
+    if (
+      this.selectedOnboardingBaseBranchId !== null
+      && !this.selectedOnboardingBranchIds.includes(this.selectedOnboardingBaseBranchId)
+    ) {
+      this.selectedOnboardingBaseBranchId = null;
+    }
+  }
+
+  canSubmitOnboarding(): boolean {
+    if (this.isSavingOnboardingCustomer || this.isLoadingOnboardingContext || this.isLoadingOnboardingCustomer) {
+      return false;
+    }
+
+    if (!this.selectedOnboardingCandidate || !this.selectedOnboardingOrganizationId) {
+      return false;
+    }
+
+    if (this.selectedOnboardingBranchIds.length === 0) {
+      return false;
+    }
+
+    if (!this.hasExistingMembershipForSelectedOrganization() && !this.selectedOnboardingBaseBranchId) {
+      return false;
+    }
+
+    return true;
+  }
+
+  onboardExistingCustomer(): void {
+    if (!this.canSubmitOnboarding() || !this.selectedOnboardingCandidate || !this.selectedOnboardingOrganizationId) {
+      return;
+    }
+
+    const organizationName = this.getSelectedOnboardingOrganizationName();
+    const branchNames = this.getSelectedOnboardingBranches().map((branch) => branch.name);
+    const baseBranchName = this.getSelectedOnboardingBaseBranchName();
+    const confirmationMessage = [
+      `Onboard ${this.selectedOnboardingCandidate.name} to ${organizationName || 'the selected organization'}?`,
+      '',
+      'Branches:',
+      ...branchNames.map((name) => `- ${name}`),
+      '',
+      `Base Branch: ${baseBranchName || 'Not selected'}`,
+    ].join('\n');
+
+    if (!confirm(confirmationMessage)) {
+      return;
+    }
+
+    const actorEmail = this.getStoredUserEmail();
+    if (!actorEmail) {
+      alert('Unable to determine the logged-in user');
+      return;
+    }
+
+    this.isSavingOnboardingCustomer = true;
+    this.http.post<CustomerOnboardingResponse>('/api/manager/customer-onboarding', {
+      actorEmail,
+      userId: this.selectedOnboardingCandidate.userId,
+      organizationId: this.selectedOnboardingOrganizationId,
+      branchIds: this.selectedOnboardingBranchIds,
+      baseBranchId: this.hasExistingMembershipForSelectedOrganization() ? null : this.selectedOnboardingBaseBranchId,
+    }).subscribe({
+      next: (response) => {
+        this.isSavingOnboardingCustomer = false;
+        const addedBranchNames = [
+          ...response.branchesAdded.map((branch) => branch.name),
+          ...response.alreadyAccessibleBranches.map((branch) => branch.name),
+        ];
+        alert(
+          `${response.customerName} has been onboarded successfully.\n\nOrganization:\n${response.organizationName}\n\nBranches:\n${addedBranchNames.join(', ') || 'None'}\n\nBase Branch:\n${response.baseBranchName || '-'}`,
+        );
+        this.clearSelectedOnboardingCandidate();
+        this.loadOnboardingContext(this.selectedOnboardingOrganizationId ?? undefined);
+      },
+      error: (err) => {
+        console.error('Failed to onboard customer', err);
+        this.isSavingOnboardingCustomer = false;
+        alert(err?.error?.message || 'Unable to onboard customer right now');
+      },
+    });
   }
 
   isCustomerFormValid(): boolean {
@@ -748,32 +1015,21 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   }
 
   private loadViewerAccess(): void {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
+    const email = this.getStoredUserEmail();
+    if (!email) {
       this.canViewTodayEarnings = false;
       return;
     }
 
-    try {
-      const authUser = JSON.parse(storedUser) as { email?: string };
-      if (!authUser.email) {
+    this.http.get<{ role?: string }>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
+      next: (user) => {
+        this.canViewTodayEarnings = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role ?? '');
+      },
+      error: (err) => {
+        console.error('Failed to load viewer role', err);
         this.canViewTodayEarnings = false;
-        return;
-      }
-
-      this.http.get<{ role?: string }>(`/api/user?email=${encodeURIComponent(authUser.email)}`).subscribe({
-        next: (user) => {
-          this.canViewTodayEarnings = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role ?? '');
-        },
-        error: (err) => {
-          console.error('Failed to load viewer role', err);
-          this.canViewTodayEarnings = false;
-        },
-      });
-    } catch (error) {
-      console.error('Failed to parse stored user', error);
-      this.canViewTodayEarnings = false;
-    }
+      },
+    });
   }
 
   private toNumber(value: number | string | null): number {
@@ -826,11 +1082,26 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     };
   }
 
-  private mapSearchResults(users: CustomerSearchResult[] | null | undefined, query: string): CustomerSearchResult[] {
+  private mapSearchResults(
+    users: CustomerSearchResult[] | null | undefined,
+    query: string,
+    includePhoneAndEmail = false,
+  ): CustomerSearchResult[] {
     const normalizedQuery = query.trim().toLowerCase();
     return (users ?? []).filter((user) => {
       const name = (user?.name ?? '').trim().toLowerCase();
-      return !!name && (!normalizedQuery || name.includes(normalizedQuery));
+      const email = (user?.email ?? '').trim().toLowerCase();
+      const phone = (user?.phone ?? '').trim().toLowerCase();
+      if (!normalizedQuery) {
+        return !!name;
+      }
+      if (name.includes(normalizedQuery)) {
+        return true;
+      }
+      if (!includePhoneAndEmail) {
+        return false;
+      }
+      return email.includes(normalizedQuery) || phone.includes(normalizedQuery);
     });
   }
 
@@ -842,6 +1113,155 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       email: '',
       phone: '',
     };
+  }
+
+  private loadOnboardingContext(requestedOrganizationId?: number): void {
+    const actorEmail = this.getStoredUserEmail();
+    if (!actorEmail) {
+      return;
+    }
+
+    this.isLoadingOnboardingContext = true;
+    const querySuffix = requestedOrganizationId ? `&organizationId=${requestedOrganizationId}` : '';
+    this.http.get<CustomerOnboardingContext>(
+      `/api/manager/customer-onboarding/context?email=${encodeURIComponent(actorEmail)}${querySuffix}`,
+    ).subscribe({
+      next: (context) => {
+        this.onboardingContext = context;
+        this.selectedOnboardingOrganizationId =
+          requestedOrganizationId
+          ?? context.currentOrganizationId
+          ?? context.organizations[0]?.id
+          ?? null;
+        this.isLoadingOnboardingContext = false;
+        this.syncOnboardingSelectionWithMembership();
+      },
+      error: (err) => {
+        console.error('Failed to load onboarding context', err);
+        this.onboardingContext = null;
+        this.isLoadingOnboardingContext = false;
+        alert(err?.error?.message || 'Unable to load onboarding options right now');
+      },
+    });
+  }
+
+  private syncOnboardingSelectionWithMembership(): void {
+    const existingMembership = this.getSelectedOrganizationMembership();
+    if (existingMembership) {
+      this.selectedOnboardingBranchIds = (existingMembership.accessibleBranches ?? []).map((branch) => branch.id);
+      this.selectedOnboardingBaseBranchId = existingMembership.baseBranchId ?? null;
+      return;
+    }
+
+    this.selectedOnboardingBranchIds = this.selectedOnboardingBranchIds.filter((branchId) =>
+      this.getAvailableOnboardingBranches().some((branch) => branch.id === branchId),
+    );
+    this.syncOnboardingBaseBranchSelection();
+  }
+
+  private syncOnboardingBaseBranchSelection(): void {
+    const existingMembership = this.getSelectedOrganizationMembership();
+    if (existingMembership) {
+      this.selectedOnboardingBaseBranchId = existingMembership.baseBranchId ?? null;
+      return;
+    }
+
+    if (this.selectedOnboardingBranchIds.length === 1) {
+      this.selectedOnboardingBaseBranchId = this.selectedOnboardingBranchIds[0];
+      return;
+    }
+
+    if (
+      this.selectedOnboardingBaseBranchId !== null
+      && !this.selectedOnboardingBranchIds.includes(this.selectedOnboardingBaseBranchId)
+    ) {
+      this.selectedOnboardingBaseBranchId = null;
+    }
+  }
+
+  private getStoredUserEmail(): string | null {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      return null;
+    }
+
+    try {
+      const authUser = JSON.parse(storedUser) as { email?: string };
+      return authUser.email?.trim().toLowerCase() || null;
+    } catch (error) {
+      console.error('Failed to parse stored user', error);
+      return null;
+    }
+  }
+
+  private buildOnboardingSearchLabel(user: CustomerSearchResult): string {
+    const phone = user.phone?.trim();
+    return phone ? `${user.name} (${phone})` : user.name;
+  }
+
+  getAvailableOnboardingBranches(): OnboardingBranchOption[] {
+    return this.onboardingContext?.branches ?? [];
+  }
+
+  getSelectedOnboardingBranches(): OnboardingBranchOption[] {
+    const selectedBranchIds = new Set(this.selectedOnboardingBranchIds);
+    const mergedOptions = new Map<number, OnboardingBranchOption>();
+
+    for (const branch of this.getSelectedOrganizationMembership()?.accessibleBranches ?? []) {
+      mergedOptions.set(branch.id, branch);
+    }
+
+    for (const branch of this.getAvailableOnboardingBranches()) {
+      mergedOptions.set(branch.id, branch);
+    }
+
+    return Array.from(mergedOptions.values()).filter((branch) => selectedBranchIds.has(branch.id));
+  }
+
+  isOnboardingBranchSelected(branchId: number): boolean {
+    return this.selectedOnboardingBranchIds.includes(branchId);
+  }
+
+  getSelectedOrganizationMembership(): CustomerMembershipSummary | null {
+    if (!this.selectedOnboardingCandidate || !this.selectedOnboardingOrganizationId) {
+      return null;
+    }
+
+    return this.selectedOnboardingCandidate.memberships.find(
+      (membership) => membership.organizationId === this.selectedOnboardingOrganizationId,
+    ) ?? null;
+  }
+
+  hasExistingMembershipForSelectedOrganization(): boolean {
+    return !!this.getSelectedOrganizationMembership();
+  }
+
+  isExistingMembershipBranch(branchId: number): boolean {
+    return (this.getSelectedOrganizationMembership()?.accessibleBranches ?? []).some((branch) => branch.id === branchId);
+  }
+
+  shouldShowOnboardingBaseBranchSelector(): boolean {
+    return !this.hasExistingMembershipForSelectedOrganization() && this.selectedOnboardingBranchIds.length > 0;
+  }
+
+  getSelectedOnboardingOrganizationName(): string {
+    const organizationId = this.selectedOnboardingOrganizationId;
+    if (!organizationId) {
+      return '';
+    }
+
+    return this.onboardingContext?.organizations.find((organization) => organization.id === organizationId)?.name
+      ?? this.onboardingContext?.currentOrganizationName
+      ?? '';
+  }
+
+  getSelectedOnboardingBaseBranchName(): string {
+    if (!this.selectedOnboardingBaseBranchId) {
+      return this.getSelectedOrganizationMembership()?.baseBranchName ?? '';
+    }
+    return this.getAvailableOnboardingBranches().find((branch) => branch.id === this.selectedOnboardingBaseBranchId)?.name
+      ?? this.getSelectedOrganizationMembership()?.baseBranchName
+      ?? '';
   }
 
   openSettlementPopup(player: DuePlayer): void {

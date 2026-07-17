@@ -11,6 +11,7 @@ import com.youngstersclub.app.dto.UserPhoneUpdateRequest;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.service.OrganizationContextService;
 import com.youngstersclub.app.service.PlayerSummaryService;
 import com.youngstersclub.app.service.UserService;
 import org.slf4j.Logger;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import org.springframework.data.domain.PageRequest;
 
 @RestController
 public class UserController {
@@ -29,14 +31,17 @@ public class UserController {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^[0-9]{10}$");
     private final UserRepository userRepository;
     private final UserService userService;
+    private final OrganizationContextService organizationContextService;
     private final PlayerSummaryService playerSummaryService;
 
     public UserController(
             UserRepository userRepository,
             UserService userService,
+            OrganizationContextService organizationContextService,
             PlayerSummaryService playerSummaryService) {
         this.userRepository = userRepository;
         this.userService = userService;
+        this.organizationContextService = organizationContextService;
         this.playerSummaryService = playerSummaryService;
     }
 
@@ -54,7 +59,11 @@ public class UserController {
             return List.of();
         }
 
-        return userRepository.findTop10ByNameContainingIgnoreCaseOrderByNameAsc(normalizedQuery);
+        String digitsQuery = normalizedQuery.replaceAll("\\D", "");
+        return userRepository.searchActiveUsers(
+                normalizedQuery,
+                digitsQuery,
+                PageRequest.of(0, 10));
     }
 
     @PostMapping("/api/user/phone")
@@ -74,7 +83,13 @@ public class UserController {
         }
 
         user.setPhone(request.getPhone());
-        userRepository.save(user);
+        User savedUser = userRepository.save(user);
+        if (request.getOrganizationId() != null && request.getBranchId() != null) {
+            organizationContextService.ensureContextForResolvedUser(
+                    savedUser,
+                    request.getOrganizationId(),
+                    request.getBranchId());
+        }
 
         log.info("Phone number saved successfully for user: {}", request.getEmail());
         return ResponseEntity.ok("Phone number saved successfully");
@@ -113,6 +128,12 @@ public class UserController {
 
         try {
             User mergedUser = userService.mergeUserAccounts(email, phoneNumber);
+            if (request.getOrganizationId() != null && request.getBranchId() != null) {
+                organizationContextService.ensureContextForResolvedUser(
+                        mergedUser,
+                        request.getOrganizationId(),
+                        request.getBranchId());
+            }
             return ResponseEntity.ok(mergedUser);
         } catch (IllegalArgumentException | IllegalStateException ex) {
             log.warn("User merge failed for email {} and phone {}: {}", email, phoneNumber, ex.getMessage());

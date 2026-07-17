@@ -56,6 +56,10 @@ public class User {
     @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
     private List<FramePlayer> framePlayers;
 
+    @JsonIgnore
+    @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
+    private List<OrganizationUser> organizationUsers;
+
     public User() {}
 
     public Integer getId() { return id; }
@@ -84,4 +88,6 @@ public class User {
     public void setUserDue(UserDue userDue) { this.userDue = userDue; }
     public List<FramePlayer> getFramePlayers() { return framePlayers; }
     public void setFramePlayers(List<FramePlayer> framePlayers) { this.framePlayers = framePlayers; }
+    public List<OrganizationUser> getOrganizationUsers() { return organizationUsers; }
+    public void setOrganizationUsers(List<OrganizationUser> organizationUsers) { this.organizationUsers = organizationUsers; }
 }
