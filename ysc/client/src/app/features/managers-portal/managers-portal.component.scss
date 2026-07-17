@@ -453,6 +453,35 @@
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
+.customer-context-summary {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.9rem;
+  background: linear-gradient(135deg, rgba(20, 83, 45, 0.08) 0%, rgba(34, 197, 94, 0.14) 100%);
+  border: 1px solid rgba(20, 83, 45, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  word-break: break-word;
+}
+
+.customer-context-summary__label {
+  color: #14532d;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.customer-context-summary__value,
+.customer-context-summary__branch {
+  color: #0f172a;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.customer-context-summary__branch {
+  color: #475569;
+}
+
 .customer-form-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

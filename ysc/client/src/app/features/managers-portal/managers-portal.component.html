@@ -373,6 +373,16 @@
       @if (isAddCustomerExpanded) {
         <div class="panel-body add-customer-body">
           <div class="customer-form-card">
+            <div class="customer-context-summary">
+              <span class="customer-context-summary__label">Adding customer to:</span>
+              <span class="customer-context-summary__value">
+                {{ addCustomerOrganizationName || 'Current organization unavailable' }}
+              </span>
+              <span class="customer-context-summary__branch">
+                Base Branch: {{ addCustomerBranchName || 'Current branch unavailable' }}
+              </span>
+            </div>
+
             <div class="customer-form-grid">
               <div class="customer-field">
                 <label for="customer-name">Name</label>

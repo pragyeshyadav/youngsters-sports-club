@@ -1,6 +1,7 @@
 package com.youngstersclub.app.api;
 
 import com.youngstersclub.app.dto.CreateCustomerRequest;
+import com.youngstersclub.app.dto.CreateCustomerResponseDto;
 import com.youngstersclub.app.dto.MergeUserAccountRequest;
 import com.youngstersclub.app.dto.MessageResponseDto;
 import com.youngstersclub.app.dto.PhoneVerificationResponse;
@@ -16,6 +17,7 @@ import com.youngstersclub.app.service.PlayerSummaryService;
 import com.youngstersclub.app.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -153,49 +155,23 @@ public class UserController {
     }
 
     @PostMapping("/api/users/create-customer")
-    public ResponseEntity<?> createCustomer(@RequestBody CreateCustomerRequest request) {
-        if (request == null) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer details are required"));
+    public ResponseEntity<?> createCustomer(
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail,
+            @RequestBody CreateCustomerRequest request) {
+        try {
+            CreateCustomerResponseDto response = userService.createManualCustomerInCurrentContext(request, actorEmail);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(403).body(new MessageResponseDto(ex.getMessage()));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(409).body(new MessageResponseDto(ex.getMessage()));
+        } catch (java.util.NoSuchElementException ex) {
+            return ResponseEntity.status(404).body(new MessageResponseDto(ex.getMessage()));
+        } catch (DataIntegrityViolationException ex) {
+            return ResponseEntity.status(409).body(new MessageResponseDto("Customer creation conflicted with an existing membership mapping"));
         }
-
-        String name = request.getName() == null ? "" : request.getName().trim();
-        String email = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
-        String mobileNumber = request.getMobileNumber() == null ? "" : request.getMobileNumber().trim();
-
-        if (name.isEmpty()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Name is required"));
-        }
-
-        if (!email.isEmpty() && !EMAIL_PATTERN.matcher(email).matches()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Valid email is required"));
-        }
-
-        if (!PHONE_PATTERN.matcher(mobileNumber).matches()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Mobile number must be exactly 10 digits"));
-        }
-
-        if (email.isEmpty()) {
-            email = buildDummyEmail(name, mobileNumber);
-        }
-
-        if (userRepository.findByEmail(email).isPresent()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer with this email already exists"));
-        }
-
-        if (userRepository.findByPhone(mobileNumber).isPresent()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer with this mobile number already exists"));
-        }
-
-        User user = new User();
-        user.setName(name);
-        user.setEmail(email);
-        user.setGoogleId("MANUAL_USER_" + mobileNumber);
-        user.setPhone(mobileNumber);
-        user.setRole(UserRole.CUSTOMER);
-        user.setIsActive(true);
-        userRepository.save(user);
-
-        return ResponseEntity.ok(new MessageResponseDto("Customer created successfully"));
     }
 
     @PutMapping("/api/customer/update")
@@ -250,18 +226,4 @@ public class UserController {
         return ResponseEntity.ok(user);
     }
 
-    private String buildDummyEmail(String name, String mobileNumber) {
-        String normalizedName = name == null
-                ? "customer"
-                : name.toLowerCase()
-                        .trim()
-                        .replaceAll("\\s+", "_")
-                        .replaceAll("[^a-z0-9_]", "");
-
-        if (normalizedName.isBlank()) {
-            normalizedName = "customer";
-        }
-
-        return "dummy_" + normalizedName + "_" + mobileNumber + "@gmail.com";
-    }
 }

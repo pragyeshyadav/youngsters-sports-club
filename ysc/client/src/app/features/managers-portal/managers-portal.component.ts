@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 
@@ -92,6 +95,21 @@ interface MessageResponse {
   message: string;
 }
 
+interface AddCustomerResponse extends MessageResponse {
+  userId?: number;
+  customerName?: string;
+  phone?: string;
+  organizationId?: number;
+  organizationName?: string;
+  organizationUserId?: number;
+  membershipCreated?: boolean;
+  membershipReactivated?: boolean;
+  baseBranchId?: number | null;
+  baseBranchName?: string | null;
+  branchAccessCreated?: boolean;
+  branchAccessReactivated?: boolean;
+}
+
 interface CustomerSearchResult {
   id: number;
   name: string;
@@ -173,9 +191,12 @@ interface CustomerOnboardingResponse {
 export class ManagersPortalComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly authService = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
   private resizeHandler: (() => void) | null = null;
   private readonly today = new Date();
   private onboardingSearchTimeoutId: number | null = null;
+  private readonly subscriptions = new Subscription();
 
   isOngoingExpanded = false;
   ongoingFrames: OngoingFrame[] = [];
@@ -207,6 +228,8 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     email: '',
     mobileNumber: '',
   };
+  addCustomerOrganizationName = '';
+  addCustomerBranchName = '';
   isAddChildExpanded = false;
   isSearchingChildParent = false;
   isSavingChild = false;
@@ -287,6 +310,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.minEarningsDate = this.minCompletedDate;
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
+    this.bindOrganizationContext();
     this.loadViewerAccess();
   }
 
@@ -299,6 +323,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       window.clearTimeout(this.onboardingSearchTimeoutId);
       this.onboardingSearchTimeoutId = null;
     }
+    this.subscriptions.unsubscribe();
   }
 
   toggleOngoing(): void {
@@ -470,6 +495,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   toggleAddCustomer(): void {
     this.isAddCustomerExpanded = !this.isAddCustomerExpanded;
+    if (this.isAddCustomerExpanded && (!this.addCustomerOrganizationName || !this.addCustomerBranchName)) {
+      this.refreshAddCustomerContext();
+    }
   }
 
   toggleAddChild(): void {
@@ -885,14 +913,27 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
 
     this.isSavingCustomer = true;
-    this.http.post<MessageResponse>('/api/users/create-customer', {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    if (!actorEmail) {
+      this.isSavingCustomer = false;
+      alert('Unable to determine the logged-in user');
+      return;
+    }
+
+    this.http.post<AddCustomerResponse>('/api/users/create-customer', {
       name: this.customerForm.name.trim(),
       email: this.customerForm.email.trim().toLowerCase(),
       mobileNumber: this.customerForm.mobileNumber.trim(),
+    }, {
+      headers: new HttpHeaders({
+        'X-User-Email': actorEmail,
+      }),
     }).subscribe({
       next: (response) => {
         this.isSavingCustomer = false;
-        alert(response?.message || 'Customer added successfully');
+        const organizationName = response?.organizationName || this.addCustomerOrganizationName || '-';
+        const branchName = response?.baseBranchName || this.addCustomerBranchName || '-';
+        alert(`${response?.message || 'Customer added successfully'}\n\nOrganization:\n${organizationName}\n\nBase Branch:\n${branchName}`);
         this.resetCustomerForm();
         this.isAddCustomerExpanded = false;
       },
@@ -1058,6 +1099,39 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       email: '',
       mobileNumber: '',
     };
+  }
+
+  private bindOrganizationContext(): void {
+    this.subscriptions.add(
+      this.organizationContextService.context$.subscribe((context) => {
+        this.addCustomerOrganizationName = context?.currentOrganization?.name ?? '';
+        this.addCustomerBranchName = context?.currentBranch?.name ?? '';
+      }),
+    );
+
+    const snapshot = this.organizationContextService.getSnapshot();
+    if (snapshot?.currentOrganization?.name || snapshot?.currentBranch?.name) {
+      this.addCustomerOrganizationName = snapshot?.currentOrganization?.name ?? '';
+      this.addCustomerBranchName = snapshot?.currentBranch?.name ?? '';
+      return;
+    }
+
+    this.refreshAddCustomerContext();
+  }
+
+  private refreshAddCustomerContext(): void {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    if (!actorEmail) {
+      return;
+    }
+
+    this.subscriptions.add(
+      this.organizationContextService.loadContext(actorEmail).subscribe({
+        error: (err) => {
+          console.error('Failed to load add customer context', err);
+        },
+      }),
+    );
   }
 
   private loadParentChildren(parentId: number): void {
