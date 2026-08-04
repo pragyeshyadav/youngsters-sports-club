@@ -1,10 +1,11 @@
 package com.youngstersclub.app.service;
 
+import com.youngstersclub.app.dto.DailyVisitedOrganizationDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.entity.User;
-import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
+import com.youngstersclub.app.repository.DailyCustomerVisitRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
@@ -28,14 +29,17 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
     private static final Logger log = LoggerFactory.getLogger(DailyCustomerEngagementService.class);
     private static final String TEMPLATE_NAME = "daily_visit_thanks_message";
 
+    private final DailyCustomerVisitRepository dailyCustomerVisitRepository;
     private final UserRepository userRepository;
     private final WhatsAppService whatsAppService;
     private final BrevoEmailService brevoEmailService;
 
     public DailyCustomerEngagementService(
+            DailyCustomerVisitRepository dailyCustomerVisitRepository,
             UserRepository userRepository,
             WhatsAppService whatsAppService,
             BrevoEmailService brevoEmailService) {
+        this.dailyCustomerVisitRepository = dailyCustomerVisitRepository;
         this.userRepository = userRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
@@ -68,8 +72,8 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
     public WhatsappTemplateExecutionResultDto processDailyWhatsappNotifications(boolean isDryRun) {
         LocalDate today = TimeUtil.nowIST().toLocalDate();
         LocalDateTime executionTime = TimeUtil.nowIST();
-        List<UserRepository.DailyVisitedOrganizationProjection> visitedCustomers =
-                userRepository.findDailyVisitedCustomersByOrganization(today);
+        List<DailyVisitedOrganizationDto> visitedCustomers =
+                dailyCustomerVisitRepository.findDailyVisitedCustomersByOrganization(today);
         List<DailyVisitRecipient> aggregatedRecipients = aggregateDailyVisitRecipients(visitedCustomers);
 
         int totalUsers = aggregatedRecipients.size();
@@ -150,9 +154,9 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
     }
 
     private List<DailyVisitRecipient> aggregateDailyVisitRecipients(
-            List<UserRepository.DailyVisitedOrganizationProjection> visitedCustomers) {
+            List<DailyVisitedOrganizationDto> visitedCustomers) {
         Map<String, AggregatedDailyVisitRecipient> aggregated = new LinkedHashMap<>();
-        for (UserRepository.DailyVisitedOrganizationProjection customer : visitedCustomers) {
+        for (DailyVisitedOrganizationDto customer : visitedCustomers) {
             String key = customer.getUserId() + "|" + customer.getOrganizationId();
             AggregatedDailyVisitRecipient recipient = aggregated.computeIfAbsent(
                     key,
