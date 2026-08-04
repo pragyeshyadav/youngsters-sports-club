@@ -59,6 +59,7 @@ public class FrameService {
     private final BranchRepository branchRepository;
     private final UserBranchAccessRepository userBranchAccessRepository;
     private final UserDueService userDueService;
+    private final LeaderboardCacheService leaderboardCacheService;
 
     public FrameService(
             SnookerTableRepository tableRepository,
@@ -69,7 +70,8 @@ public class FrameService {
             OrganizationUserRepository organizationUserRepository,
             BranchRepository branchRepository,
             UserBranchAccessRepository userBranchAccessRepository,
-            UserDueService userDueService) {
+            UserDueService userDueService,
+            LeaderboardCacheService leaderboardCacheService) {
         this.tableRepository = tableRepository;
         this.frameRepository = frameRepository;
         this.framePlayerRepository = framePlayerRepository;
@@ -79,6 +81,7 @@ public class FrameService {
         this.branchRepository = branchRepository;
         this.userBranchAccessRepository = userBranchAccessRepository;
         this.userDueService = userDueService;
+        this.leaderboardCacheService = leaderboardCacheService;
     }
 
     @Transactional
@@ -1042,19 +1045,13 @@ public class FrameService {
             LocalDateTime startInclusive = selectedMonth.atDay(1).atStartOfDay();
             LocalDateTime endExclusive = selectedMonth.plusMonths(1).atDay(1).atStartOfDay();
 
-            List<Map<String, Object>> result = frameRepository
-                    .findTopPlayersOfMonthByBranch(context.branch().getId(), startInclusive, endExclusive)
-                    .stream().map(projection -> {
-                Map<String, Object> map = new HashMap<>();
-                map.put("userId", projection.getUserId());
-                map.put("name", projection.getName());
-                map.put("wins", projection.getWins());
-                map.put("branchId", context.branch().getId());
-                map.put("branchName", context.branch().getName());
-                map.put("year", selectedMonth.getYear());
-                map.put("month", selectedMonth.getMonthValue());
-                return map;
-            }).toList();
+            List<Map<String, Object>> result = leaderboardCacheService.getTopPlayersForBranchMonth(
+                    context.branch().getId(),
+                    context.branch().getName(),
+                    selectedMonth.getYear(),
+                    selectedMonth.getMonthValue(),
+                    startInclusive,
+                    endExclusive);
 
             log.info(
                     "action=GET_MONTHLY_TOP10_LEADERBOARD organizationId={} branchId={} year={} month={} actorUserId={} resultCount={}",

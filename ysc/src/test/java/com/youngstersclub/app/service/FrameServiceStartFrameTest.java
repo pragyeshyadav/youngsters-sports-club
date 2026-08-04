@@ -60,6 +60,7 @@ class FrameServiceStartFrameTest {
   @Mock private BranchRepository branchRepository;
   @Mock private UserBranchAccessRepository userBranchAccessRepository;
   @Mock private UserDueService userDueService;
+  @Mock private LeaderboardCacheService leaderboardCacheService;
 
   @InjectMocks private FrameService frameService;
 
@@ -284,15 +285,22 @@ class FrameServiceStartFrameTest {
   @Test
   void getTopPlayersUsesActiveBranchAndSelectedMonth() {
     mockAuthorizedContext();
-    FrameRepository.TopPlayerProjection projection = topPlayerProjection(91, "Winner One", 4L);
     LocalDateTime[] capturedRange = new LocalDateTime[2];
     Long[] capturedBranchId = new Long[1];
+    List<Map<String, Object>> expected = List.of(Map.of(
+        "userId", 91,
+        "name", "Winner One",
+        "wins", 4L,
+        "branchId", branch.getId(),
+        "branchName", "Satna",
+        "year", 2026,
+        "month", 7));
 
-    when(frameRepository.findTopPlayersOfMonthByBranch(any(), any(), any())).thenAnswer(invocation -> {
+    when(leaderboardCacheService.getTopPlayersForBranchMonth(any(), any(), any(), any(), any(), any())).thenAnswer(invocation -> {
       capturedBranchId[0] = invocation.getArgument(0, Long.class);
-      capturedRange[0] = invocation.getArgument(1, LocalDateTime.class);
-      capturedRange[1] = invocation.getArgument(2, LocalDateTime.class);
-      return List.of(projection);
+      capturedRange[0] = invocation.getArgument(4, LocalDateTime.class);
+      capturedRange[1] = invocation.getArgument(5, LocalDateTime.class);
+      return expected;
     });
 
     List<Map<String, Object>> result = frameService.getTopPlayers("manager@test.com", 2026, 7);
@@ -316,9 +324,9 @@ class FrameServiceStartFrameTest {
     List<Long> repositoryCalls = new ArrayList<>();
     LocalDateTime[] capturedRange = new LocalDateTime[2];
 
-    when(frameRepository.findTopPlayersOfMonthByBranch(any(), any(), any())).thenAnswer(invocation -> {
-      capturedRange[0] = invocation.getArgument(1, LocalDateTime.class);
-      capturedRange[1] = invocation.getArgument(2, LocalDateTime.class);
+    when(leaderboardCacheService.getTopPlayersForBranchMonth(any(), any(), any(), any(), any(), any())).thenAnswer(invocation -> {
+      capturedRange[0] = invocation.getArgument(4, LocalDateTime.class);
+      capturedRange[1] = invocation.getArgument(5, LocalDateTime.class);
       repositoryCalls.add(1L);
       return List.of();
     });
