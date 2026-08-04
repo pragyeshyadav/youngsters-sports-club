@@ -8,12 +8,19 @@ public class SettledPaymentDto {
     private final BigDecimal paidAmount;
     private final BigDecimal discount;
     private final LocalDateTime date;
+    private final String paymentMethod;
 
-    public SettledPaymentDto(String userName, BigDecimal paidAmount, BigDecimal discount, LocalDateTime date) {
+    public SettledPaymentDto(
+            String userName,
+            BigDecimal paidAmount,
+            BigDecimal discount,
+            LocalDateTime date,
+            String paymentMethod) {
         this.userName = userName;
         this.paidAmount = paidAmount;
         this.discount = discount;
         this.date = date;
+        this.paymentMethod = paymentMethod;
     }
 
     public String getUserName() {
@@ -30,5 +37,9 @@ public class SettledPaymentDto {
 
     public LocalDateTime getDate() {
         return date;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
     }
 }

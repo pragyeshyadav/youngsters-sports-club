@@ -49,8 +49,8 @@ public class User {
     private List<Payment> payments;
 
     @JsonIgnore
-    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    private UserDue userDue;
+    @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
+    private List<UserDue> userDues;
 
     @JsonIgnore
     @OneToMany(mappedBy = "user", fetch = FetchType.LAZY)
@@ -84,8 +84,8 @@ public class User {
     public void setFramesApproved(List<Frame> framesApproved) { this.framesApproved = framesApproved; }
     public List<Payment> getPayments() { return payments; }
     public void setPayments(List<Payment> payments) { this.payments = payments; }
-    public UserDue getUserDue() { return userDue; }
-    public void setUserDue(UserDue userDue) { this.userDue = userDue; }
+    public List<UserDue> getUserDues() { return userDues; }
+    public void setUserDues(List<UserDue> userDues) { this.userDues = userDues; }
     public List<FramePlayer> getFramePlayers() { return framePlayers; }
     public void setFramePlayers(List<FramePlayer> framePlayers) { this.framePlayers = framePlayers; }
     public List<OrganizationUser> getOrganizationUsers() { return organizationUsers; }

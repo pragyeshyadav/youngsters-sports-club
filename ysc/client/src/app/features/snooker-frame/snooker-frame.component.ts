@@ -1,16 +1,20 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
 import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 
 interface Table {
   id: number;
   tableName: string;
-  isAvailable?: boolean;
+  available?: boolean;
+  branchId?: number | null;
+  branchName?: string | null;
 }
 
 interface BackendUser {
@@ -79,6 +83,8 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly organizationContextService = inject(OrganizationContextService);
+  private readonly subscriptions = new Subscription();
 
   tables: Table[] = [];
   ongoingFrames: OngoingFrameSummary[] = [];
@@ -104,13 +110,17 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   isOpeningEndPopup = false;
   isEndingFrame = false;
   isRestartingSameFrame = false;
+  private currentBranchId: number | null = null;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
+  private requestVersion = 0;
 
   ngOnInit(): void {
+    this.subscribeToBranchChanges();
     this.loadActiveFrameOrTables();
   }
 
   ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
     this.clearTimer();
   }
 
@@ -293,9 +303,13 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
         : (this.playerCount === 5 || this.playerCount === 6)
           ? { mode: 'SINGLE', loserIds: this.loserIds }
           : { mode: 'SINGLE', winnerId: this.winnerId, looserId: this.looserId };
+    const actorEmail = this.auth.getSnapshot()?.user.email?.trim();
+    const headers = actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail })
+      : new HttpHeaders();
 
     this.http
-      .post<EndFrameResponse>(`/api/frame/end/${this.activeFrame.id}`, payload)
+      .post<EndFrameResponse>(`/api/frame/end/${this.activeFrame.id}`, payload, { headers })
       .subscribe({
         next: (res) => {
           this.lastEndedTable = this.activeFrame?.tableId
@@ -371,8 +385,12 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
     };
 
     this.isRestartingSameFrame = true;
+    const actorEmail = this.auth.getSnapshot()?.user.email?.trim();
+    const headers = actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail })
+      : new HttpHeaders();
 
-    this.http.post<number>('/api/frame/start', payload).subscribe({
+    this.http.post<number>('/api/frame/start', payload, { headers }).subscribe({
       next: (frameId) => {
         this.billAmount = null;
         this.billDuration = null;
@@ -436,6 +454,7 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
 
     this.http.get<BackendUser>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
+        const requestVersion = this.requestVersion;
         this.userRole = user.role ?? '';
         this.currentUserId = user.id ?? null;
         if (this.isPrivileged()) {
@@ -450,6 +469,9 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
         this.isLoadingCurrentFrame = true;
         this.http.get<ActiveFrameResponse | null>(`/api/frame/active?userId=${user.id}`).subscribe({
           next: (res) => {
+            if (requestVersion !== this.requestVersion) {
+              return;
+            }
             if (res?.frame) {
               this.activeFrame = res.frame;
               this.players = res.players ?? [];
@@ -464,6 +486,9 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
             this.cdr.markForCheck();
           },
           error: (err) => {
+            if (requestVersion !== this.requestVersion) {
+              return;
+            }
             console.error('Failed to load active frame', err);
             this.isLoadingCurrentFrame = false;
             this.loadTables();
@@ -480,15 +505,33 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
   }
 
   private loadTables(): void {
+    const actorEmail = this.auth.getSnapshot()?.user.email;
+    if (!actorEmail) {
+      this.tables = [];
+      this.isLoadingTables = false;
+      this.cdr.markForCheck();
+      return;
+    }
+
     this.isLoadingTables = true;
-    this.http.get<Table[]>('/api/snooker/tables').subscribe({
+    const requestVersion = this.requestVersion;
+    const headers = new HttpHeaders({
+      'X-User-Email': actorEmail,
+    });
+    this.http.get<Table[]>('/api/snooker/tables', { headers }).subscribe({
       next: (res) => {
-        const availableTables = res.filter((table) => table.isAvailable !== false && table.tableName !== 'Kids Ocean Dream Land');
+        if (requestVersion !== this.requestVersion) {
+          return;
+        }
+        const availableTables = res.filter((table) => table.available !== false && table.tableName !== 'Kids Ocean Dream Land');
         this.tables = availableTables;
         this.isLoadingTables = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.requestVersion) {
+          return;
+        }
         console.error('Failed to fetch tables', err);
         this.tables = [];
         this.isLoadingTables = false;
@@ -499,13 +542,24 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
 
   private loadOngoingFrames(): void {
     this.isLoadingOngoingFrames = true;
-    this.http.get<OngoingFrameSummary[]>('/api/frame/ongoing/today').subscribe({
+    const requestVersion = this.requestVersion;
+    const actorEmail = this.auth.getSnapshot()?.user.email?.trim();
+    const headers = actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail })
+      : new HttpHeaders();
+    this.http.get<OngoingFrameSummary[]>('/api/frame/ongoing/today', { headers }).subscribe({
       next: (res) => {
+        if (requestVersion !== this.requestVersion) {
+          return;
+        }
         this.ongoingFrames = res ?? [];
         this.isLoadingOngoingFrames = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.requestVersion) {
+          return;
+        }
         console.error('Failed to load ongoing frames', err);
         this.ongoingFrames = [];
         this.isLoadingOngoingFrames = false;
@@ -537,5 +591,52 @@ export class SnookerFrameComponent implements OnInit, OnDestroy {
       clearInterval(this.timerInterval);
       this.timerInterval = null;
     }
+  }
+
+  private subscribeToBranchChanges(): void {
+    const snapshot = this.organizationContextService.getSnapshot();
+    this.currentBranchId = snapshot?.currentBranch?.id ?? null;
+
+    this.subscriptions.add(
+      this.organizationContextService.context$.subscribe((context) => {
+        const nextBranchId = context?.currentBranch?.id ?? null;
+        if (this.currentBranchId === nextBranchId) {
+          return;
+        }
+
+        this.currentBranchId = nextBranchId;
+        this.requestVersion++;
+        this.resetTablesForContextChange();
+        if (nextBranchId) {
+          this.loadTables();
+        }
+      }),
+    );
+  }
+
+  private resetTablesForContextChange(): void {
+    this.tables = [];
+    this.ongoingFrames = [];
+    this.lastEndedTable = null;
+    this.lastEndedPlayers = [];
+    this.activeFrame = null;
+    this.players = [];
+    this.framePlayers = [];
+    this.showEndPopup = false;
+    this.gameMode = 'SINGLE';
+    this.winnerId = null;
+    this.looserId = null;
+    this.winnerIds = [];
+    this.loserIds = [];
+    this.timerSeconds = 0;
+    this.clearTimer();
+    this.billAmount = null;
+    this.billDuration = null;
+    this.isLoadingTables = true;
+    this.isLoadingOngoingFrames = false;
+    this.isOpeningEndPopup = false;
+    this.isEndingFrame = false;
+    this.isRestartingSameFrame = false;
+    this.cdr.markForCheck();
   }
 }

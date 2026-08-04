@@ -89,6 +89,7 @@ interface SettledPayment {
   paidAmount: number | string | null;
   discount: number | string | null;
   date: string;
+  paymentMethod?: string | null;
 }
 
 interface MessageResponse {
@@ -197,6 +198,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   private readonly today = new Date();
   private onboardingSearchTimeoutId: number | null = null;
   private readonly subscriptions = new Subscription();
+  private currentBranchId: number | null = null;
+  private playersRequestVersion = 0;
+  private branchStateVersion = 0;
 
   isOngoingExpanded = false;
   ongoingFrames: OngoingFrame[] = [];
@@ -348,9 +352,14 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   loadTodayEarnings(): void {
     this.isLoadingEarnings = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
-    this.http.get<TodayEarnings>('/api/analytics/today-earnings').subscribe({
+    this.http.get<TodayEarnings>('/api/analytics/today-earnings', { headers }).subscribe({
       next: (earnings) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.todayEarnings = {
           totalEarnings: earnings?.totalEarnings ?? 0,
           totalDue: earnings?.totalDue ?? 0,
@@ -361,6 +370,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.isLoadingEarnings = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load today earnings', err);
         this.todayEarnings = {
           totalEarnings: 0,
@@ -381,9 +393,14 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingEarnings = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
-    this.http.get<TodayEarnings>(`/api/manager/earnings?date=${this.selectedEarningsDate}`).subscribe({
+    this.http.get<TodayEarnings>(`/api/manager/earnings?date=${this.selectedEarningsDate}`, { headers }).subscribe({
       next: (earnings) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.todayEarnings = {
           totalEarnings: earnings?.totalEarnings ?? 0,
           totalDue: earnings?.totalDue ?? 0,
@@ -394,6 +411,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.isLoadingEarnings = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load earnings', err);
         this.todayEarnings = {
           totalEarnings: 0,
@@ -428,13 +448,21 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   loadOngoingFrames(): void {
     this.isLoadingOngoing = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
-    this.http.get<OngoingFrame[]>('/api/frame/ongoing/today').subscribe({
+    this.http.get<OngoingFrame[]>('/api/frame/ongoing/today', { headers }).subscribe({
       next: (frames) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.ongoingFrames = frames;
         this.isLoadingOngoing = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load ongoing frames', err);
         this.ongoingFrames = [];
         this.isLoadingOngoing = false;
@@ -452,17 +480,25 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   loadCompletedFrames(useTodayApi: boolean = false): void {
     this.isLoadingCompleted = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
     const request$ = useTodayApi
-      ? this.http.get<CompletedFrame[]>('/api/frame/completed/today')
-      : this.http.get<CompletedFrame[]>(`/api/frame/completed?date=${this.selectedCompletedDate}`);
+      ? this.http.get<CompletedFrame[]>('/api/frame/completed/today', { headers })
+      : this.http.get<CompletedFrame[]>(`/api/frame/completed?date=${this.selectedCompletedDate}`, { headers });
 
     request$.subscribe({
       next: (frames) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.completedFrames = frames;
         this.isLoadingCompleted = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load completed frames', err);
         this.completedFrames = [];
         this.isLoadingCompleted = false;
@@ -987,10 +1023,25 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   loadPlayers(): void {
     if (this.isLoadingPlayers || !this.hasMorePlayers) return;
-    this.isLoadingPlayers = true;
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    if (!actorEmail || !this.currentBranchId) {
+      this.players = [];
+      this.hasMorePlayers = false;
+      this.isLoadingPlayers = false;
+      return;
+    }
 
-    this.http.get<any>(`/api/users/player-summary?page=${this.playersPage}&size=20`).subscribe({
+    this.isLoadingPlayers = true;
+    const requestVersion = this.playersRequestVersion;
+    const headers = new HttpHeaders({
+      'X-User-Email': actorEmail.trim(),
+    });
+
+    this.http.get<any>(`/api/users/player-summary?page=${this.playersPage}&size=20`, { headers }).subscribe({
       next: (response) => {
+        if (requestVersion !== this.playersRequestVersion) {
+          return;
+        }
         const content = response.content || [];
         this.players = [...this.players, ...content];
         this.isLoadingPlayers = false;
@@ -1002,6 +1053,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         }
       },
       error: (err) => {
+        if (requestVersion !== this.playersRequestVersion) {
+          return;
+        }
         console.error('Failed to load players', err);
         this.isLoadingPlayers = false;
       },
@@ -1102,10 +1156,37 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   }
 
   private bindOrganizationContext(): void {
+    this.currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+
     this.subscriptions.add(
       this.organizationContextService.context$.subscribe((context) => {
         this.addCustomerOrganizationName = context?.currentOrganization?.name ?? '';
         this.addCustomerBranchName = context?.currentBranch?.name ?? '';
+
+        const nextBranchId = context?.currentBranch?.id ?? null;
+        if (this.currentBranchId === nextBranchId) {
+          return;
+        }
+
+        this.currentBranchId = nextBranchId;
+        this.branchStateVersion++;
+        this.resetFrameListsForBranchChange();
+        this.resetEarningsForBranchChange();
+        this.resetPlayersForBranchChange();
+        if (nextBranchId) {
+          if (this.isOngoingExpanded) {
+            this.loadOngoingFrames();
+          }
+          if (this.isCompletedExpanded) {
+            this.loadCompletedFrames(this.selectedCompletedDate === this.maxCompletedDate);
+          }
+          if (this.isEarningsExpanded) {
+            this.loadEarningsForSelectedDate();
+          }
+          if (this.isPlayersExpanded) {
+            this.loadPlayers();
+          }
+        }
       }),
     );
 
@@ -1132,6 +1213,60 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         },
       }),
     );
+  }
+
+  private resetPlayersForBranchChange(): void {
+    this.playersRequestVersion++;
+    this.players = [];
+    this.playersPage = 0;
+    this.hasMorePlayers = true;
+    this.isLoadingPlayers = false;
+    this.showSettlementPopup = false;
+    this.settlementPlayer = null;
+    this.settlementTotalDue = 0;
+    this.settlementFrameDue = 0;
+    this.settlementConsumableDue = 0;
+    this.settlementKidsDue = 0;
+    this.settleAmount = null;
+    this.discountAmount = null;
+    this.paymentMode = '';
+    this.showItemsPopup = false;
+    this.itemsPlayer = null;
+    this.isLoadingItemsBreakdown = false;
+    this.dueBreakdown = {
+      frames: [],
+      consumables: [],
+      kidsPlay: [],
+      frameDue: 0,
+      consumableDue: 0,
+      kidsDue: 0,
+      totalDue: 0,
+    };
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private resetFrameListsForBranchChange(): void {
+    this.ongoingFrames = [];
+    this.completedFrames = [];
+    this.isLoadingOngoing = false;
+    this.isLoadingCompleted = false;
+  }
+
+  private resetEarningsForBranchChange(): void {
+    this.isLoadingEarnings = false;
+    this.hasLoadedEarnings = false;
+    this.todayEarnings = {
+      totalEarnings: 0,
+      totalDue: 0,
+      duePlayers: [],
+      settledPayments: [],
+    };
   }
 
   private loadParentChildren(parentId: number): void {
@@ -1354,7 +1489,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.discountAmount = null;
     this.paymentMode = '';
 
-    this.http.get<any>(`/api/user/payment-summary-by-date?userId=${player.userId}&date=${this.selectedEarningsDate}`).subscribe({
+    const headers = this.buildActorHeaders();
+    this.http.get<any>(
+      `/api/user/payment-summary-by-date/current-branch?userId=${player.userId}&date=${this.selectedEarningsDate}`,
+      { headers },
+    ).subscribe({
       next: (summary) => {
         this.settlementFrameDue = summary?.frameDue ?? 0;
         this.settlementConsumableDue = summary?.consumableDue ?? 0;
@@ -1389,7 +1528,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       totalDue: 0,
     };
 
-    this.http.get<PendingDueBreakdown>(`/api/user/payment-breakdown-by-date?userId=${player.userId}&date=${this.selectedEarningsDate}`).subscribe({
+    const headers = this.buildActorHeaders();
+    this.http.get<PendingDueBreakdown>(
+      `/api/user/payment-breakdown-by-date/current-branch?userId=${player.userId}&date=${this.selectedEarningsDate}`,
+      { headers },
+    ).subscribe({
       next: (breakdown) => {
         this.dueBreakdown = {
           frames: breakdown?.frames ?? [],
@@ -1455,7 +1598,10 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       paymentMode: this.paymentMode
     };
 
-    this.http.post('/api/payment/settle-by-date', request, { responseType: 'text' }).subscribe({
+    this.http.post('/api/payment/settle-by-date', request, {
+      headers: this.buildActorHeaders(),
+      responseType: 'text',
+    }).subscribe({
       next: () => {
         this.isSavingSettlement = false;
         alert('Payment settled successfully for selected date');

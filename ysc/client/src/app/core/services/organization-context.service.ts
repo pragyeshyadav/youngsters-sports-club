@@ -1,7 +1,7 @@
 import { isPlatformBrowser } from '@angular/common';
 import { Injectable, PLATFORM_ID, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { BehaviorSubject, Observable, tap } from 'rxjs';
+import { BehaviorSubject, Observable, distinctUntilChanged, map, tap } from 'rxjs';
 import { ORGANIZATION_CONTEXT_STORAGE_KEY } from '../constants/storage.constants';
 import { BranchOption, OrganizationContext, OrganizationOption } from '../models/organization-context.models';
 
@@ -12,6 +12,15 @@ export class OrganizationContextService {
 
   private readonly contextSubject = new BehaviorSubject<OrganizationContext | null>(this.readStoredContext());
   readonly context$: Observable<OrganizationContext | null> = this.contextSubject.asObservable();
+  readonly currentContext$: Observable<OrganizationContext | null> = this.context$;
+  readonly currentBranch$: Observable<BranchOption | null> = this.context$.pipe(
+    map((context) => context?.currentBranch ?? null),
+    distinctUntilChanged((previous, current) => previous?.id === current?.id),
+  );
+  readonly currentBranchId$: Observable<number | null> = this.currentBranch$.pipe(
+    map((branch) => branch?.id ?? null),
+    distinctUntilChanged(),
+  );
 
   getSnapshot(): OrganizationContext | null {
     return this.contextSubject.value;

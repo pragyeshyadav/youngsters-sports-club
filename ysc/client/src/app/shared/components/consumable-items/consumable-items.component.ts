@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { finalize } from 'rxjs';
+import { Subscription, finalize } from 'rxjs';
+import { AuthService } from '../../../core/services/auth.service';
+import { OrganizationContextService } from '../../../core/services/organization-context.service';
 
 interface SettlementUser {
   id: number;
@@ -32,11 +34,15 @@ interface SelectedConsumableItem {
   styleUrl: './consumable-items.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ConsumableItemsComponent {
+export class ConsumableItemsComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly authService = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
+  private readonly subscriptions = new Subscription();
   private userSearchRequestId = 0;
   private itemSearchRequestId = 0;
+  private currentBranchId: number | null = null;
 
   isExpanded = false;
   consumableUserSearchText = '';
@@ -50,6 +56,24 @@ export class ConsumableItemsComponent {
   isLoadingConsumableUsers = false;
   isLoadingConsumableItems = false;
   isSubmittingConsumableOrder = false;
+
+  ngOnInit(): void {
+    this.currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+    this.subscriptions.add(
+      this.organizationContextService.currentBranchId$.subscribe((branchId) => {
+        if (this.currentBranchId === branchId) {
+          return;
+        }
+
+        this.currentBranchId = branchId;
+        this.resetStateForBranchChange();
+      }),
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
 
   toggle(): void {
     this.isExpanded = !this.isExpanded;
@@ -133,7 +157,10 @@ export class ConsumableItemsComponent {
 
     this.isLoadingConsumableItems = true;
     this.cdr.markForCheck();
-    this.http.get<ConsumableItemOption[]>(`/api/consumables/items/search?query=${encodeURIComponent(query)}`).subscribe({
+    this.http.get<ConsumableItemOption[]>(
+      `/api/consumables/items/search?query=${encodeURIComponent(query)}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (items) => {
         if (requestId !== this.itemSearchRequestId) {
           return;
@@ -217,13 +244,17 @@ export class ConsumableItemsComponent {
 
     this.isSubmittingConsumableOrder = true;
     this.cdr.markForCheck();
-    this.http.post<{ orderId: number; totalAmount: number }>('/api/consumables/order', {
-      userId: this.selectedConsumableUser.id,
-      items: this.selectedConsumableOrderItems.map((item) => ({
-        itemId: item.itemId,
-        quantity: item.quantity,
-      })),
-    }).pipe(
+    this.http.post<{ orderId: number; totalAmount: number }>(
+      '/api/consumables/order',
+      {
+        userId: this.selectedConsumableUser.id,
+        items: this.selectedConsumableOrderItems.map((item) => ({
+          itemId: item.itemId,
+          quantity: item.quantity,
+        })),
+      },
+      { headers: this.buildActorHeaders() },
+    ).pipe(
       finalize(() => {
         this.isSubmittingConsumableOrder = false;
         this.cdr.markForCheck();
@@ -261,5 +292,45 @@ export class ConsumableItemsComponent {
     }
 
     return typeof value === 'number' ? value : Number(value);
+  }
+
+  private resetStateForBranchChange(): void {
+    this.userSearchRequestId++;
+    this.itemSearchRequestId++;
+    this.consumableUserSearchText = '';
+    this.consumableUsers = [];
+    this.selectedConsumableUser = null;
+    this.consumableItemSearchText = '';
+    this.consumableItems = [];
+    this.selectedConsumableItem = null;
+    this.selectedConsumableQuantity = 1;
+    this.selectedConsumableOrderItems = [];
+    this.isLoadingConsumableUsers = false;
+    this.isLoadingConsumableItems = false;
+    this.isSubmittingConsumableOrder = false;
+    this.cdr.markForCheck();
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private getStoredUserEmail(): string {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      const rawUser = window.localStorage.getItem('user');
+      if (!rawUser) {
+        return '';
+      }
+      const parsed = JSON.parse(rawUser) as { email?: string | null };
+      return parsed?.email?.trim() ?? '';
+    } catch {
+      return '';
+    }
   }
 }

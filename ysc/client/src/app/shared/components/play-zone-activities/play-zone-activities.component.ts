@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, inject } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { finalize } from 'rxjs';
+import { Subscription, finalize } from 'rxjs';
+import { AuthService } from '../../../core/services/auth.service';
+import { OrganizationContextService } from '../../../core/services/organization-context.service';
 
 interface ParentUserOption {
   id: number;
@@ -33,13 +35,17 @@ interface SelectedActivityItem {
   styleUrl: './play-zone-activities.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class PlayZoneActivitiesComponent {
+export class PlayZoneActivitiesComponent implements OnInit, OnDestroy {
   private static readonly SOFT_PLAY_ZONE_NAME = 'soft play zone';
 
   private readonly http = inject(HttpClient);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly authService = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
+  private readonly subscriptions = new Subscription();
   private parentSearchRequestId = 0;
   private gameSearchRequestId = 0;
+  private currentBranchId: number | null = null;
 
   @Input() createdByUserId: number | null = null;
 
@@ -59,6 +65,24 @@ export class PlayZoneActivitiesComponent {
   isLoadingParents = false;
   isLoadingGames = false;
   isSubmitting = false;
+
+  ngOnInit(): void {
+    this.currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+    this.subscriptions.add(
+      this.organizationContextService.currentBranchId$.subscribe((branchId) => {
+        if (this.currentBranchId === branchId) {
+          return;
+        }
+
+        this.currentBranchId = branchId;
+        this.resetStateForBranchChange();
+      }),
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
 
   toggle(): void {
     this.isExpanded = !this.isExpanded;
@@ -137,7 +161,10 @@ export class PlayZoneActivitiesComponent {
 
     this.isLoadingGames = true;
     this.cdr.markForCheck();
-    this.http.get<GameActivityOption[]>(`/api/play-zone-activities/games/search?query=${encodeURIComponent(query)}`).subscribe({
+    this.http.get<GameActivityOption[]>(
+      `/api/play-zone-activities/games/search?query=${encodeURIComponent(query)}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (games) => {
         if (requestId !== this.gameSearchRequestId) {
           return;
@@ -211,15 +238,19 @@ export class PlayZoneActivitiesComponent {
 
     this.isSubmitting = true;
     this.cdr.markForCheck();
-    this.http.post('/api/play-zone-activities/order', {
-      parentUserId: this.selectedParentUser.id,
-      createdBy: this.createdByUserId,
-      activities: this.selectedActivities.map((activity) => ({
-        gameId: activity.gameId,
-        numberOfChildren: activity.numberOfChildren,
-        durationMinutes: activity.durationMinutes,
-      })),
-    }).pipe(
+    this.http.post(
+      '/api/play-zone-activities/order',
+      {
+        parentUserId: this.selectedParentUser.id,
+        createdBy: this.createdByUserId,
+        activities: this.selectedActivities.map((activity) => ({
+          gameId: activity.gameId,
+          numberOfChildren: activity.numberOfChildren,
+          durationMinutes: activity.durationMinutes,
+        })),
+      },
+      { headers: this.buildActorHeaders() },
+    ).pipe(
       finalize(() => {
         this.isSubmitting = false;
         this.cdr.markForCheck();
@@ -272,5 +303,42 @@ export class PlayZoneActivitiesComponent {
     }
     const parsed = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private resetStateForBranchChange(): void {
+    this.parentSearchRequestId++;
+    this.gameSearchRequestId++;
+    this.parentSearchText = '';
+    this.parentUsers = [];
+    this.selectedParentUser = null;
+    this.selectedActivities = [];
+    this.isLoadingParents = false;
+    this.isLoadingGames = false;
+    this.isSubmitting = false;
+    this.resetSelectedGame();
+    this.cdr.markForCheck();
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private getStoredUserEmail(): string {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      const rawUser = window.localStorage.getItem('user');
+      if (!rawUser) {
+        return '';
+      }
+      const parsed = JSON.parse(rawUser) as { email?: string | null };
+      return parsed?.email?.trim() ?? '';
+    } catch {
+      return '';
+    }
   }
 }

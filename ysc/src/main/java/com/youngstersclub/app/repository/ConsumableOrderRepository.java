@@ -12,6 +12,9 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder, Long> {
+    List<ConsumableOrder> findByBranch_Id(Long branchId);
+    java.util.Optional<ConsumableOrder> findByIdAndBranch_Id(Long id, Long branchId);
+    List<ConsumableOrder> findByUser_IdAndBranch_IdAndPaymentStatusOrderByCreatedAtAsc(Integer userId, Long branchId, String paymentStatus);
 
     interface UserConsumableDueProjection {
         Integer getUserId();
@@ -70,6 +73,34 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
     """)
     List<UserConsumableDueProjection> getTotalUnpaidDueByUserIds(@Param("userIds") List<Integer> userIds);
 
+    @Query("""
+        SELECT
+            co.user.id AS userId,
+            COALESCE(SUM(co.totalAmount), 0) AS amount
+        FROM ConsumableOrder co
+        WHERE co.user.id IN :userIds
+        AND co.branch.id = :branchId
+        AND co.paymentStatus = 'UNPAID'
+        GROUP BY co.user.id
+    """)
+    List<UserConsumableDueProjection> getTotalUnpaidDueByUserIdsAndBranchId(
+            @Param("userIds") List<Integer> userIds,
+            @Param("branchId") Long branchId);
+
+    @Query("""
+        SELECT
+            co.user.id AS userId,
+            COALESCE(SUM(co.totalAmount), 0) AS amount
+        FROM ConsumableOrder co
+        WHERE co.user.id IN :userIds
+        AND co.branch.organization.id = :organizationId
+        AND co.paymentStatus = 'UNPAID'
+        GROUP BY co.user.id
+    """)
+    List<UserConsumableDueProjection> getTotalUnpaidDueByUserIdsAndOrganizationId(
+            @Param("userIds") List<Integer> userIds,
+            @Param("organizationId") Long organizationId);
+
     @Query(value = """
         SELECT COALESCE(SUM(coi.total_cost), 0)
         FROM consumable_orders co
@@ -79,6 +110,20 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
           AND co.created_at < :endDateTime
     """, nativeQuery = true)
     BigDecimal getPaidEarningsBetween(
+            @Param("startDateTime") java.time.LocalDateTime startDateTime,
+            @Param("endDateTime") java.time.LocalDateTime endDateTime);
+
+    @Query(value = """
+        SELECT COALESCE(SUM(coi.total_cost), 0)
+        FROM consumable_orders co
+        JOIN consumable_order_items coi ON coi.order_id = co.id
+        WHERE co.branch_id = :branchId
+          AND co.payment_status = 'PAID'
+          AND co.created_at >= :startDateTime
+          AND co.created_at < :endDateTime
+    """, nativeQuery = true)
+    BigDecimal getPaidEarningsBetweenAndBranchId(
+            @Param("branchId") Long branchId,
             @Param("startDateTime") java.time.LocalDateTime startDateTime,
             @Param("endDateTime") java.time.LocalDateTime endDateTime);
 
@@ -107,6 +152,25 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
     """)
     List<DueOrderItemProjection> findUnpaidOrderItemsByUserId(@Param("userId") Integer userId);
 
+    @Query("""
+        SELECT
+            co.id AS orderId,
+            coi.item.name AS itemName,
+            coi.quantity AS quantity,
+            coi.price AS price,
+            coi.totalCost AS totalCost,
+            co.createdAt AS createdAt
+        FROM ConsumableOrder co
+        JOIN co.items coi
+        WHERE co.user.id = :userId
+        AND co.branch.id = :branchId
+        AND co.paymentStatus = 'UNPAID'
+        ORDER BY co.createdAt ASC, coi.id ASC
+    """)
+    List<DueOrderItemProjection> findUnpaidOrderItemsByUserIdAndBranchId(
+            @Param("userId") Integer userId,
+            @Param("branchId") Long branchId);
+
     interface ConsumableHistoryProjection {
         String getItemName();
         Integer getQuantity();
@@ -128,4 +192,21 @@ public interface ConsumableOrderRepository extends JpaRepository<ConsumableOrder
         ORDER BY co.createdAt DESC, coi.id DESC
     """)
     List<ConsumableHistoryProjection> findConsumableHistoryByUserId(@Param("userId") Integer userId);
+
+    @Query("""
+        SELECT
+            coi.item.name AS itemName,
+            coi.quantity AS quantity,
+            co.createdAt AS date,
+            coi.totalCost AS amount,
+            co.paymentStatus AS paymentStatus
+        FROM ConsumableOrderItem coi
+        JOIN coi.order co
+        WHERE co.user.id = :userId
+        AND co.branch.id = :branchId
+        ORDER BY co.createdAt DESC, coi.id DESC
+    """)
+    List<ConsumableHistoryProjection> findConsumableHistoryByUserIdAndBranchId(
+            @Param("userId") Integer userId,
+            @Param("branchId") Long branchId);
 }

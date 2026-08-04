@@ -148,10 +148,17 @@ public class UserController {
 
     @GetMapping("/api/users/player-summary")
     public ResponseEntity<org.springframework.data.domain.Page<PlayerSummaryDto>> getPlayerSummary(
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
-        return ResponseEntity.ok(playerSummaryService.getPlayerSummaries(pageable));
+        try {
+            return ResponseEntity.ok(playerSummaryService.getPlayerSummaries(pageable, actorEmail));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(403).build();
+        } catch (java.util.NoSuchElementException ex) {
+            return ResponseEntity.status(404).build();
+        }
     }
 
     @PostMapping("/api/users/create-customer")

@@ -1,5 +1,6 @@
 package com.youngstersclub.app.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.youngstersclub.app.util.TimeUtil;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -29,6 +30,11 @@ public class GameActivityOrder {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "game_id", nullable = false)
     private Game game;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
 
     @Column(name = "number_of_children")
     private Integer numberOfChildren = 1;
@@ -90,6 +96,14 @@ public class GameActivityOrder {
 
     public void setGame(Game game) {
         this.game = game;
+    }
+
+    public Branch getBranch() {
+        return branch;
+    }
+
+    public void setBranch(Branch branch) {
+        this.branch = branch;
     }
 
     public Integer getNumberOfChildren() {

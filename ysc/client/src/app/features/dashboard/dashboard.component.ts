@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, inject, OnInit, ChangeDetectorRef } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Observable } from 'rxjs';
@@ -635,7 +635,10 @@ export class DashboardComponent implements OnInit {
       userId: this.user.id,
       feedback: this.feedbackText.trim(),
       starRating: this.rating
-    }, { responseType: 'text' }).subscribe({
+    }, {
+      responseType: 'text',
+      headers: this.buildActorHeaders(),
+    }).subscribe({
       next: () => {
         alert('Thank you for your feedback!');
         this.rating = 0;
@@ -656,6 +659,26 @@ export class DashboardComponent implements OnInit {
 
   goToManagersPortal() {
     this.router.navigate(['/managers-portal']);
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.auth.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private getStoredUserEmail(): string | null {
+    try {
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) {
+        return null;
+      }
+      const parsed = JSON.parse(storedUser);
+      return typeof parsed?.email === 'string' ? parsed.email : null;
+    } catch {
+      return null;
+    }
   }
 
   goToKidsPlay() {

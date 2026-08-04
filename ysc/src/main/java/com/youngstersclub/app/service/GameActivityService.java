@@ -3,16 +3,22 @@ package com.youngstersclub.app.service;
 import com.youngstersclub.app.dto.GameActivityOptionDto;
 import com.youngstersclub.app.dto.GameActivityOrderCreateRequest;
 import com.youngstersclub.app.dto.GameActivityOrderResponseDto;
+import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.PendingKidsPlayBreakdownDto;
+import com.youngstersclub.app.entity.Branch;
 import com.youngstersclub.app.entity.Game;
 import com.youngstersclub.app.entity.GameActivityOrder;
+import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.Payment;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.PaymentMethod;
 import com.youngstersclub.app.enums.PaymentStatus;
+import com.youngstersclub.app.repository.BranchRepository;
 import com.youngstersclub.app.repository.GameActivityOrderRepository;
 import com.youngstersclub.app.repository.GameRepository;
+import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.PaymentRepository;
+import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
@@ -34,46 +40,62 @@ public class GameActivityService {
     private final GameActivityOrderRepository gameActivityOrderRepository;
     private final UserRepository userRepository;
     private final PaymentRepository paymentRepository;
+    private final UserDueService userDueService;
+    private final OrganizationContextService organizationContextService;
+    private final BranchRepository branchRepository;
+    private final OrganizationUserRepository organizationUserRepository;
+    private final UserBranchAccessRepository userBranchAccessRepository;
 
     public GameActivityService(
             GameRepository gameRepository,
             GameActivityOrderRepository gameActivityOrderRepository,
             UserRepository userRepository,
-            PaymentRepository paymentRepository) {
+            PaymentRepository paymentRepository,
+            UserDueService userDueService,
+            OrganizationContextService organizationContextService,
+            BranchRepository branchRepository,
+            OrganizationUserRepository organizationUserRepository,
+            UserBranchAccessRepository userBranchAccessRepository) {
         this.gameRepository = gameRepository;
         this.gameActivityOrderRepository = gameActivityOrderRepository;
         this.userRepository = userRepository;
         this.paymentRepository = paymentRepository;
+        this.userDueService = userDueService;
+        this.organizationContextService = organizationContextService;
+        this.branchRepository = branchRepository;
+        this.organizationUserRepository = organizationUserRepository;
+        this.userBranchAccessRepository = userBranchAccessRepository;
     }
 
-    public List<GameActivityOptionDto> searchActiveGames(String query) {
+    public List<GameActivityOptionDto> searchActiveGames(String query, String actorEmail) {
         String normalizedQuery = query == null ? "" : query.trim();
         if (normalizedQuery.length() < 3) {
             return List.of();
         }
 
-        return gameRepository.findTop10ByIsActiveTrueAndGameNameContainingIgnoreCaseOrderByGameNameAsc(normalizedQuery)
+        GameActivityBranchContext context = resolveGameActivityContext(actorEmail);
+
+        return gameRepository.findTop10ByBranch_IdAndIsActiveTrueAndGameNameContainingIgnoreCaseOrderByGameNameAsc(
+                        context.branch().getId(),
+                        normalizedQuery)
                 .stream()
                 .map(game -> new GameActivityOptionDto(game.getId(), game.getGameName(), game.getBasePricePerMinute()))
                 .toList();
     }
 
     @Transactional
-    public GameActivityOrderResponseDto createOrders(GameActivityOrderCreateRequest request) {
+    public GameActivityOrderResponseDto createOrders(GameActivityOrderCreateRequest request, String actorEmail) {
         if (request == null || request.getParentUserId() == null) {
             throw new IllegalArgumentException("Parent customer is required");
-        }
-        if (request.getCreatedBy() == null) {
-            throw new IllegalArgumentException("Created by user is required");
         }
         if (request.getActivities() == null || request.getActivities().isEmpty()) {
             throw new IllegalArgumentException("At least one activity is required");
         }
 
+        GameActivityBranchContext context = resolveGameActivityContext(actorEmail);
         User parentUser = userRepository.findById(request.getParentUserId())
                 .orElseThrow(() -> new IllegalArgumentException("Parent customer not found"));
-        User createdBy = userRepository.findById(request.getCreatedBy())
-                .orElseThrow(() -> new IllegalArgumentException("Created by user not found"));
+        validateParentMembership(parentUser.getId(), context.organizationId());
 
         Map<Long, List<GameActivityOrderCreateRequest.ActivityRequest>> groupedActivities = new LinkedHashMap<>();
         for (GameActivityOrderCreateRequest.ActivityRequest activity : request.getActivities()) {
@@ -85,7 +107,7 @@ public class GameActivityService {
         }
 
         List<Long> gameIds = groupedActivities.keySet().stream().toList();
-        List<Game> activeGames = gameRepository.findByIdInAndIsActiveTrue(gameIds);
+        List<Game> activeGames = gameRepository.findByIdInAndBranch_IdAndIsActiveTrue(gameIds, context.branch().getId());
         if (activeGames.size() != gameIds.size()) {
             throw new IllegalArgumentException("One or more selected game activities are unavailable");
         }
@@ -105,13 +127,15 @@ public class GameActivityService {
             GameActivityOrder order = new GameActivityOrder();
             order.setParentUser(parentUser);
             order.setGame(game);
+            order.setBranch(context.branch());
             order.setNumberOfChildren(numberOfChildren);
             order.setDurationMinutes(activity.getDurationMinutes());
             order.setRatePerMinute(game.getBasePricePerMinute());
             order.setTotalAmount(lineTotal);
             order.setIsPaid(false);
-            order.setCreatedBy(createdBy);
+            order.setCreatedBy(context.actor());
             gameActivityOrderRepository.save(order);
+            userDueService.syncBranchDue(order.getParentUser(), order.getBranch());
 
             totalAmount = totalAmount.add(lineTotal);
             createdOrders++;
@@ -138,6 +162,33 @@ public class GameActivityService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    public BigDecimal getActivityDueByDate(Integer parentUserId, LocalDate selectedDate, Long branchId) {
+        if (parentUserId == null || selectedDate == null || branchId == null) {
+            return BigDecimal.ZERO;
+        }
+        return getUnpaidOrdersByDate(parentUserId, selectedDate, branchId).stream()
+                .map(GameActivityOrder::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    public BigDecimal getActivityDueByDateRange(
+            Integer parentUserId,
+            LocalDate selectedDate,
+            java.time.LocalDate ignoredEndDate,
+            Long branchId) {
+        if (selectedDate != null) {
+            return getActivityDueByDate(parentUserId, selectedDate, branchId);
+        }
+        if (parentUserId == null || branchId == null) {
+            return BigDecimal.ZERO;
+        }
+        return getUnpaidOrders(parentUserId, branchId).stream()
+                .map(GameActivityOrder::getTotalAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     public Map<Integer, BigDecimal> getActivityDueMap(List<Integer> userIds) {
         Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
         if (userIds == null || userIds.isEmpty()) {
@@ -149,6 +200,17 @@ public class GameActivityService {
         return dues;
     }
 
+    public Map<Integer, BigDecimal> getActivityDueMap(List<Integer> userIds, Long branchId) {
+        Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
+        if (userIds == null || userIds.isEmpty() || branchId == null) {
+            return dues;
+        }
+
+        gameActivityOrderRepository.getTotalUnpaidDueByParentUserIdsAndBranchId(userIds, branchId).forEach(projection ->
+                dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
+        return dues;
+    }
+
     public List<GameActivityOrder> getUnpaidOrders(Integer parentUserId) {
         if (parentUserId == null) {
             return List.of();
@@ -156,11 +218,27 @@ public class GameActivityService {
         return gameActivityOrderRepository.findUnpaidByParentUserIdOrderByCreatedAt(parentUserId);
     }
 
+    public List<GameActivityOrder> getUnpaidOrders(Integer parentUserId, Long branchId) {
+        if (parentUserId == null || branchId == null) {
+            return List.of();
+        }
+        return gameActivityOrderRepository.findUnpaidByParentUserIdAndBranchIdOrderByCreatedAt(parentUserId, branchId);
+    }
+
     public List<GameActivityOrder> getUnpaidOrdersByDate(Integer parentUserId, LocalDate selectedDate) {
         if (parentUserId == null || selectedDate == null) {
             return List.of();
         }
         return getUnpaidOrders(parentUserId).stream()
+                .filter(order -> order.getCreatedAt() != null && selectedDate.equals(order.getCreatedAt().toLocalDate()))
+                .toList();
+    }
+
+    public List<GameActivityOrder> getUnpaidOrdersByDate(Integer parentUserId, LocalDate selectedDate, Long branchId) {
+        if (parentUserId == null || selectedDate == null || branchId == null) {
+            return List.of();
+        }
+        return getUnpaidOrders(parentUserId, branchId).stream()
                 .filter(order -> order.getCreatedAt() != null && selectedDate.equals(order.getCreatedAt().toLocalDate()))
                 .toList();
     }
@@ -179,19 +257,38 @@ public class GameActivityService {
                 .toList();
     }
 
+    public List<PendingKidsPlayBreakdownDto> getActivityDueBreakdownByDate(
+            Integer parentUserId,
+            LocalDate selectedDate,
+            Long branchId) {
+        if (parentUserId == null || selectedDate == null || branchId == null) {
+            return List.of();
+        }
+
+        return getUnpaidOrdersByDate(parentUserId, selectedDate, branchId).stream()
+                .map(order -> new PendingKidsPlayBreakdownDto(
+                        -order.getId(),
+                        buildActivityLabel(order),
+                        order.getCreatedAt(),
+                        order.getTotalAmount()))
+                .toList();
+    }
+
     @Transactional
     public BigDecimal settleActivityOrders(
             Integer parentUserId,
+            Branch branch,
             BigDecimal amount,
             BigDecimal discount,
             User user,
             PaymentMethod paymentMethod) {
-        return settleActivityOrdersByDate(parentUserId, null, amount, discount, user, paymentMethod);
+        return settleActivityOrdersByDate(parentUserId, branch, null, amount, discount, user, paymentMethod);
     }
 
     @Transactional
     public BigDecimal settleActivityOrdersByDate(
             Integer parentUserId,
+            Branch branch,
             LocalDate selectedDate,
             BigDecimal amount,
             BigDecimal discount,
@@ -208,8 +305,10 @@ public class GameActivityService {
         }
 
         List<GameActivityOrder> orders = selectedDate == null
-                ? getUnpaidOrders(parentUserId)
-                : getUnpaidOrdersByDate(parentUserId, selectedDate);
+                ? (branch == null ? getUnpaidOrders(parentUserId) : getUnpaidOrders(parentUserId, branch.getId()))
+                : (branch == null
+                        ? getUnpaidOrdersByDate(parentUserId, selectedDate)
+                        : getUnpaidOrdersByDate(parentUserId, selectedDate, branch.getId()));
 
         BigDecimal remainingCash = amount;
         BigDecimal remainingDiscount = discount;
@@ -237,6 +336,7 @@ public class GameActivityService {
             payment.setStatus(PaymentStatus.PAID);
             payment.setPaymentMethod(paymentMethod);
             payment.setPaymentTime(TimeUtil.nowIST());
+            payment.setBranch(order.getBranch());
             paymentRepository.save(payment);
 
             BigDecimal updatedDue = due.subtract(settlementAmount);
@@ -244,6 +344,7 @@ public class GameActivityService {
             order.setIsPaid(updatedDue.compareTo(BigDecimal.ZERO) == 0);
             order.setPaymentId(payment.getId());
             gameActivityOrderRepository.save(order);
+            userDueService.syncBranchDue(order.getParentUser(), order.getBranch());
 
             remainingCash = remainingCash.subtract(cashAmount);
             remainingDiscount = remainingDiscount.subtract(discountAmount);
@@ -258,13 +359,46 @@ public class GameActivityService {
         return amount == null ? BigDecimal.ZERO : amount;
     }
 
+    public BigDecimal getPaidEarningsBetween(LocalDateTime startDateTime, LocalDateTime endDateTime, Long branchId) {
+        if (branchId == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal amount = gameActivityOrderRepository.getPaidEarningsBetweenAndBranchId(
+                startDateTime,
+                endDateTime,
+                branchId);
+        return amount == null ? BigDecimal.ZERO : amount;
+    }
+
     public BigDecimal getGrossEarningsBetween(LocalDateTime startDateTime, LocalDateTime endDateTime) {
         BigDecimal amount = gameActivityOrderRepository.getGrossEarningsBetween(startDateTime, endDateTime);
         return amount == null ? BigDecimal.ZERO : amount;
     }
 
+    public BigDecimal getGrossEarningsBetween(LocalDateTime startDateTime, LocalDateTime endDateTime, Long branchId) {
+        if (branchId == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal amount = gameActivityOrderRepository.getGrossEarningsBetweenAndBranchId(
+                startDateTime,
+                endDateTime,
+                branchId);
+        return amount == null ? BigDecimal.ZERO : amount;
+    }
+
     public BigDecimal getTotalUnpaidDueBetween(LocalDateTime startDateTime, LocalDateTime endDateTime) {
         BigDecimal amount = gameActivityOrderRepository.getTotalUnpaidDueBetween(startDateTime, endDateTime);
+        return amount == null ? BigDecimal.ZERO : amount;
+    }
+
+    public BigDecimal getTotalUnpaidDueBetween(LocalDateTime startDateTime, LocalDateTime endDateTime, Long branchId) {
+        if (branchId == null) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal amount = gameActivityOrderRepository.getTotalUnpaidDueBetweenAndBranchId(
+                startDateTime,
+                endDateTime,
+                branchId);
         return amount == null ? BigDecimal.ZERO : amount;
     }
 
@@ -278,6 +412,20 @@ public class GameActivityService {
         LocalDateTime endDateTime = selectedDate.plusDays(1).atStartOfDay();
         gameActivityOrderRepository.getUnpaidDueByUserForDate(startDateTime, endDateTime).forEach(projection ->
                 dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
+        return dues;
+    }
+
+    public Map<Integer, BigDecimal> getUnpaidDueByUserForDate(LocalDate selectedDate, Long branchId) {
+        if (selectedDate == null || branchId == null) {
+            return Map.of();
+        }
+
+        Map<Integer, BigDecimal> dues = new LinkedHashMap<>();
+        LocalDateTime startDateTime = selectedDate.atStartOfDay();
+        LocalDateTime endDateTime = selectedDate.plusDays(1).atStartOfDay();
+        gameActivityOrderRepository.getUnpaidDueByUserForDateAndBranchId(startDateTime, endDateTime, branchId)
+                .forEach(projection ->
+                        dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
         return dues;
     }
 
@@ -322,5 +470,49 @@ public class GameActivityService {
 
     private boolean isSoftPlayZone(String gameName) {
         return gameName != null && SOFT_PLAY_ZONE_NAME.equalsIgnoreCase(gameName.trim());
+    }
+
+    private void validateParentMembership(Integer parentUserId, Long organizationId) {
+        organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(parentUserId, organizationId)
+                .orElseThrow(() -> new SecurityException("Parent customer does not belong to the current organization"));
+    }
+
+    private GameActivityBranchContext resolveGameActivityContext(String actorEmail) {
+        String normalizedEmail = actorEmail == null ? "" : actorEmail.trim().toLowerCase();
+        if (normalizedEmail.isEmpty()) {
+            throw new SecurityException("Authenticated user email is required");
+        }
+
+        User actor = userRepository.findByEmail(normalizedEmail)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                .orElseThrow(() -> new SecurityException("Authenticated user not found"));
+        OrganizationContextDto context = organizationContextService.resolveContext(normalizedEmail);
+        if (context.getCurrentOrganization() == null || context.getCurrentBranch() == null) {
+            throw new SecurityException("Active organization and branch context are required");
+        }
+
+        Long organizationId = context.getCurrentOrganization().getId();
+        Long branchId = context.getCurrentBranch().getId();
+        OrganizationUser membership = organizationUserRepository
+                .findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organizationId)
+                .orElseThrow(() -> new SecurityException("Active organization membership not found"));
+        Branch branch = branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(branchId, organizationId)
+                .orElseThrow(() -> new SecurityException("Current branch is unavailable"));
+
+        boolean hasAccess = membership.getBaseBranch() != null
+                && branchId.equals(membership.getBaseBranch().getId());
+        if (!hasAccess) {
+            hasAccess = userBranchAccessRepository.existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(
+                    membership.getId(),
+                    branchId);
+        }
+        if (!hasAccess) {
+            throw new SecurityException("You do not have access to the current branch");
+        }
+
+        return new GameActivityBranchContext(actor, organizationId, branch);
+    }
+
+    private record GameActivityBranchContext(User actor, Long organizationId, Branch branch) {
     }
 }

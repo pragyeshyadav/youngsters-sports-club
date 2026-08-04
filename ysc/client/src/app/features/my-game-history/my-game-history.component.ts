@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
@@ -163,7 +163,10 @@ export class MyGameHistoryComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingConsumableHistory = true;
-    this.http.get<ConsumableHistoryRow[]>(`/api/consumables/my-history?userId=${this.currentUserId}`).subscribe({
+    this.http.get<ConsumableHistoryRow[]>(
+      `/api/consumables/my-history?userId=${this.currentUserId}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (rows) => {
         this.consumableHistory = rows ?? [];
         this.isLoadingConsumableHistory = false;
@@ -186,5 +189,28 @@ export class MyGameHistoryComponent implements OnInit, OnDestroy {
     }
 
     return typeof value === 'number' ? value : Number(value);
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.auth.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private getStoredUserEmail(): string {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      const rawUser = window.localStorage.getItem('user');
+      if (!rawUser) {
+        return '';
+      }
+      const parsed = JSON.parse(rawUser) as { email?: string | null };
+      return parsed?.email?.trim() ?? '';
+    } catch {
+      return '';
+    }
   }
 }

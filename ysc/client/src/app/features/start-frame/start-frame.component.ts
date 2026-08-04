@@ -1,11 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Observable } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import { AuthUser } from '../../core/models/auth.models';
 import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 
@@ -13,6 +14,8 @@ interface SnookerTable {
   id: number;
   tableName: string;
   ratePerMinute?: number;
+  branchId?: number | null;
+  branchName?: string | null;
 }
 
 interface Player {
@@ -80,6 +83,7 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly auth = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
 
   readonly user$: Observable<AuthUser | null> = this.auth.user$;
 
@@ -106,9 +110,12 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   isRestartingSameFrame = false;
   isOpeningEndPopup = false;
   isEndingFrame = false;
+  private currentBranchId: number | null = null;
+  private readonly subscriptions = new Subscription();
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
+    this.subscribeToBranchChanges();
     const state = history.state as { table?: SnookerTable; frameId?: number; source?: string } | undefined;
     const frameId = state?.frameId;
     this.backRoute = state?.source === 'manager-portal' ? '/managers-portal' : '/snooker-frame';
@@ -123,12 +130,20 @@ export class StartFrameComponent implements OnInit, OnDestroy {
         void this.router.navigate(['/snooker-frame']);
         return;
       }
+
+      const currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+      if (currentBranchId && this.selectedTable.branchId && this.selectedTable.branchId !== currentBranchId) {
+        this.selectedTable = null;
+        void this.router.navigate(['/snooker-frame']);
+        return;
+      }
     }
 
     this.loadCurrentUser();
   }
 
   ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
     this.clearTimer();
   }
 
@@ -211,8 +226,9 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     };
 
     this.isStartingFrame = true;
+    const headers = this.buildActorHeaders();
 
-    this.http.post<number>('/api/frame/start', request).subscribe({
+    this.http.post<number>('/api/frame/start', request, { headers }).subscribe({
       next: (frameId) => {
         this.frameStarted = true;
         this.frameId = frameId;
@@ -260,8 +276,9 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     };
 
     this.isRestartingSameFrame = true;
+    const headers = this.buildActorHeaders();
 
-    this.http.post<number>('/api/frame/start', request).subscribe({
+    this.http.post<number>('/api/frame/start', request, { headers }).subscribe({
       next: (newFrameId) => {
         this.frameStarted = true;
         this.frameId = newFrameId;
@@ -313,8 +330,9 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     }
 
     this.isOpeningEndPopup = true;
+    const headers = this.buildActorHeaders();
 
-    this.http.get<FramePlayerOption[]>(`/api/frame/${this.frameId}/players`).subscribe({
+    this.http.get<FramePlayerOption[]>(`/api/frame/${this.frameId}/players`, { headers }).subscribe({
       next: (res) => {
         this.framePlayers = res;
         this.isOpeningEndPopup = false;
@@ -472,9 +490,10 @@ export class StartFrameComponent implements OnInit, OnDestroy {
         : (this.playerCount === 5 || this.playerCount === 6)
           ? { mode: 'SINGLE', loserIds: this.loserIds }
           : { mode: 'SINGLE', winnerId: this.winnerId, looserId: this.looserId };
+    const headers = this.buildActorHeaders();
 
     this.http
-      .post<EndFrameResponse>(`/api/frame/end/${this.frameId}`, payload)
+      .post<EndFrameResponse>(`/api/frame/end/${this.frameId}`, payload, { headers })
       .subscribe({
         next: (res) => {
           this.clearTimer();
@@ -550,6 +569,11 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     }
   }
 
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.auth.getSnapshot()?.user.email?.trim();
+    return actorEmail ? new HttpHeaders({ 'X-User-Email': actorEmail }) : new HttpHeaders();
+  }
+
   private loadCurrentUser(): void {
     const email = this.auth.getSnapshot()?.user.email;
     if (!email) {
@@ -567,7 +591,8 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   }
 
   private loadExistingFrame(frameId: number): void {
-    this.http.get<ExistingFrameResponse | null>(`/api/frame/${frameId}`).subscribe({
+    const headers = this.buildActorHeaders();
+    this.http.get<ExistingFrameResponse | null>(`/api/frame/${frameId}`, { headers }).subscribe({
       next: (res) => {
         if (!res?.frame || res.frame.status !== 'STARTED' || res.frame.endTime) {
           alert('This frame is no longer active');
@@ -597,5 +622,57 @@ export class StartFrameComponent implements OnInit, OnDestroy {
         void this.router.navigate(['/managers-portal']);
       },
     });
+  }
+
+  private subscribeToBranchChanges(): void {
+    this.currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+
+    this.subscriptions.add(
+      this.organizationContextService.context$.subscribe((context) => {
+        const nextBranchId = context?.currentBranch?.id ?? null;
+        if (this.currentBranchId === nextBranchId) {
+          return;
+        }
+
+        this.currentBranchId = nextBranchId;
+        if (this.viewMode === 'manage') {
+          this.resetSelectionForBranchChange();
+          void this.router.navigate(['/snooker-frame']);
+          return;
+        }
+
+        if (!nextBranchId || !this.selectedTable?.branchId) {
+          return;
+        }
+
+        if (this.selectedTable.branchId !== nextBranchId) {
+          this.resetSelectionForBranchChange();
+          void this.router.navigate(['/snooker-frame']);
+        }
+      }),
+    );
+  }
+
+  private resetSelectionForBranchChange(): void {
+    this.clearTimer();
+    this.selectedTable = null;
+    this.selectedPlayers = [];
+    this.players = [];
+    this.searchText = '';
+    this.framePlayers = [];
+    this.frameStarted = false;
+    this.frameId = null;
+    this.showEndPopup = false;
+    this.billAmount = null;
+    this.billDuration = null;
+    this.gameMode = 'SINGLE';
+    this.winnerId = null;
+    this.looserId = null;
+    this.winnerIds = [];
+    this.loserIds = [];
+    this.isStartingFrame = false;
+    this.isRestartingSameFrame = false;
+    this.isOpeningEndPopup = false;
+    this.isEndingFrame = false;
   }
 }

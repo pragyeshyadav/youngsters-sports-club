@@ -86,6 +86,7 @@
                       <div class="settled-payment-item">
                         <div class="settled-payment-copy">
                           <span class="due-player-name">{{ payment.userName }}</span>
+                          <span class="settled-payment-discount">Mode: {{ payment.paymentMethod || '-' }}</span>
                           <span class="settled-payment-discount">Discount: ₹{{ payment.discount ?? 0 }}</span>
                         </div>
                         <strong class="text-green">₹{{ payment.paidAmount ?? 0 }}</strong>

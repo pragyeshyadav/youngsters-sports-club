@@ -3,6 +3,7 @@ package com.youngstersclub.app.repository;
 import com.youngstersclub.app.entity.SnookerTable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -12,6 +13,11 @@ import java.util.Optional;
 public interface SnookerTableRepository extends JpaRepository<SnookerTable, Long> {
     List<SnookerTable> findByIsAvailable(Boolean isAvailable);
     List<SnookerTable> findByIsAvailableTrueOrderByIdAsc();
+    List<SnookerTable> findByBranch_IdAndIsActiveTrueOrderByIdAsc(Long branchId);
+    List<SnookerTable> findByBranch_IdAndIsAvailableTrueOrderByIdAsc(Long branchId);
+    Optional<SnookerTable> findByIdAndBranch_Id(Long id, Long branchId);
+    Optional<SnookerTable> findByIdAndBranch_IdAndIsActiveTrue(Long id, Long branchId);
+    Optional<SnookerTable> findByBranch_IdAndTableNameIgnoreCase(Long branchId, String tableName);
 
     @Query("""
         SELECT t FROM SnookerTable t
@@ -24,6 +30,21 @@ public interface SnookerTableRepository extends JpaRepository<SnookerTable, Long
         ORDER BY t.id ASC
     """)
     List<SnookerTable> findAvailableTablesSafe();
+
+    @Query("""
+        SELECT t FROM SnookerTable t
+        WHERE t.branch.id = :branchId
+        AND t.isActive = true
+        AND t.isAvailable = true
+        AND t.id NOT IN (
+            SELECT f.snookerTable.id FROM Frame f
+            WHERE f.branch.id = :branchId
+            AND f.status = com.youngstersclub.app.enums.FrameStatus.STARTED
+            AND f.endTime IS NULL
+        )
+        ORDER BY t.id ASC
+    """)
+    List<SnookerTable> findAvailableTablesSafeByBranchId(@Param("branchId") Long branchId);
 
     Optional<SnookerTable> findFirstByTableNameIgnoreCase(String tableName);
 }

@@ -223,3 +223,161 @@ Read both documents deeply before modifying code.
 2. **Database Migration Tool:** Introduce Flyway or Liquibase to stop relying on `hibernate.ddl-auto=update`, making schema changes predictable in production.
 3. **Immutable Ledgers:** Modify Consumables and Frames to store `grossAmount` alongside `remainingDue` so partial payments do not destroy the original transaction cost.
 4. **Redis Caching:** Introduce caching for `/api/snooker/tables` and `/api/leaderboard/top-players` to reduce DB hits on dashboard loads.
+
+---
+
+## 20. Planned Next Migration Phase (Do Not Implement All At Once)
+
+This phase is **planned and approved for future phased implementation**, but should be executed incrementally module by module. The database migration is already complete and `branch_id` is now mandatory on key operational tables, so **write paths must be updated before read/reporting paths**.
+
+### Current Migration State
+
+The following operational tables are now branch-aware at the database level and require application-level enforcement:
+
+* `snooker_tables`
+* `frames`
+* `payments`
+* `user_dues`
+* `kids_play_sessions`
+* `games`
+* `game_activity_orders`
+* `consumable_items`
+* `consumable_item_stock`
+* `consumable_orders`
+* `customer_feedback`
+* `tournaments`
+
+Historical records have already been backfilled.
+
+### Core Rule
+
+Every request must operate through this validated chain:
+
+`Authenticated User -> Current Organization -> Current Branch -> Role/Branch Authorization`
+
+Never trust arbitrary `organizationId` or `branchId` from the frontend without backend verification through:
+
+* `organization_users`
+* `user_branch_access`
+* active organization
+* active branch
+* branch ownership by organization
+
+### Shared Backend Requirement
+
+All branch-aware modules should reuse one central backend context resolver, such as `OrganizationBranchContextService` or the existing org context service extended for this purpose.
+
+Suggested reusable model:
+
+```java
+public record ActiveContext(
+    Long userId,
+    Long organizationUserId,
+    Long organizationId,
+    Long branchId,
+    String role
+) {}
+```
+
+Do not duplicate branch validation logic in individual controllers.
+
+### Required Rollout Order
+
+Implement in this order:
+
+1. Shared context and entity mappings
+2. Snooker tables
+3. Frame lifecycle
+4. Ongoing/completed frame reporting
+5. Leaderboard
+6. Payment due calculation
+7. Payment settlement
+8. Manager earnings
+9. Consumables and inventory
+10. Kids play
+11. Game activities
+12. Tournaments
+13. Customer feedback
+14. Schedulers, WhatsApp and Brevo summaries
+15. Frontend context refresh and cache cleanup
+
+### Mandatory First Priority Because `branch_id` Is `NOT NULL`
+
+Before any report migration, update these write paths first:
+
+1. Manual customer-related branch mappings, if affected
+2. Start frame
+3. Payments
+4. Consumable orders
+5. Kids play sessions
+6. Game activity orders
+7. Tournaments
+8. Feedback
+
+Any insert path that does not assign `branch_id` can fail immediately.
+
+### Branch Awareness Rules by Module
+
+The following must become branch-scoped in future implementation:
+
+* Snooker tables shown and updated only for current branch
+* Start frame must save current branch
+* End frame must load frame by `frameId + branchId`
+* Ongoing/completed frame panels must filter by current branch
+* Monthly Top 10 leaderboard must be branch-specific
+* Show All Players must use branch-specific due and frame counts
+* `user_dues` must be treated as `user_id + branch_id`
+* Payment settlement must settle only the current branch’s dues
+* Payment history and settled payments must filter by branch
+* Today’s Total Earnings must be recalculated for branch only
+* Consumable items, stock, orders and reports must be branch-aware
+* Kids play sessions must be created, ended and reported by branch
+* Games and activity orders must be branch-aware
+* Tournaments and feedback must be branch-aware
+* Schedulers must be reviewed to distinguish branch-scoped vs organization-scoped behavior
+
+### Frontend Requirement
+
+All branch-dependent Angular components must respond to current context changes. On branch switch they must:
+
+* clear stale state
+* reload branch APIs
+* clear stale selections
+* refresh tables, frames, earnings, leaderboard, players, inventory, kids play, games, tournaments, and related dialogs
+
+Avoid reading branch context from local storage directly in isolated components where a shared context service already exists.
+
+### Security and Leakage Prevention
+
+Future implementation must explicitly prevent:
+
+* cross-branch frame access
+* cross-branch settlement
+* cross-branch earnings leakage
+* cross-branch inventory mutation
+* direct URL/API manipulation bypassing branch rules
+
+### Delivery Strategy
+
+Do not attempt one giant refactor. Ship in batches:
+
+* Batch 1: shared context, entity mappings, repository methods, snooker tables, start frame
+* Batch 2: end frame, ongoing/completed frames, leaderboard
+* Batch 3: due calculator, `user_dues`, settlement, payment history, earnings
+* Batch 4: consumables and inventory
+* Batch 5: kids play, games, activities
+* Batch 6: tournaments, feedback, schedulers, WhatsApp/Brevo summaries
+* Batch 7: frontend refresh behavior, security regression tests, end-to-end verification
+
+### Implementation Reminder
+
+When future prompts ask for this migration, implement **phase by phase only**, preserving:
+
+* Google OAuth
+* organization switching
+* branch switching
+* manual customer creation
+* existing onboarding
+* payment calculations
+* WhatsApp and Brevo integrations
+* mobile responsiveness

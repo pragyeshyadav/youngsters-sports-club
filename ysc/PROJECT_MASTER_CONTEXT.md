@@ -244,3 +244,233 @@ Build a scalable SaaS platform for indoor sports clubs and family
 entertainment centers where each organization manages multiple branches
 from one system while keeping customer identities unified within the
 organization and all operational data accurately scoped to branches.
+
+---
+
+# Planned Phase: Make All Modules Organization and Branch Aware
+
+This phase is the next approved migration step and should be treated as a **phased rollout plan**, not a single bulk implementation.
+
+## Current State
+
+Database migration is complete, including backfill and `NOT NULL`
+enforcement on `branch_id` for key operational tables. Application code
+must now be migrated to consistently read and write using the current
+authenticated organization and branch context.
+
+Operational tables now containing mandatory `branch_id` include:
+
+-   `snooker_tables`
+-   `frames`
+-   `payments`
+-   `user_dues`
+-   `kids_play_sessions`
+-   `games`
+-   `game_activity_orders`
+-   `consumable_items`
+-   `consumable_item_stock`
+-   `consumable_orders`
+-   `customer_feedback`
+-   `tournaments`
+
+Historical data has already been backfilled.
+
+## Core Runtime Rule
+
+Every request must resolve:
+
+Authenticated User -> Current Organization -> Current Branch -> Role and
+Branch Authorization
+
+All reads, writes, settlement operations, reports, schedulers and
+notifications must use this validated context.
+
+Never trust arbitrary `organizationId` or `branchId` from the frontend
+without backend verification through:
+
+-   `organization_users`
+-   `user_branch_access`
+-   active organization
+-   active branch
+-   branch ownership by organization
+
+## Shared Service Requirement
+
+Branch validation must not be reimplemented ad hoc in controllers.
+
+Use one central reusable context resolver such as:
+
+-   `OrganizationBranchContextService`
+-   or the existing context service extended for full active-branch
+    enforcement
+
+Suggested reusable model:
+
+```java
+public record ActiveContext(
+    Long userId,
+    Long organizationUserId,
+    Long organizationId,
+    Long branchId,
+    String role
+) {}
+```
+
+## Required Rollout Order
+
+Implementation should proceed in this order:
+
+1. Shared context and entity mappings
+2. Snooker tables
+3. Frame lifecycle
+4. Ongoing/completed frame reporting
+5. Leaderboard
+6. Payment due calculation
+7. Payment settlement
+8. Manager earnings
+9. Consumables and inventory
+10. Kids play
+11. Game activities
+12. Tournaments
+13. Customer feedback
+14. Schedulers, WhatsApp and Brevo summaries
+15. Frontend context refresh and cache cleanup
+
+## Immediate Warning
+
+Because `branch_id` is already `NOT NULL`, update **write paths first**
+before report/query migrations.
+
+Priority order for write paths:
+
+1. Manual customer-related branch mappings, if affected
+2. Start frame
+3. Payments
+4. Consumable orders
+5. Kids play sessions
+6. Game activity orders
+7. Tournaments
+8. Feedback
+
+Any insert path that does not assign `branch_id` can fail immediately.
+
+## Target Branch-Aware Behavior
+
+### Snooker
+
+-   Table lists must be branch-specific
+-   Start frame must assign current branch
+-   End frame must verify `frameId + branchId`
+-   Ongoing/completed frames must filter by branch
+-   Leaderboard must be branch-specific
+
+### Dues and Settlement
+
+-   Due calculation must become branch-specific
+-   `user_dues` should be treated logically as `user_id + branch_id`
+-   Show All Players, settlement, reminders and pending dues must share
+    one branch-specific source of truth
+-   Settlements must only affect records in the current branch
+-   Payment history and settled-payments panels must filter by branch
+-   Today’s Total Earnings must be recalculated branch-wise
+
+### Consumables and Inventory
+
+-   Only branch items should be shown
+-   Orders and stock movement must be branch-aware
+-   Reports must be branch-specific
+
+### Kids Play and Game Activities
+
+-   Sessions and activity orders must be created and settled by branch
+-   Only current-branch sessions should appear in branch-specific manager
+    views
+
+### Tournaments and Feedback
+
+-   Tournaments must belong to a branch
+-   Tournament children should derive branch through tournament where
+    appropriate
+-   Feedback must be stored and reported by branch
+
+### Schedulers
+
+Schedulers must be explicitly reviewed to decide whether they are:
+
+-   branch-specific, or
+-   organization-wide
+
+Examples:
+
+-   Daily visit thank-you likely needs per-branch interaction logic
+-   Payment due reminders may remain customer-facing and
+    organization-wide in some cases
+-   Birthday wishes are customer/organization scoped, not one message
+    per branch
+
+## Frontend Rule
+
+Every branch-dependent frontend module must react to context switching.
+When branch changes:
+
+-   clear stale selections
+-   cancel or ignore old requests
+-   reload branch-specific data
+-   refresh earnings, tables, frames, leaderboard, players, inventory,
+    kids play, games, tournaments and similar modules
+
+Use a shared Angular context service rather than scattered local-storage
+reads where possible.
+
+## Security Rule
+
+Branch-sensitive repository lookups must use scoped methods, for
+example:
+
+```java
+findByIdAndBranchId(...)
+```
+
+instead of global lookups like:
+
+```java
+findById(...)
+```
+
+for operational actions.
+
+This applies to:
+
+-   tables
+-   frames
+-   payments
+-   orders
+-   sessions
+-   tournaments
+-   feedback
+
+## Suggested Delivery Batches
+
+-   Batch 1: shared context, entity mappings, repository methods,
+    snooker tables, start frame
+-   Batch 2: end frame, ongoing/completed frames, leaderboard
+-   Batch 3: due calculator, `user_dues`, settlement, payment history,
+    earnings
+-   Batch 4: consumables and inventory
+-   Batch 5: kids play, games, activity orders
+-   Batch 6: tournaments, feedback, schedulers, WhatsApp/Brevo summary
+    behavior
+-   Batch 7: frontend branch-refresh behavior, security regression
+    tests, end-to-end verification
+
+## Acceptance Direction
+
+The migration phase should be considered complete only when:
+
+-   every write persists current `branch_id`
+-   every manager-facing read is branch-scoped
+-   settlement is branch-scoped
+-   earnings and reports are branch-scoped
+-   branch switching refreshes all dependent modules
+-   cross-branch data leakage is prevented
+-   existing functionality remains intact

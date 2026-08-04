@@ -1,5 +1,6 @@
 package com.youngstersclub.app.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -30,6 +31,11 @@ public class ConsumableItemStock {
     @JoinColumn(name = "item_id", nullable = false)
     private ConsumableItem item;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
+
     @Column(name = "quantity_added", nullable = false)
     private Integer quantityAdded;
 
@@ -55,6 +61,14 @@ public class ConsumableItemStock {
 
     public void setItem(ConsumableItem item) {
         this.item = item;
+    }
+
+    public Branch getBranch() {
+        return branch;
+    }
+
+    public void setBranch(Branch branch) {
+        this.branch = branch;
     }
 
     public Integer getQuantityAdded() {

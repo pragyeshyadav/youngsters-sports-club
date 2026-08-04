@@ -3,13 +3,18 @@ package com.youngstersclub.app.service;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.entity.User;
+import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,51 +68,75 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
     public WhatsappTemplateExecutionResultDto processDailyWhatsappNotifications(boolean isDryRun) {
         LocalDate today = TimeUtil.nowIST().toLocalDate();
         LocalDateTime executionTime = TimeUtil.nowIST();
-        List<UserRepository.DailyVisitedCustomerProjection> visitedCustomers = userRepository.findDailyVisitedCustomers(today);
+        List<UserRepository.DailyVisitedOrganizationProjection> visitedCustomers =
+                userRepository.findDailyVisitedCustomersByOrganization(today);
+        List<DailyVisitRecipient> aggregatedRecipients = aggregateDailyVisitRecipients(visitedCustomers);
 
-        int totalUsers = visitedCustomers.size();
+        int totalUsers = aggregatedRecipients.size();
         int sentCount = 0;
         int failedCount = 0;
-        List<UserRepository.DailyVisitedCustomerProjection> processedCustomers = new ArrayList<>();
         List<WhatsappTemplateExecutionRecipientDto> recipientSummaries = new ArrayList<>();
         String mode = isDryRun ? "DRY RUN" : "ACTUAL RUN";
 
         log.info("Daily visit thank-you job started for date: {}. Mode: {}. Total users identified: {}", today, mode, totalUsers);
 
-        for (UserRepository.DailyVisitedCustomerProjection customer : visitedCustomers) {
-            if (customer.getPhone() == null || customer.getPhone().isBlank()) {
-                log.warn("Daily visit thank-you skipped for userId: {} because phone number is missing", customer.getUserId());
+        for (DailyVisitRecipient customer : aggregatedRecipients) {
+            if (customer.phone() == null || customer.phone().isBlank()) {
+                log.warn(
+                        "Daily visit thank-you skipped for userId: {}, organizationId: {} because phone number is missing",
+                        customer.userId(),
+                        customer.organizationId());
                 failedCount++;
                 continue;
             }
 
             if (isDryRun) {
-                processedCustomers.add(customer);
                 sentCount++;
                 recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
-                        customer.getUserId(),
-                        customer.getName(),
-                        customer.getPhone(),
-                        null));
+                        customer.userId(),
+                        customer.name(),
+                        customer.phone(),
+                        null,
+                        null,
+                        customer.organizationName(),
+                        customer.branchNames(),
+                        "VISITED TODAY"));
                 continue;
             }
 
-            boolean sent = whatsAppService.sendDailyVisitThankYouMessage(customer.getPhone(), customer.getName());
+            boolean sent = whatsAppService.sendDailyVisitThankYouMessage(customer.phone(), customer.name());
             if (sent) {
                 sentCount++;
-                processedCustomers.add(customer);
                 recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
-                        customer.getUserId(),
-                        customer.getName(),
-                        customer.getPhone(),
-                        null));
+                        customer.userId(),
+                        customer.name(),
+                        customer.phone(),
+                        null,
+                        null,
+                        customer.organizationName(),
+                        customer.branchNames(),
+                        "VISITED TODAY"));
             } else {
                 failedCount++;
-                log.warn("Daily visit thank-you message failed or skipped for userId: {}", customer.getUserId());
+                log.warn(
+                        "Daily visit thank-you message failed or skipped for userId: {}, organizationId: {}",
+                        customer.userId(),
+                        customer.organizationId());
             }
         }
 
-        sendDailySummaryEmail(processedCustomers, isDryRun);
+        WhatsappTemplateExecutionResultDto result = new WhatsappTemplateExecutionResultDto(
+                TEMPLATE_NAME,
+                isDryRun,
+                executionTime,
+                totalUsers,
+                recipientSummaries.size(),
+                Math.max(totalUsers - recipientSummaries.size(), 0),
+                sentCount,
+                failedCount,
+                recipientSummaries);
+
+        sendDailySummaryEmail(result);
 
         log.info(
                 "Daily visit thank-you job completed for date: {}. Mode: {}. Total users processed: {}, messages sent successfully: {}, failures: {}",
@@ -117,19 +146,31 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
                 sentCount,
                 failedCount);
 
-        return new WhatsappTemplateExecutionResultDto(
-                TEMPLATE_NAME,
-                isDryRun,
-                executionTime,
-                totalUsers,
-                processedCustomers.size(),
-                Math.max(totalUsers - processedCustomers.size(), 0),
-                sentCount,
-                failedCount,
-                recipientSummaries);
+        return result;
     }
 
-    private void sendDailySummaryEmail(List<UserRepository.DailyVisitedCustomerProjection> processedCustomers, boolean isDryRun) {
+    private List<DailyVisitRecipient> aggregateDailyVisitRecipients(
+            List<UserRepository.DailyVisitedOrganizationProjection> visitedCustomers) {
+        Map<String, AggregatedDailyVisitRecipient> aggregated = new LinkedHashMap<>();
+        for (UserRepository.DailyVisitedOrganizationProjection customer : visitedCustomers) {
+            String key = customer.getUserId() + "|" + customer.getOrganizationId();
+            AggregatedDailyVisitRecipient recipient = aggregated.computeIfAbsent(
+                    key,
+                    ignored -> new AggregatedDailyVisitRecipient(
+                            customer.getUserId(),
+                            customer.getName(),
+                            customer.getPhone(),
+                            customer.getOrganizationId(),
+                            customer.getOrganizationName()));
+            recipient.addBranchName(customer.getBranchName());
+        }
+
+        return aggregated.values().stream()
+                .map(AggregatedDailyVisitRecipient::toRecipient)
+                .toList();
+    }
+
+    private void sendDailySummaryEmail(WhatsappTemplateExecutionResultDto result) {
         try {
             List<String> adminEmails = userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN))
                     .stream()
@@ -137,14 +178,60 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
                     .filter(email -> email != null && !email.isBlank())
                     .collect(Collectors.toList());
 
-            int emailSentCount = brevoEmailService.sendSummaryEmail(processedCustomers, adminEmails, isDryRun);
+            int emailSentCount = brevoEmailService.sendDailyVisitSummaryEmail(result, adminEmails);
             log.info(
                     "Daily WhatsApp summary email completed. Mode: {}. Successful customer messages: {}, admin recipients emailed: {}",
-                    isDryRun ? "DRY RUN" : "ACTUAL RUN",
-                    processedCustomers.size(),
+                    result.isDryRun() ? "DRY RUN" : "ACTUAL RUN",
+                    result.getSuccessfulMessages(),
                     emailSentCount);
         } catch (Exception ex) {
             log.error("Daily WhatsApp summary email failed. Reason: {}", ex.getMessage(), ex);
+        }
+    }
+
+    private record DailyVisitRecipient(
+            Integer userId,
+            String name,
+            String phone,
+            Long organizationId,
+            String organizationName,
+            String branchNames) {}
+
+    private static final class AggregatedDailyVisitRecipient {
+        private final Integer userId;
+        private final String name;
+        private final String phone;
+        private final Long organizationId;
+        private final String organizationName;
+        private final Set<String> branchNames = new LinkedHashSet<>();
+
+        private AggregatedDailyVisitRecipient(
+                Integer userId,
+                String name,
+                String phone,
+                Long organizationId,
+                String organizationName) {
+            this.userId = userId;
+            this.name = name;
+            this.phone = phone;
+            this.organizationId = organizationId;
+            this.organizationName = organizationName;
+        }
+
+        private void addBranchName(String branchName) {
+            if (branchName != null && !branchName.isBlank()) {
+                branchNames.add(branchName.trim());
+            }
+        }
+
+        private DailyVisitRecipient toRecipient() {
+            return new DailyVisitRecipient(
+                    userId,
+                    name,
+                    phone,
+                    organizationId,
+                    organizationName,
+                    branchNames.isEmpty() ? "Organization-wide" : String.join(", ", branchNames));
         }
     }
 }
