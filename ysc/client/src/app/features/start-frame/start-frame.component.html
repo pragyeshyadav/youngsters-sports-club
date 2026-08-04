@@ -37,6 +37,12 @@
           class="search-input"
         />
 
+        @if (isSearchingPlayers) {
+          <div class="empty-state">Searching players...</div>
+        } @else if (searchText.trim().length > 0 && searchText.trim().length < 3) {
+          <div class="empty-state">Enter at least 3 characters to search.</div>
+        }
+
         @if (players.length > 0) {
           <div class="dropdown">
             @for (player of players; track player.id) {

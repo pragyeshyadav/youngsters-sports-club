@@ -3,7 +3,8 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Observable, Subscription } from 'rxjs';
+import { Observable, Subject, Subscription, of } from 'rxjs';
+import { catchError, debounceTime, distinctUntilChanged, switchMap } from 'rxjs/operators';
 import { AuthUser } from '../../core/models/auth.models';
 import { AuthService } from '../../core/services/auth.service';
 import { OrganizationContextService } from '../../core/services/organization-context.service';
@@ -110,11 +111,14 @@ export class StartFrameComponent implements OnInit, OnDestroy {
   isRestartingSameFrame = false;
   isOpeningEndPopup = false;
   isEndingFrame = false;
+  isSearchingPlayers = false;
   private currentBranchId: number | null = null;
   private readonly subscriptions = new Subscription();
+  private readonly playerSearch$ = new Subject<string>();
   private timerInterval: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
+    this.initializePlayerSearch();
     this.subscribeToBranchChanges();
     const state = history.state as { table?: SnookerTable; frameId?: number; source?: string } | undefined;
     const frameId = state?.frameId;
@@ -153,24 +157,13 @@ export class StartFrameComponent implements OnInit, OnDestroy {
     }
 
     const query = this.searchText.trim();
-
-    if (!query) {
+    if (query.length > 0 && query.length < 3) {
       this.players = [];
+      this.isSearchingPlayers = false;
       return;
     }
 
-    this.http
-      .get<Player[]>(`/api/users/search?query=${encodeURIComponent(query)}`)
-      .subscribe({
-        next: (res) => {
-          const selectedIds = new Set(this.selectedPlayers.map((player) => player.id));
-          this.players = res.filter((player) => !selectedIds.has(player.id));
-        },
-        error: (err) => {
-          console.error('Failed to search players', err);
-          this.players = [];
-        },
-      });
+    this.playerSearch$.next(query);
   }
 
   addPlayer(player: Player): void {
@@ -474,6 +467,37 @@ export class StartFrameComponent implements OnInit, OnDestroy {
 
   private getNormalizedSelection(ids: number[]): number[] {
     return [...new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+  }
+
+  private initializePlayerSearch(): void {
+    this.subscriptions.add(
+      this.playerSearch$
+        .pipe(
+          debounceTime(250),
+          distinctUntilChanged(),
+          switchMap((query) => {
+            if (!query) {
+              this.isSearchingPlayers = false;
+              return of<Player[]>([]);
+            }
+
+            this.isSearchingPlayers = true;
+            return this.http
+              .get<Player[]>(`/api/users/search?query=${encodeURIComponent(query)}`)
+              .pipe(
+                catchError((err) => {
+                  console.error('Failed to search players', err);
+                  return of<Player[]>([]);
+                }),
+              );
+          }),
+        )
+        .subscribe((res) => {
+          const selectedIds = new Set(this.selectedPlayers.map((player) => player.id));
+          this.players = res.filter((player) => !selectedIds.has(player.id));
+          this.isSearchingPlayers = false;
+        }),
+    );
   }
 
   confirmEndFrame(): void {

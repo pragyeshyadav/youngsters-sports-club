@@ -36,6 +36,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.NoSuchElementException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -221,6 +222,9 @@ public class FrameService {
             try {
                 return action.get();
             } catch (Exception e) {
+                if (!isRetryableDataAccessException(e)) {
+                    throw e;
+                }
                 if (attempt == maxRetries) {
                     log.error("DB connection failed after {} attempts for {}", maxRetries, operationName, e);
                     throw e;
@@ -234,6 +238,10 @@ public class FrameService {
             }
         }
         return null;
+    }
+
+    private boolean isRetryableDataAccessException(Exception exception) {
+        return exception instanceof DataAccessException;
     }
 
     public Map<String, Object> getActiveFrame(Integer userId) {

@@ -6,10 +6,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.youngstersclub.app.dto.BranchOptionDto;
-import com.youngstersclub.app.dto.CustomerBranchDue;
 import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.OrganizationOptionDto;
-import com.youngstersclub.app.dto.PlayerSummaryBaseProjection;
 import com.youngstersclub.app.dto.PlayerSummaryDto;
 import com.youngstersclub.app.entity.Branch;
 import com.youngstersclub.app.entity.Organization;
@@ -18,13 +16,12 @@ import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
+import com.youngstersclub.app.repository.PlayerSummaryQueryRepository;
 import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
-import java.util.LinkedHashMap;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,7 +40,7 @@ class PlayerSummaryServiceTest {
     @Mock private OrganizationUserRepository organizationUserRepository;
     @Mock private BranchRepository branchRepository;
     @Mock private UserBranchAccessRepository userBranchAccessRepository;
-    @Mock private PendingDueService pendingDueService;
+    @Mock private PlayerSummaryQueryRepository playerSummaryQueryRepository;
 
     @InjectMocks private PlayerSummaryService playerSummaryService;
 
@@ -89,27 +86,15 @@ class PlayerSummaryServiceTest {
                 .thenReturn(Optional.of(membership));
         when(branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(branch.getId(), organization.getId()))
                 .thenReturn(Optional.of(branch));
-        when(userRepository.getPlayerSummaryBasesForBranch(organization.getId(), branch.getId())).thenReturn(List.of(
-                projection(101, "Rahul", "rahul@test.com", 12L),
-                projection(102, "Aman", "aman@test.com", 5L)));
-        Map<Long, CustomerBranchDue> branchDues = new LinkedHashMap<>();
-        branchDues.put(101L, new CustomerBranchDue(
-                101L,
+        when(playerSummaryQueryRepository.findPlayerSummariesForBranch(
+                organization.getId(),
                 branch.getId(),
-                BigDecimal.valueOf(200),
-                BigDecimal.valueOf(100),
-                BigDecimal.valueOf(25),
-                BigDecimal.valueOf(25),
-                BigDecimal.valueOf(350)));
-        branchDues.put(102L, new CustomerBranchDue(
-                102L,
-                branch.getId(),
-                BigDecimal.valueOf(100),
-                BigDecimal.valueOf(50),
-                BigDecimal.valueOf(25),
-                BigDecimal.valueOf(25),
-                BigDecimal.valueOf(200)));
-        when(pendingDueService.calculateCustomerDues(List.of(101L, 102L), branch.getId())).thenReturn(branchDues);
+                20,
+                0)).thenReturn(List.of(
+                        new PlayerSummaryDto(101, "Rahul", "rahul@test.com", 12L, BigDecimal.valueOf(350)),
+                        new PlayerSummaryDto(102, "Aman", "aman@test.com", 5L, BigDecimal.valueOf(200))));
+        when(playerSummaryQueryRepository.countPlayerSummariesForBranch(organization.getId(), branch.getId()))
+                .thenReturn(2L);
 
         Page<PlayerSummaryDto> result = playerSummaryService.getPlayerSummaries(PageRequest.of(0, 20), "manager@test.com");
 
@@ -117,7 +102,7 @@ class PlayerSummaryServiceTest {
         assertEquals("Rahul", result.getContent().get(0).getName());
         assertEquals(12L, result.getContent().get(0).getFramesPlayed());
         assertEquals(0, BigDecimal.valueOf(350).compareTo(result.getContent().get(0).getTotalDue()));
-        verify(pendingDueService).calculateCustomerDues(List.of(101L, 102L), branch.getId());
+        verify(playerSummaryQueryRepository).findPlayerSummariesForBranch(organization.getId(), branch.getId(), 20, 0);
     }
 
     @Test
@@ -137,29 +122,5 @@ class PlayerSummaryServiceTest {
         context.setHasPersistedContext(true);
         context.setRequiresSelection(false);
         return context;
-    }
-
-    private PlayerSummaryBaseProjection projection(Integer userId, String name, String email, Long framesPlayed) {
-        return new PlayerSummaryBaseProjection() {
-            @Override
-            public Integer getUserId() {
-                return userId;
-            }
-
-            @Override
-            public String getName() {
-                return name;
-            }
-
-            @Override
-            public String getEmail() {
-                return email;
-            }
-
-            @Override
-            public Long getFramesPlayed() {
-                return framesPlayed;
-            }
-        };
     }
 }
