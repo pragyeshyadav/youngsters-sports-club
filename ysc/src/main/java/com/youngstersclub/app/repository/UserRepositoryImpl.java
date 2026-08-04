@@ -2,6 +2,7 @@ package com.youngstersclub.app.repository;
 
 import com.youngstersclub.app.dto.PlayerSummaryBaseProjection;
 import com.youngstersclub.app.dto.PlayerSummaryBaseRow;
+import com.youngstersclub.app.dto.UserSearchResultDto;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import jakarta.persistence.EntityManager;
@@ -16,6 +17,29 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 public class UserRepositoryImpl implements UserRepositoryCustom {
+
+    private static final String ACTIVE_USER_SUMMARY_SEARCH_SQL = """
+            SELECT
+                u.id AS id,
+                u.name AS name,
+                u.email AS email,
+                u.google_id AS google_id,
+                u.profile_pic AS profile_pic,
+                u.phone AS phone,
+                COALESCE(u.is_active, true) AS is_active,
+                u.role AS role
+            FROM users u
+            WHERE COALESCE(u.is_active, true) = true
+              AND (
+                    (:includeTextMatch = true AND (
+                        LOWER(COALESCE(u.name, '')) LIKE :query
+                        OR LOWER(COALESCE(u.email, '')) LIKE :query
+                    ))
+                    OR (:includeDigitsMatch = true AND COALESCE(u.phone, '') LIKE :digitsQuery)
+              )
+            ORDER BY u.name ASC, u.id ASC
+            LIMIT :limit
+            """;
 
     private static final String PLAYER_SUMMARY_BY_BRANCH_SQL = """
             SELECT
@@ -58,6 +82,22 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
                 }
             };
 
+    private static final RowMapper<UserSearchResultDto> USER_SEARCH_RESULT_ROW_MAPPER =
+            new RowMapper<>() {
+                @Override
+                public UserSearchResultDto mapRow(ResultSet rs, int rowNum) throws SQLException {
+                    return new UserSearchResultDto(
+                            rs.getInt("id"),
+                            rs.getString("name"),
+                            rs.getString("email"),
+                            rs.getString("google_id"),
+                            rs.getString("profile_pic"),
+                            rs.getString("phone"),
+                            rs.getBoolean("is_active"),
+                            rs.getString("role"));
+                }
+            };
+
     private final EntityManager entityManager;
     private final NamedParameterJdbcTemplate jdbcTemplate;
 
@@ -67,47 +107,23 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
     }
 
     @Override
-    public List<User> searchActiveUsers(String query, String digitsQuery, Pageable pageable) {
+    public List<UserSearchResultDto> searchActiveUserSummaries(String query, String digitsQuery, Pageable pageable) {
         String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         String normalizedDigitsQuery = digitsQuery == null ? "" : digitsQuery.trim();
         if (normalizedQuery.isEmpty() && normalizedDigitsQuery.isEmpty()) {
             return List.of();
         }
-
-        StringBuilder jpql = new StringBuilder("SELECT u FROM User u WHERE COALESCE(u.isActive, true) = true");
         boolean includeTextMatch = !normalizedQuery.isEmpty();
         boolean includeDigitsMatch = !normalizedDigitsQuery.isEmpty();
+        int limit = pageable == null ? 10 : pageable.getPageSize();
 
-        if (includeTextMatch || includeDigitsMatch) {
-            jpql.append(" AND (");
-            boolean needsOr = false;
-            if (includeTextMatch) {
-                jpql.append("LOWER(COALESCE(u.name, '')) LIKE :query")
-                        .append(" OR LOWER(COALESCE(u.email, '')) LIKE :query");
-                needsOr = true;
-            }
-            if (includeDigitsMatch) {
-                if (needsOr) {
-                    jpql.append(" OR ");
-                }
-                jpql.append("COALESCE(u.phone, '') LIKE :digitsQuery");
-            }
-            jpql.append(")");
-        }
-        jpql.append(" ORDER BY u.name ASC");
-
-        TypedQuery<User> typedQuery = entityManager.createQuery(jpql.toString(), User.class);
-        if (includeTextMatch) {
-            typedQuery.setParameter("query", "%" + normalizedQuery + "%");
-        }
-        if (includeDigitsMatch) {
-            typedQuery.setParameter("digitsQuery", "%" + normalizedDigitsQuery + "%");
-        }
-        if (pageable != null) {
-            typedQuery.setFirstResult((int) pageable.getOffset());
-            typedQuery.setMaxResults(pageable.getPageSize());
-        }
-        return typedQuery.getResultList();
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("includeTextMatch", includeTextMatch)
+                .addValue("includeDigitsMatch", includeDigitsMatch)
+                .addValue("query", "%" + normalizedQuery + "%")
+                .addValue("digitsQuery", "%" + normalizedDigitsQuery + "%")
+                .addValue("limit", limit);
+        return jdbcTemplate.query(ACTIVE_USER_SUMMARY_SEARCH_SQL, params, USER_SEARCH_RESULT_ROW_MAPPER);
     }
 
     @Override

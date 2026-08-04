@@ -7,6 +7,7 @@ import com.youngstersclub.app.dto.MessageResponseDto;
 import com.youngstersclub.app.dto.PhoneVerificationResponse;
 import com.youngstersclub.app.dto.PlayerSummaryDto;
 import com.youngstersclub.app.dto.UpdateCustomerRequest;
+import com.youngstersclub.app.dto.UserSearchResultDto;
 import com.youngstersclub.app.dto.VerifyPhoneRequest;
 import com.youngstersclub.app.dto.UserPhoneUpdateRequest;
 import com.youngstersclub.app.entity.User;
@@ -55,14 +56,18 @@ public class UserController {
     }
 
     @GetMapping("/api/users/search")
-    public List<User> searchUsers(@RequestParam String query) {
+    public List<UserSearchResultDto> searchUsers(@RequestParam String query) {
         String normalizedQuery = query == null ? "" : query.trim();
         if (normalizedQuery.isEmpty()) {
             return List.of();
         }
 
         String digitsQuery = normalizedQuery.replaceAll("\\D", "");
-        return userRepository.searchActiveUsers(
+        if (normalizedQuery.length() < 3 && digitsQuery.length() < 3) {
+            return List.of();
+        }
+
+        return userRepository.searchActiveUserSummaries(
                 normalizedQuery,
                 digitsQuery,
                 PageRequest.of(0, 10));
