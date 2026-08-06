@@ -235,18 +235,66 @@ class FrameServiceStartFrameTest {
   @Test
   void getTodayOngoingFramesReturnsOnlyCurrentBranchFrames() {
     mockAuthorizedContext();
-    Frame frame = buildStartedFrame(1001, branch, table);
-    FramePlayer framePlayer = buildFramePlayer(frame, buildPlayer(91, "Player One"), false, false, BigDecimal.ZERO, PaymentStatus.PAID);
-    frame.setFramePlayers(List.of(framePlayer));
-
-    when(frameRepository.findTodayOngoingFramesByBranchId(any(Long.class), any(LocalDateTime.class), any(LocalDateTime.class)))
-        .thenReturn(List.of(frame));
+    when(frameRepository.findTodayOngoingFrameRowsByBranchId(any(Long.class), any(LocalDateTime.class), any(LocalDateTime.class)))
+        .thenReturn(List.of(
+            ongoingFrameRow(1001, table.getId(), table.getTableName(), LocalDateTime.of(2026, 8, 6, 11, 0), "STARTED", "manager", "Player One"),
+            ongoingFrameRow(1001, table.getId(), table.getTableName(), LocalDateTime.of(2026, 8, 6, 11, 0), "STARTED", "manager", "Player Two")));
 
     List<Map<String, Object>> result = frameService.getTodayOngoingFrames("manager@test.com");
 
     assertEquals(1, result.size());
-    assertEquals(frame.getId(), result.get(0).get("id"));
-    verify(frameRepository).findTodayOngoingFramesByBranchId(any(Long.class), any(LocalDateTime.class), any(LocalDateTime.class));
+    assertEquals(1001, result.get(0).get("id"));
+    assertEquals(List.of("Player One", "Player Two"), result.get(0).get("players"));
+    verify(frameRepository).findTodayOngoingFrameRowsByBranchId(any(Long.class), any(LocalDateTime.class), any(LocalDateTime.class));
+  }
+
+  @Test
+  void getAllTableStatusesBuildsResponseFromProjectionRows() {
+    when(frameRepository.findAllTableStatusRows()).thenReturn(List.of(
+        tableStatusRow(101L, "Sharma S1", false, 700, "Player One"),
+        tableStatusRow(101L, "Sharma S1", false, 700, "Player Two"),
+        tableStatusRow(102L, "Sharma S2", true, null, null)));
+
+    List<Map<String, Object>> result = frameService.getAllTableStatuses();
+
+    assertEquals(2, result.size());
+    assertEquals("Sharma S1", result.get(0).get("tableName"));
+    assertEquals(false, result.get(0).get("isAvailable"));
+    assertEquals(List.of("Player One", "Player Two"), result.get(0).get("players"));
+    assertEquals("Sharma S2", result.get(1).get("tableName"));
+    assertEquals(true, result.get(1).get("isAvailable"));
+    assertEquals(List.of(), result.get(1).get("players"));
+    verify(frameRepository).findAllTableStatusRows();
+  }
+
+  @Test
+  void buildTodayOngoingFramesResponseGroupsRowsAndRemovesDuplicatePlayers() {
+    List<Map<String, Object>> result = frameService.buildTodayOngoingFramesResponse(List.of(
+        ongoingFrameRow(1001, 101L, "Sharma S1", LocalDateTime.of(2026, 8, 6, 12, 0), "STARTED", "manager", "Player One"),
+        ongoingFrameRow(1001, 101L, "Sharma S1", LocalDateTime.of(2026, 8, 6, 12, 0), "STARTED", "manager", "Player One"),
+        ongoingFrameRow(1001, 101L, "Sharma S1", LocalDateTime.of(2026, 8, 6, 12, 0), "STARTED", "manager", " "),
+        ongoingFrameRow(1002, 102L, "Sharma S2", LocalDateTime.of(2026, 8, 6, 12, 5), "STARTED", "manager", "Player Two")));
+
+    assertEquals(2, result.size());
+    assertEquals(1001, result.get(0).get("id"));
+    assertEquals(List.of("Player One"), result.get(0).get("players"));
+    assertEquals(1002, result.get(1).get("id"));
+    assertEquals(List.of("Player Two"), result.get(1).get("players"));
+  }
+
+  @Test
+  void buildAllTableStatusesResponseGroupsRowsAndSkipsBlankPlayers() {
+    List<Map<String, Object>> result = frameService.buildAllTableStatusesResponse(List.of(
+        tableStatusRow(101L, "Sharma S1", false, 700, "Player One"),
+        tableStatusRow(101L, "Sharma S1", false, 700, "Player One"),
+        tableStatusRow(101L, "Sharma S1", false, 700, ""),
+        tableStatusRow(102L, "Sharma S2", true, null, null)));
+
+    assertEquals(2, result.size());
+    assertEquals("Sharma S1", result.get(0).get("tableName"));
+    assertEquals(List.of("Player One"), result.get(0).get("players"));
+    assertEquals("Sharma S2", result.get(1).get("tableName"));
+    assertEquals(List.of(), result.get(1).get("players"));
   }
 
   @Test
@@ -418,6 +466,86 @@ class FrameServiceStartFrameTest {
       @Override
       public Long getWins() {
         return wins;
+      }
+    };
+  }
+
+  private FrameRepository.OngoingFrameRowProjection ongoingFrameRow(
+      Integer frameId,
+      Long tableId,
+      String tableName,
+      LocalDateTime startTime,
+      String status,
+      String startedByName,
+      String playerName) {
+    return new FrameRepository.OngoingFrameRowProjection() {
+      @Override
+      public Integer getFrameId() {
+        return frameId;
+      }
+
+      @Override
+      public Long getTableId() {
+        return tableId;
+      }
+
+      @Override
+      public String getTableName() {
+        return tableName;
+      }
+
+      @Override
+      public LocalDateTime getStartTime() {
+        return startTime;
+      }
+
+      @Override
+      public String getStatus() {
+        return status;
+      }
+
+      @Override
+      public String getStartedByName() {
+        return startedByName;
+      }
+
+      @Override
+      public String getPlayerName() {
+        return playerName;
+      }
+    };
+  }
+
+  private FrameRepository.TableStatusRowProjection tableStatusRow(
+      Long tableId,
+      String tableName,
+      Boolean isAvailable,
+      Integer activeFrameId,
+      String playerName) {
+    return new FrameRepository.TableStatusRowProjection() {
+      @Override
+      public Long getTableId() {
+        return tableId;
+      }
+
+      @Override
+      public String getTableName() {
+        return tableName;
+      }
+
+      @Override
+      public Boolean getIsAvailable() {
+        return isAvailable;
+      }
+
+      @Override
+      public Integer getActiveFrameId() {
+        return activeFrameId;
+      }
+
+      @Override
+      public String getPlayerName() {
+        return playerName;
       }
     };
   }

@@ -46,6 +46,44 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         AND f.endTime IS NULL
     """)
     List<Frame> findAllOngoingFrames();
+
+    interface TableStatusRowProjection {
+        Long getTableId();
+        String getTableName();
+        Boolean getIsAvailable();
+        Integer getActiveFrameId();
+        String getPlayerName();
+    }
+
+    @Query(value = """
+        SELECT
+            st.id AS tableId,
+            st.table_name AS tableName,
+            st.is_available AS isAvailable,
+            f.id AS activeFrameId,
+            COALESCE(u.name, fp.player_name) AS playerName
+        FROM snooker_tables st
+        LEFT JOIN frames f
+            ON f.table_id = st.id
+           AND f.status = 'STARTED'
+           AND f.end_time IS NULL
+        LEFT JOIN frame_players fp
+            ON fp.frame_id = f.id
+        LEFT JOIN users u
+            ON u.id = fp.user_id
+        ORDER BY st.id ASC, fp.id ASC
+    """, nativeQuery = true)
+    List<TableStatusRowProjection> findAllTableStatusRows();
+
+    interface OngoingFrameRowProjection {
+        Integer getFrameId();
+        Long getTableId();
+        String getTableName();
+        LocalDateTime getStartTime();
+        String getStatus();
+        String getStartedByName();
+        String getPlayerName();
+    }
     @Query("""
         SELECT DISTINCT f FROM Frame f
         LEFT JOIN FETCH f.snookerTable
@@ -136,6 +174,36 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ORDER BY f.startTime DESC
     """)
     List<Frame> findTodayOngoingFramesByBranchId(
+            @Param("branchId") Long branchId,
+            @Param("startOfDay") java.time.LocalDateTime startOfDay,
+            @Param("endOfDay") java.time.LocalDateTime endOfDay);
+
+    @Query(value = """
+        SELECT
+            f.id AS frameId,
+            st.id AS tableId,
+            st.table_name AS tableName,
+            f.start_time AS startTime,
+            f.status AS status,
+            starter.name AS startedByName,
+            COALESCE(u.name, fp.player_name) AS playerName
+        FROM frames f
+        LEFT JOIN snooker_tables st
+            ON st.id = f.table_id
+        LEFT JOIN users starter
+            ON starter.id = f.started_by
+        LEFT JOIN frame_players fp
+            ON fp.frame_id = f.id
+        LEFT JOIN users u
+            ON u.id = fp.user_id
+        WHERE f.branch_id = :branchId
+          AND f.status = 'STARTED'
+          AND f.end_time IS NULL
+          AND f.start_time >= :startOfDay
+          AND f.start_time < :endOfDay
+        ORDER BY f.start_time DESC, f.id DESC, fp.id ASC
+    """, nativeQuery = true)
+    List<OngoingFrameRowProjection> findTodayOngoingFrameRowsByBranchId(
             @Param("branchId") Long branchId,
             @Param("startOfDay") java.time.LocalDateTime startOfDay,
             @Param("endOfDay") java.time.LocalDateTime endOfDay);

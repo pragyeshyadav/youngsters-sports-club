@@ -30,6 +30,8 @@ import java.time.YearMonth;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -386,27 +388,11 @@ public class FrameService {
             LocalDateTime startOfDay = today.atStartOfDay();
             LocalDateTime endOfDay = today.plusDays(1).atStartOfDay();
 
-            return frameRepository.findTodayOngoingFramesByBranchId(context.branch().getId(), startOfDay, endOfDay).stream().map(frame -> {
-                Map<String, Object> frameMap = new HashMap<>();
-                frameMap.put("id", frame.getId());
-                frameMap.put("tableId", frame.getSnookerTable() != null ? frame.getSnookerTable().getId() : null);
-                frameMap.put("tableName", frame.getSnookerTable() != null ? frame.getSnookerTable().getTableName() : null);
-                frameMap.put("startTime", frame.getStartTime());
-                frameMap.put("status", frame.getStatus());
-                frameMap.put("startedBy", frame.getStartedBy() != null ? frame.getStartedBy().getName() : null);
-                frameMap.put(
-                        "players",
-                        frame.getFramePlayers() == null
-                                ? List.of()
-                                : frame.getFramePlayers().stream()
-                                        .map(player -> player.getUser() != null
-                                                ? player.getUser().getName()
-                                                : player.getPlayerName())
-                                        .filter(playerName -> playerName != null && !playerName.isBlank())
-                                        .distinct()
-                                        .toList());
-                return frameMap;
-            }).toList();
+            return buildTodayOngoingFramesResponse(
+                    frameRepository.findTodayOngoingFrameRowsByBranchId(
+                            context.branch().getId(),
+                            startOfDay,
+                            endOfDay));
         });
     }
 
@@ -1004,37 +990,7 @@ public class FrameService {
 
     public List<Map<String, Object>> getAllTableStatuses() {
         return executeWithRetry("getAllTableStatuses", () -> {
-            List<SnookerTable> allTables = tableRepository.findAll();
-            List<Frame> activeFrames = frameRepository.findAllOngoingFrames();
-            
-            Map<Long, Frame> tableActiveFrameMap = new HashMap<>();
-            if (activeFrames != null) {
-                for (Frame f : activeFrames) {
-                    if (f.getSnookerTable() != null) {
-                        tableActiveFrameMap.put(f.getSnookerTable().getId(), f);
-                    }
-                }
-            }
-            
-            List<Map<String, Object>> statuses = new java.util.ArrayList<>();
-            for (SnookerTable table : allTables) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("tableName", table.getTableName());
-                map.put("isAvailable", table.getIsAvailable());
-                
-                List<String> players = new java.util.ArrayList<>();
-                if (!Boolean.TRUE.equals(table.getIsAvailable()) && tableActiveFrameMap.containsKey(table.getId())) {
-                    Frame f = tableActiveFrameMap.get(table.getId());
-                    if (f.getFramePlayers() != null) {
-                        for(FramePlayer fp : f.getFramePlayers()) {
-                           players.add(fp.getUser() != null ? fp.getUser().getName() : fp.getPlayerName());
-                        }
-                    }
-                }
-                map.put("players", players);
-                statuses.add(map);
-            }
-            return statuses;
+            return buildAllTableStatusesResponse(frameRepository.findAllTableStatusRows());
         });
     }
 
@@ -1080,5 +1036,130 @@ public class FrameService {
             throw new IllegalArgumentException("Year is out of supported range");
         }
         return YearMonth.of(year, month);
+    }
+
+    protected List<Map<String, Object>> buildTodayOngoingFramesResponse(
+            List<FrameRepository.OngoingFrameRowProjection> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Integer, AggregatedOngoingFrameRow> groupedRows = new LinkedHashMap<>();
+        for (FrameRepository.OngoingFrameRowProjection row : rows) {
+            if (row == null || row.getFrameId() == null) {
+                continue;
+            }
+
+            AggregatedOngoingFrameRow aggregate = groupedRows.computeIfAbsent(
+                    row.getFrameId(),
+                    ignored -> new AggregatedOngoingFrameRow(
+                            row.getFrameId(),
+                            row.getTableId(),
+                            row.getTableName(),
+                            row.getStartTime(),
+                            row.getStatus(),
+                            row.getStartedByName()));
+            aggregate.addPlayer(row.getPlayerName());
+        }
+
+        return groupedRows.values().stream()
+                .map(AggregatedOngoingFrameRow::toResponse)
+                .toList();
+    }
+
+    protected List<Map<String, Object>> buildAllTableStatusesResponse(
+            List<FrameRepository.TableStatusRowProjection> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, AggregatedTableStatusRow> groupedRows = new LinkedHashMap<>();
+        for (FrameRepository.TableStatusRowProjection row : rows) {
+            if (row == null || row.getTableId() == null) {
+                continue;
+            }
+
+            AggregatedTableStatusRow aggregate = groupedRows.computeIfAbsent(
+                    row.getTableId(),
+                    ignored -> new AggregatedTableStatusRow(
+                            row.getTableId(),
+                            row.getTableName(),
+                            row.getIsAvailable()));
+            aggregate.addPlayer(row.getPlayerName());
+        }
+
+        return groupedRows.values().stream()
+                .map(AggregatedTableStatusRow::toResponse)
+                .toList();
+    }
+
+    protected static final class AggregatedOngoingFrameRow {
+        private final Integer frameId;
+        private final Long tableId;
+        private final String tableName;
+        private final LocalDateTime startTime;
+        private final String status;
+        private final String startedByName;
+        private final LinkedHashSet<String> players = new LinkedHashSet<>();
+
+        protected AggregatedOngoingFrameRow(
+                Integer frameId,
+                Long tableId,
+                String tableName,
+                LocalDateTime startTime,
+                String status,
+                String startedByName) {
+            this.frameId = frameId;
+            this.tableId = tableId;
+            this.tableName = tableName;
+            this.startTime = startTime;
+            this.status = status;
+            this.startedByName = startedByName;
+        }
+
+        protected void addPlayer(String playerName) {
+            if (playerName != null && !playerName.isBlank()) {
+                players.add(playerName);
+            }
+        }
+
+        protected Map<String, Object> toResponse() {
+            Map<String, Object> frameMap = new HashMap<>();
+            frameMap.put("id", frameId);
+            frameMap.put("tableId", tableId);
+            frameMap.put("tableName", tableName);
+            frameMap.put("startTime", startTime);
+            frameMap.put("status", status);
+            frameMap.put("startedBy", startedByName);
+            frameMap.put("players", List.copyOf(players));
+            return frameMap;
+        }
+    }
+
+    protected static final class AggregatedTableStatusRow {
+        private final Long tableId;
+        private final String tableName;
+        private final Boolean isAvailable;
+        private final LinkedHashSet<String> players = new LinkedHashSet<>();
+
+        protected AggregatedTableStatusRow(Long tableId, String tableName, Boolean isAvailable) {
+            this.tableId = tableId;
+            this.tableName = tableName;
+            this.isAvailable = isAvailable;
+        }
+
+        protected void addPlayer(String playerName) {
+            if (playerName != null && !playerName.isBlank()) {
+                players.add(playerName);
+            }
+        }
+
+        protected Map<String, Object> toResponse() {
+            Map<String, Object> map = new HashMap<>();
+            map.put("tableName", tableName);
+            map.put("isAvailable", isAvailable);
+            map.put("players", List.copyOf(players));
+            return map;
+        }
     }
 }
