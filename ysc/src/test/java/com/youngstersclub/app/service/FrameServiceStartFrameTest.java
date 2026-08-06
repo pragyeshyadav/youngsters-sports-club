@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import com.youngstersclub.app.dto.BranchOptionDto;
 import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.OrganizationOptionDto;
+import com.youngstersclub.app.dto.PendingFrameBreakdownDto;
 import com.youngstersclub.app.dto.StartFrameRequest;
 import com.youngstersclub.app.entity.Branch;
 import com.youngstersclub.app.entity.Frame;
@@ -298,6 +299,127 @@ class FrameServiceStartFrameTest {
   }
 
   @Test
+  void buildUserFrameHistoryResponsePreservesExistingPayloadShape() {
+    List<Map<String, Object>> result = frameService.buildUserFrameHistoryResponse(List.of(
+        userFrameHistoryRow(
+            5001,
+            LocalDateTime.of(2026, 8, 1, 10, 0),
+            LocalDateTime.of(2026, 8, 1, 10, 40),
+            40,
+            BigDecimal.valueOf(140),
+            BigDecimal.valueOf(20),
+            "Winner",
+            "Loser")));
+
+    assertEquals(1, result.size());
+    assertEquals(5001, result.get(0).get("frameId"));
+    assertEquals(BigDecimal.valueOf(140), result.get(0).get("amount"));
+    assertEquals(BigDecimal.valueOf(20), result.get(0).get("paymentDue"));
+    assertEquals("Winner", result.get(0).get("winnerName"));
+    assertEquals("Loser", result.get(0).get("looserName"));
+  }
+
+  @Test
+  void buildDueFramesResponseUsesUserSpecificDueOnlyWhenRequested() {
+    List<FrameRepository.DueFrameRowProjection> rows = List.of(
+        dueFrameRow(
+            7001,
+            LocalDateTime.of(2026, 8, 2, 11, 0),
+            LocalDateTime.of(2026, 8, 2, 11, 50),
+            50,
+            BigDecimal.valueOf(175),
+            BigDecimal.valueOf(175),
+            "Winner",
+            "Loser",
+            "Winner",
+            true,
+            false,
+            null),
+        dueFrameRow(
+            7001,
+            LocalDateTime.of(2026, 8, 2, 11, 0),
+            LocalDateTime.of(2026, 8, 2, 11, 50),
+            50,
+            BigDecimal.valueOf(175),
+            BigDecimal.valueOf(175),
+            "Winner",
+            "Loser",
+            "Loser",
+            false,
+            true,
+            BigDecimal.valueOf(87.50)));
+
+    List<Map<String, Object>> defaultDue = frameService.buildDueFramesResponse(rows, false);
+    List<Map<String, Object>> userSpecificDue = frameService.buildDueFramesResponse(rows, true);
+
+    assertEquals(BigDecimal.valueOf(175), defaultDue.get(0).get("paymentDue"));
+    assertEquals(BigDecimal.valueOf(87.50), userSpecificDue.get(0).get("paymentDue"));
+    assertEquals("Winner", userSpecificDue.get(0).get("winnerName"));
+    assertEquals("Loser", userSpecificDue.get(0).get("looserName"));
+  }
+
+  @Test
+  void buildPendingFrameBreakdownResponseBuildsMatchupFromWinnerLoserRows() {
+    List<PendingFrameBreakdownDto> result = frameService.buildPendingFrameBreakdownResponse(List.of(
+        dueFrameRow(
+            8001,
+            LocalDateTime.of(2026, 8, 3, 12, 0),
+            LocalDateTime.of(2026, 8, 3, 12, 45),
+            45,
+            BigDecimal.valueOf(180),
+            BigDecimal.valueOf(180),
+            "Fallback Winner",
+            "Fallback Loser",
+            "A",
+            true,
+            false,
+            null),
+        dueFrameRow(
+            8001,
+            LocalDateTime.of(2026, 8, 3, 12, 0),
+            LocalDateTime.of(2026, 8, 3, 12, 45),
+            45,
+            BigDecimal.valueOf(180),
+            BigDecimal.valueOf(180),
+            "Fallback Winner",
+            "Fallback Loser",
+            "B",
+            true,
+            false,
+            null),
+        dueFrameRow(
+            8001,
+            LocalDateTime.of(2026, 8, 3, 12, 0),
+            LocalDateTime.of(2026, 8, 3, 12, 45),
+            45,
+            BigDecimal.valueOf(180),
+            BigDecimal.valueOf(180),
+            "Fallback Winner",
+            "Fallback Loser",
+            "C",
+            false,
+            true,
+            BigDecimal.valueOf(90)),
+        dueFrameRow(
+            8001,
+            LocalDateTime.of(2026, 8, 3, 12, 0),
+            LocalDateTime.of(2026, 8, 3, 12, 45),
+            45,
+            BigDecimal.valueOf(180),
+            BigDecimal.valueOf(180),
+            "Fallback Winner",
+            "Fallback Loser",
+            "D",
+            false,
+            true,
+            null)));
+
+    assertEquals(1, result.size());
+    assertEquals("A & B vs C & D", result.get(0).getMatchup());
+    assertEquals(BigDecimal.valueOf(90), result.get(0).getDueAmount());
+  }
+
+  @Test
   void getCompletedFramesByDateReturnsOnlyCurrentBranchFrames() {
     mockAuthorizedContext();
     Frame completedFrame = buildStartedFrame(1002, branch, table);
@@ -512,6 +634,134 @@ class FrameServiceStartFrameTest {
       @Override
       public String getPlayerName() {
         return playerName;
+      }
+    };
+  }
+
+  private FrameRepository.UserFrameHistoryRowProjection userFrameHistoryRow(
+      Integer frameId,
+      LocalDateTime startTime,
+      LocalDateTime endTime,
+      Integer duration,
+      BigDecimal amount,
+      BigDecimal paymentDue,
+      String winnerName,
+      String looserName) {
+    return new FrameRepository.UserFrameHistoryRowProjection() {
+      @Override
+      public Integer getFrameId() {
+        return frameId;
+      }
+
+      @Override
+      public LocalDateTime getStartTime() {
+        return startTime;
+      }
+
+      @Override
+      public LocalDateTime getEndTime() {
+        return endTime;
+      }
+
+      @Override
+      public Integer getDuration() {
+        return duration;
+      }
+
+      @Override
+      public BigDecimal getAmount() {
+        return amount;
+      }
+
+      @Override
+      public BigDecimal getPaymentDue() {
+        return paymentDue;
+      }
+
+      @Override
+      public String getWinnerName() {
+        return winnerName;
+      }
+
+      @Override
+      public String getLooserName() {
+        return looserName;
+      }
+    };
+  }
+
+  private FrameRepository.DueFrameRowProjection dueFrameRow(
+      Integer frameId,
+      LocalDateTime startTime,
+      LocalDateTime endTime,
+      Integer duration,
+      BigDecimal amount,
+      BigDecimal paymentDue,
+      String winnerName,
+      String looserName,
+      String playerName,
+      Boolean isWinner,
+      Boolean isLoser,
+      BigDecimal userAmountDue) {
+    return new FrameRepository.DueFrameRowProjection() {
+      @Override
+      public Integer getFrameId() {
+        return frameId;
+      }
+
+      @Override
+      public LocalDateTime getStartTime() {
+        return startTime;
+      }
+
+      @Override
+      public LocalDateTime getEndTime() {
+        return endTime;
+      }
+
+      @Override
+      public Integer getDuration() {
+        return duration;
+      }
+
+      @Override
+      public BigDecimal getAmount() {
+        return amount;
+      }
+
+      @Override
+      public BigDecimal getPaymentDue() {
+        return paymentDue;
+      }
+
+      @Override
+      public String getWinnerName() {
+        return winnerName;
+      }
+
+      @Override
+      public String getLooserName() {
+        return looserName;
+      }
+
+      @Override
+      public String getPlayerName() {
+        return playerName;
+      }
+
+      @Override
+      public Boolean getIsWinner() {
+        return isWinner;
+      }
+
+      @Override
+      public Boolean getIsLoser() {
+        return isLoser;
+      }
+
+      @Override
+      public BigDecimal getUserAmountDue() {
+        return userAmountDue;
       }
     };
   }

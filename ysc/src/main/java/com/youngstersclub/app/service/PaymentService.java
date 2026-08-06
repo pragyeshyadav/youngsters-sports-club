@@ -22,6 +22,7 @@ import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -245,9 +246,13 @@ public class PaymentService {
         PaymentMethod paymentMethod = PaymentMethod.valueOf(request.getPaymentMode().trim().toUpperCase());
         User user = userRepository.findById(request.getUserId()).orElseThrow();
         
-        List<Frame> frames = frameRepository.findDueFramesByUserAndBranchOrderByStartTime(request.getUserId(), context.branch().getId()).stream()
-                .filter(frame -> frame.getStartTime() != null && request.getDate().equals(frame.getStartTime().toLocalDate()))
-                .toList();
+        LocalDateTime startOfDay = request.getDate().atStartOfDay();
+        LocalDateTime endOfDay = request.getDate().plusDays(1).atStartOfDay();
+        List<Frame> frames = frameRepository.findSettlementDueFramesByUserAndBranchAndStartTimeBetweenOrderByStartTime(
+                request.getUserId(),
+                context.branch().getId(),
+                startOfDay,
+                endOfDay);
         List<ConsumableOrder> consumableOrders = consumableService.getUnpaidOrdersByDate(request.getUserId(), request.getDate(), context.branch().getId());
         BigDecimal totalOutstanding = userPaymentSummaryService
                 .getBranchPaymentSummaryByDate(request.getUserId(), request.getDate(), context.branch().getId())

@@ -112,6 +112,43 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
     """)
     List<Frame> findUserFrameHistory(@Param("userId") Integer userId);
 
+    interface UserFrameHistoryRowProjection {
+        Integer getFrameId();
+        LocalDateTime getStartTime();
+        LocalDateTime getEndTime();
+        Integer getDuration();
+        BigDecimal getAmount();
+        BigDecimal getPaymentDue();
+        String getWinnerName();
+        String getLooserName();
+    }
+
+    @Query(value = """
+        SELECT
+            f.id AS frameId,
+            f.start_time AS startTime,
+            f.end_time AS endTime,
+            f.duration_minutes AS duration,
+            f.total_amount AS amount,
+            f.payment_due AS paymentDue,
+            winner_user.name AS winnerName,
+            loser_user.name AS looserName
+        FROM frames f
+        LEFT JOIN users winner_user
+            ON winner_user.id = f.winner
+        LEFT JOIN users loser_user
+            ON loser_user.id = f.looser
+        WHERE f.started_by = :userId
+           OR EXISTS (
+                SELECT 1
+                FROM frame_players fp
+                WHERE fp.frame_id = f.id
+                  AND fp.user_id = :userId
+           )
+        ORDER BY f.start_time DESC, f.id DESC
+    """, nativeQuery = true)
+    List<UserFrameHistoryRowProjection> findUserFrameHistoryRows(@Param("userId") Integer userId);
+
     @Query("""
         SELECT COALESCE(SUM(
             CASE 
@@ -252,6 +289,73 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
     """)
     List<Frame> findDueFramesByUser(@Param("userId") Integer userId);
 
+    interface DueFrameRowProjection {
+        Integer getFrameId();
+        LocalDateTime getStartTime();
+        LocalDateTime getEndTime();
+        Integer getDuration();
+        BigDecimal getAmount();
+        BigDecimal getPaymentDue();
+        String getWinnerName();
+        String getLooserName();
+        String getPlayerName();
+        Boolean getIsWinner();
+        Boolean getIsLoser();
+        BigDecimal getUserAmountDue();
+    }
+
+    @Query(value = """
+        SELECT
+            f.id AS frameId,
+            f.start_time AS startTime,
+            f.end_time AS endTime,
+            f.duration_minutes AS duration,
+            f.total_amount AS amount,
+            f.payment_due AS paymentDue,
+            winner_user.name AS winnerName,
+            loser_user.name AS looserName,
+            COALESCE(player_user.name, fp.player_name) AS playerName,
+            fp.is_winner AS isWinner,
+            fp.is_loser AS isLoser,
+            CASE
+                WHEN fp.user_id = :userId
+                     AND fp.amount_due IS NOT NULL
+                     AND fp.amount_due > 0
+                THEN fp.amount_due
+                ELSE NULL
+            END AS userAmountDue
+        FROM frames f
+        LEFT JOIN users winner_user
+            ON winner_user.id = f.winner
+        LEFT JOIN users loser_user
+            ON loser_user.id = f.looser
+        LEFT JOIN frame_players fp
+            ON fp.frame_id = f.id
+        LEFT JOIN users player_user
+            ON player_user.id = fp.user_id
+        WHERE (
+            (f.looser = :userId
+                AND f.payment_due IS NOT NULL
+                AND f.payment_due > 0
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM frame_players fpi
+                    WHERE fpi.frame_id = f.id
+                      AND fpi.amount_due IS NOT NULL
+                ))
+            OR EXISTS (
+                SELECT 1
+                FROM frame_players due_fp
+                WHERE due_fp.frame_id = f.id
+                  AND due_fp.user_id = :userId
+                  AND due_fp.amount_due IS NOT NULL
+                  AND due_fp.amount_due > 0
+            )
+        )
+        ORDER BY f.start_time DESC, f.id DESC, fp.id ASC
+    """, nativeQuery = true)
+    List<DueFrameRowProjection> findDueFrameRowsByUser(@Param("userId") Integer userId);
+
     @Query("""
         SELECT DISTINCT f FROM Frame f
         LEFT JOIN FETCH f.framePlayers fp
@@ -263,6 +367,63 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ORDER BY f.startTime ASC
     """)
     List<Frame> findDueFramesByUserOrderByStartTime(@Param("userId") Integer userId);
+
+    @Query(value = """
+        SELECT
+            f.id AS frameId,
+            f.start_time AS startTime,
+            f.end_time AS endTime,
+            f.duration_minutes AS duration,
+            f.total_amount AS amount,
+            f.payment_due AS paymentDue,
+            winner_user.name AS winnerName,
+            loser_user.name AS looserName,
+            COALESCE(player_user.name, fp.player_name) AS playerName,
+            fp.is_winner AS isWinner,
+            fp.is_loser AS isLoser,
+            CASE
+                WHEN fp.user_id = :userId
+                     AND fp.amount_due IS NOT NULL
+                     AND fp.amount_due > 0
+                THEN fp.amount_due
+                ELSE NULL
+            END AS userAmountDue
+        FROM frames f
+        LEFT JOIN users winner_user
+            ON winner_user.id = f.winner
+        LEFT JOIN users loser_user
+            ON loser_user.id = f.looser
+        LEFT JOIN frame_players fp
+            ON fp.frame_id = f.id
+        LEFT JOIN users player_user
+            ON player_user.id = fp.user_id
+        WHERE (
+            (f.looser = :userId
+                AND f.payment_due IS NOT NULL
+                AND f.payment_due > 0
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM frame_players fpi
+                    WHERE fpi.frame_id = f.id
+                      AND fpi.amount_due IS NOT NULL
+                ))
+            OR EXISTS (
+                SELECT 1
+                FROM frame_players due_fp
+                WHERE due_fp.frame_id = f.id
+                  AND due_fp.user_id = :userId
+                  AND due_fp.amount_due IS NOT NULL
+                  AND due_fp.amount_due > 0
+            )
+        )
+          AND f.start_time >= :startOfDay
+          AND f.start_time < :endOfDay
+        ORDER BY f.start_time ASC, f.id ASC, fp.id ASC
+    """, nativeQuery = true)
+    List<DueFrameRowProjection> findDueFrameRowsByUserAndStartTimeBetween(
+            @Param("userId") Integer userId,
+            @Param("startOfDay") LocalDateTime startOfDay,
+            @Param("endOfDay") LocalDateTime endOfDay);
 
     @Query("""
         SELECT DISTINCT f FROM Frame f
@@ -282,10 +443,63 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
             @Param("userId") Integer userId,
             @Param("branchId") Long branchId);
 
+    @Query(value = """
+        SELECT
+            f.id AS frameId,
+            f.start_time AS startTime,
+            f.end_time AS endTime,
+            f.duration_minutes AS duration,
+            f.total_amount AS amount,
+            f.payment_due AS paymentDue,
+            winner_user.name AS winnerName,
+            loser_user.name AS looserName,
+            COALESCE(player_user.name, fp.player_name) AS playerName,
+            fp.is_winner AS isWinner,
+            fp.is_loser AS isLoser,
+            CASE
+                WHEN fp.user_id = :userId
+                     AND fp.amount_due IS NOT NULL
+                     AND fp.amount_due > 0
+                THEN fp.amount_due
+                ELSE NULL
+            END AS userAmountDue
+        FROM frames f
+        LEFT JOIN users winner_user
+            ON winner_user.id = f.winner
+        LEFT JOIN users loser_user
+            ON loser_user.id = f.looser
+        LEFT JOIN frame_players fp
+            ON fp.frame_id = f.id
+        LEFT JOIN users player_user
+            ON player_user.id = fp.user_id
+        WHERE f.branch_id = :branchId
+          AND (
+            (f.looser = :userId
+                AND f.payment_due IS NOT NULL
+                AND f.payment_due > 0
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM frame_players fpi
+                    WHERE fpi.frame_id = f.id
+                      AND fpi.amount_due IS NOT NULL
+                ))
+            OR EXISTS (
+                SELECT 1
+                FROM frame_players due_fp
+                WHERE due_fp.frame_id = f.id
+                  AND due_fp.user_id = :userId
+                  AND due_fp.amount_due IS NOT NULL
+                  AND due_fp.amount_due > 0
+            )
+        )
+        ORDER BY f.start_time DESC, f.id DESC, fp.id ASC
+    """, nativeQuery = true)
+    List<DueFrameRowProjection> findDueFrameRowsByUserAndBranch(
+            @Param("userId") Integer userId,
+            @Param("branchId") Long branchId);
+
     @Query("""
         SELECT DISTINCT f FROM Frame f
-        LEFT JOIN FETCH f.winner
-        LEFT JOIN FETCH f.looser
         LEFT JOIN FETCH f.framePlayers fp
         LEFT JOIN FETCH fp.user
         WHERE f.branch.id = :branchId
@@ -299,6 +513,85 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
     List<Frame> findDueFramesByUserAndBranchOrderByStartTime(
             @Param("userId") Integer userId,
             @Param("branchId") Long branchId);
+
+    @Query(value = """
+        SELECT
+            f.id AS frameId,
+            f.start_time AS startTime,
+            f.end_time AS endTime,
+            f.duration_minutes AS duration,
+            f.total_amount AS amount,
+            f.payment_due AS paymentDue,
+            winner_user.name AS winnerName,
+            loser_user.name AS looserName,
+            COALESCE(player_user.name, fp.player_name) AS playerName,
+            fp.is_winner AS isWinner,
+            fp.is_loser AS isLoser,
+            CASE
+                WHEN fp.user_id = :userId
+                     AND fp.amount_due IS NOT NULL
+                     AND fp.amount_due > 0
+                THEN fp.amount_due
+                ELSE NULL
+            END AS userAmountDue
+        FROM frames f
+        LEFT JOIN users winner_user
+            ON winner_user.id = f.winner
+        LEFT JOIN users loser_user
+            ON loser_user.id = f.looser
+        LEFT JOIN frame_players fp
+            ON fp.frame_id = f.id
+        LEFT JOIN users player_user
+            ON player_user.id = fp.user_id
+        WHERE f.branch_id = :branchId
+          AND (
+            (f.looser = :userId
+                AND f.payment_due IS NOT NULL
+                AND f.payment_due > 0
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM frame_players fpi
+                    WHERE fpi.frame_id = f.id
+                      AND fpi.amount_due IS NOT NULL
+                ))
+            OR EXISTS (
+                SELECT 1
+                FROM frame_players due_fp
+                WHERE due_fp.frame_id = f.id
+                  AND due_fp.user_id = :userId
+                  AND due_fp.amount_due IS NOT NULL
+                  AND due_fp.amount_due > 0
+            )
+        )
+          AND f.start_time >= :startOfDay
+          AND f.start_time < :endOfDay
+        ORDER BY f.start_time ASC, f.id ASC, fp.id ASC
+    """, nativeQuery = true)
+    List<DueFrameRowProjection> findDueFrameRowsByUserAndBranchAndStartTimeBetween(
+            @Param("userId") Integer userId,
+            @Param("branchId") Long branchId,
+            @Param("startOfDay") LocalDateTime startOfDay,
+            @Param("endOfDay") LocalDateTime endOfDay);
+
+    @Query("""
+        SELECT DISTINCT f FROM Frame f
+        LEFT JOIN FETCH f.framePlayers fp
+        LEFT JOIN FETCH fp.user
+        WHERE f.branch.id = :branchId
+        AND f.startTime >= :startOfDay
+        AND f.startTime < :endOfDay
+        AND (
+            (f.looser.id = :userId AND f.paymentDue IS NOT NULL AND f.paymentDue > 0 AND NOT EXISTS (SELECT 1 FROM FramePlayer fpi WHERE fpi.frame = f AND fpi.amountDue IS NOT NULL))
+            OR
+            (fp.user.id = :userId AND fp.amountDue IS NOT NULL AND fp.amountDue > 0)
+        )
+        ORDER BY f.startTime ASC
+    """)
+    List<Frame> findSettlementDueFramesByUserAndBranchAndStartTimeBetweenOrderByStartTime(
+            @Param("userId") Integer userId,
+            @Param("branchId") Long branchId,
+            @Param("startOfDay") LocalDateTime startOfDay,
+            @Param("endOfDay") LocalDateTime endOfDay);
 
     @Query("""
         SELECT COALESCE(SUM(f.totalAmount), 0)

@@ -354,20 +354,8 @@ public class FrameService {
             return List.of();
         }
 
-        return executeWithRetry("getUserFrameHistory", () -> {
-            return frameRepository.findUserFrameHistory(userId).stream().map(frame -> {
-                Map<String, Object> frameMap = new HashMap<>();
-                frameMap.put("frameId", frame.getId());
-                frameMap.put("startTime", frame.getStartTime());
-                frameMap.put("endTime", frame.getEndTime());
-                frameMap.put("duration", frame.getDurationMinutes());
-                frameMap.put("amount", frame.getTotalAmount());
-                frameMap.put("paymentDue", frame.getPaymentDue());
-                frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
-                frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
-                return frameMap;
-            }).toList();
-        });
+        return executeWithRetry("getUserFrameHistory", () ->
+                buildUserFrameHistoryResponse(frameRepository.findUserFrameHistoryRows(userId)));
     }
 
     public BigDecimal getTotalDue(Integer userId) {
@@ -446,20 +434,8 @@ public class FrameService {
             return List.of();
         }
 
-        return executeWithRetry("getUserDueFrames", () -> {
-            return frameRepository.findDueFramesByUser(userId).stream().map(frame -> {
-                Map<String, Object> frameMap = new HashMap<>();
-                frameMap.put("frameId", frame.getId());
-                frameMap.put("startTime", frame.getStartTime());
-                frameMap.put("endTime", frame.getEndTime());
-                frameMap.put("duration", frame.getDurationMinutes());
-                frameMap.put("amount", frame.getTotalAmount());
-                frameMap.put("paymentDue", frame.getPaymentDue());
-                frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
-                frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
-                return frameMap;
-            }).toList();
-        });
+        return executeWithRetry("getUserDueFrames", () ->
+                buildDueFramesResponse(frameRepository.findDueFrameRowsByUser(userId), false));
     }
 
     public List<Map<String, Object>> getUserDueFrames(Integer userId, String actorEmail) {
@@ -469,18 +445,9 @@ public class FrameService {
 
         FrameOperationContext context = resolveFrameOperationContext(actorEmail);
         return executeWithRetry("getUserDueFramesByBranch", () ->
-                frameRepository.findDueFramesByUserAndBranch(userId, context.branch().getId()).stream().map(frame -> {
-                    Map<String, Object> frameMap = new HashMap<>();
-                    frameMap.put("frameId", frame.getId());
-                    frameMap.put("startTime", frame.getStartTime());
-                    frameMap.put("endTime", frame.getEndTime());
-                    frameMap.put("duration", frame.getDurationMinutes());
-                    frameMap.put("amount", frame.getTotalAmount());
-                    frameMap.put("paymentDue", getDueAmountForUser(frame, userId));
-                    frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
-                    frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
-                    return frameMap;
-                }).toList());
+                buildDueFramesResponse(
+                        frameRepository.findDueFrameRowsByUserAndBranch(userId, context.branch().getId()),
+                        true));
     }
 
     public List<PendingFrameBreakdownDto> getUserDueFramesByDate(Integer userId, LocalDate selectedDate) {
@@ -488,15 +455,12 @@ public class FrameService {
             return List.of();
         }
 
-        return executeWithRetry("getUserDueFramesByDate", () ->
-                frameRepository.findDueFramesByUserOrderByStartTime(userId).stream()
-                        .filter(frame -> frame.getStartTime() != null && selectedDate.equals(frame.getStartTime().toLocalDate()))
-                        .map(frame -> new PendingFrameBreakdownDto(
-                                frame.getId(),
-                                buildMatchupLabel(frame),
-                                frame.getEndTime() != null ? frame.getEndTime() : frame.getStartTime(),
-                                getDueAmountForUser(frame, userId)))
-                        .toList());
+        return executeWithRetry("getUserDueFramesByDate", () -> {
+            LocalDateTime startOfDay = selectedDate.atStartOfDay();
+            LocalDateTime endOfDay = selectedDate.plusDays(1).atStartOfDay();
+            return buildPendingFrameBreakdownResponse(
+                    frameRepository.findDueFrameRowsByUserAndStartTimeBetween(userId, startOfDay, endOfDay));
+        });
     }
 
     public List<PendingFrameBreakdownDto> getUserDueFramesByDate(Integer userId, LocalDate selectedDate, Long branchId) {
@@ -504,15 +468,16 @@ public class FrameService {
             return List.of();
         }
 
-        return executeWithRetry("getUserDueFramesByDateAndBranch", () ->
-                frameRepository.findDueFramesByUserAndBranchOrderByStartTime(userId, branchId).stream()
-                        .filter(frame -> frame.getStartTime() != null && selectedDate.equals(frame.getStartTime().toLocalDate()))
-                        .map(frame -> new PendingFrameBreakdownDto(
-                                frame.getId(),
-                                buildMatchupLabel(frame),
-                                frame.getEndTime() != null ? frame.getEndTime() : frame.getStartTime(),
-                                getDueAmountForUser(frame, userId)))
-                        .toList());
+        return executeWithRetry("getUserDueFramesByDateAndBranch", () -> {
+            LocalDateTime startOfDay = selectedDate.atStartOfDay();
+            LocalDateTime endOfDay = selectedDate.plusDays(1).atStartOfDay();
+            return buildPendingFrameBreakdownResponse(
+                    frameRepository.findDueFrameRowsByUserAndBranchAndStartTimeBetween(
+                            userId,
+                            branchId,
+                            startOfDay,
+                            endOfDay));
+        });
     }
 
     @Transactional
@@ -894,6 +859,72 @@ public class FrameService {
         return amounts;
     }
 
+    protected List<Map<String, Object>> buildUserFrameHistoryResponse(
+            List<FrameRepository.UserFrameHistoryRowProjection> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        return rows.stream()
+                .map(row -> {
+                    Map<String, Object> frameMap = new HashMap<>();
+                    frameMap.put("frameId", row.getFrameId());
+                    frameMap.put("startTime", row.getStartTime());
+                    frameMap.put("endTime", row.getEndTime());
+                    frameMap.put("duration", row.getDuration());
+                    frameMap.put("amount", row.getAmount());
+                    frameMap.put("paymentDue", row.getPaymentDue());
+                    frameMap.put("winnerName", row.getWinnerName());
+                    frameMap.put("looserName", row.getLooserName());
+                    return frameMap;
+                })
+                .toList();
+    }
+
+    protected List<Map<String, Object>> buildDueFramesResponse(
+            List<FrameRepository.DueFrameRowProjection> rows,
+            boolean useUserSpecificDue) {
+        return aggregateDueFrameRows(rows).values().stream()
+                .map(aggregatedRow -> aggregatedRow.toDueFrameResponse(useUserSpecificDue))
+                .toList();
+    }
+
+    protected List<PendingFrameBreakdownDto> buildPendingFrameBreakdownResponse(
+            List<FrameRepository.DueFrameRowProjection> rows) {
+        return aggregateDueFrameRows(rows).values().stream()
+                .map(AggregatedDueFrameRow::toPendingBreakdown)
+                .toList();
+    }
+
+    protected LinkedHashMap<Integer, AggregatedDueFrameRow> aggregateDueFrameRows(
+            List<FrameRepository.DueFrameRowProjection> rows) {
+        LinkedHashMap<Integer, AggregatedDueFrameRow> aggregatedRows = new LinkedHashMap<>();
+        if (rows == null || rows.isEmpty()) {
+            return aggregatedRows;
+        }
+
+        for (FrameRepository.DueFrameRowProjection row : rows) {
+            if (row == null || row.getFrameId() == null) {
+                continue;
+            }
+
+            AggregatedDueFrameRow aggregatedRow = aggregatedRows.computeIfAbsent(
+                    row.getFrameId(),
+                    ignored -> new AggregatedDueFrameRow(
+                            row.getFrameId(),
+                            row.getStartTime(),
+                            row.getEndTime(),
+                            row.getDuration(),
+                            row.getAmount(),
+                            row.getPaymentDue(),
+                            row.getWinnerName(),
+                            row.getLooserName()));
+            aggregatedRow.addPlayer(row.getPlayerName(), row.getIsWinner(), row.getIsLoser(), row.getUserAmountDue());
+        }
+
+        return aggregatedRows;
+    }
+
     private BigDecimal getDueAmountForUser(Frame frame, Integer userId) {
         if (frame == null || userId == null) {
             return BigDecimal.ZERO;
@@ -1160,6 +1191,95 @@ public class FrameService {
             map.put("isAvailable", isAvailable);
             map.put("players", List.copyOf(players));
             return map;
+        }
+    }
+
+    protected static final class AggregatedDueFrameRow {
+        private final Integer frameId;
+        private final LocalDateTime startTime;
+        private final LocalDateTime endTime;
+        private final Integer duration;
+        private final BigDecimal amount;
+        private final BigDecimal paymentDue;
+        private final String winnerName;
+        private final String looserName;
+        private final LinkedHashSet<String> winners = new LinkedHashSet<>();
+        private final LinkedHashSet<String> losers = new LinkedHashSet<>();
+        private BigDecimal userSpecificDue;
+
+        protected AggregatedDueFrameRow(
+                Integer frameId,
+                LocalDateTime startTime,
+                LocalDateTime endTime,
+                Integer duration,
+                BigDecimal amount,
+                BigDecimal paymentDue,
+                String winnerName,
+                String looserName) {
+            this.frameId = frameId;
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.duration = duration;
+            this.amount = amount;
+            this.paymentDue = paymentDue;
+            this.winnerName = winnerName;
+            this.looserName = looserName;
+        }
+
+        protected void addPlayer(
+                String playerName,
+                Boolean isWinner,
+                Boolean isLoser,
+                BigDecimal rowUserSpecificDue) {
+            if (playerName != null && !playerName.isBlank()) {
+                if (Boolean.TRUE.equals(isWinner)) {
+                    winners.add(playerName);
+                }
+                if (Boolean.TRUE.equals(isLoser)) {
+                    losers.add(playerName);
+                }
+            }
+            if (rowUserSpecificDue != null && rowUserSpecificDue.compareTo(BigDecimal.ZERO) > 0) {
+                this.userSpecificDue = rowUserSpecificDue;
+            }
+        }
+
+        protected Map<String, Object> toDueFrameResponse(boolean useUserSpecificDue) {
+            Map<String, Object> frameMap = new HashMap<>();
+            frameMap.put("frameId", frameId);
+            frameMap.put("startTime", startTime);
+            frameMap.put("endTime", endTime);
+            frameMap.put("duration", duration);
+            frameMap.put("amount", amount);
+            frameMap.put("paymentDue", resolveDueAmount(useUserSpecificDue));
+            frameMap.put("winnerName", winnerName);
+            frameMap.put("looserName", looserName);
+            return frameMap;
+        }
+
+        protected PendingFrameBreakdownDto toPendingBreakdown() {
+            return new PendingFrameBreakdownDto(
+                    frameId,
+                    resolveMatchupLabel(),
+                    endTime != null ? endTime : startTime,
+                    resolveDueAmount(true));
+        }
+
+        protected BigDecimal resolveDueAmount(boolean useUserSpecificDue) {
+            if (useUserSpecificDue && userSpecificDue != null) {
+                return userSpecificDue;
+            }
+            return paymentDue == null ? BigDecimal.ZERO : paymentDue;
+        }
+
+        protected String resolveMatchupLabel() {
+            if (!winners.isEmpty() && !losers.isEmpty()) {
+                return String.join(" & ", winners) + " vs " + String.join(" & ", losers);
+            }
+            if (winnerName != null && !winnerName.isBlank() && looserName != null && !looserName.isBlank()) {
+                return winnerName + " vs " + looserName;
+            }
+            return "Frame";
         }
     }
 }
