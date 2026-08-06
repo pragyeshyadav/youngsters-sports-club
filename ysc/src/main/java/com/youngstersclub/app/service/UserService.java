@@ -4,6 +4,7 @@ import com.youngstersclub.app.dto.CreateCustomerRequest;
 import com.youngstersclub.app.dto.CreateCustomerResponseDto;
 import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.PhoneVerificationResponse;
+import com.youngstersclub.app.dto.UserSearchResultDto;
 import com.youngstersclub.app.dto.UserPreviewDto;
 import com.youngstersclub.app.dto.UserLoginRequest;
 import com.youngstersclub.app.entity.Branch;
@@ -16,11 +17,13 @@ import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.PageRequest;
 
 @Service
 public class UserService {
@@ -83,6 +86,27 @@ public class UserService {
 
         User user = existingUser.get();
         return new PhoneVerificationResponse(true, new UserPreviewDto(user.getId(), user.getName(), user.getPhone()));
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserSearchResultDto> searchUsersForCurrentBranch(String query, String actorEmail) {
+        String normalizedQuery = query == null ? "" : query.trim();
+        if (normalizedQuery.isEmpty()) {
+            return List.of();
+        }
+
+        String digitsQuery = normalizedQuery.replaceAll("\\D", "");
+        if (normalizedQuery.length() < 3 && digitsQuery.length() < 3) {
+            return List.of();
+        }
+
+        BranchScopedSearchContext context = resolveBranchScopedSearchContext(actorEmail);
+        return userRepository.searchActiveUserSummariesForOrganizationBranch(
+                normalizedQuery,
+                digitsQuery,
+                PageRequest.of(0, 10),
+                context.organizationId(),
+                context.branchId());
     }
 
     @Transactional
@@ -331,12 +355,58 @@ public class UserService {
                 context.getCurrentOrganization().getName());
     }
 
+    private BranchScopedSearchContext resolveBranchScopedSearchContext(String actorEmail) {
+        String normalizedEmail = actorEmail == null ? "" : actorEmail.trim().toLowerCase();
+        if (normalizedEmail.isEmpty()) {
+            throw new SecurityException("Authenticated user email is required");
+        }
+
+        User actor = userRepository.findByEmail(normalizedEmail)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                .orElseThrow(() -> new SecurityException("Authenticated user not found"));
+
+        OrganizationContextDto context = organizationContextService.resolveContext(normalizedEmail);
+        if (context.getCurrentOrganization() == null || context.getCurrentBranch() == null) {
+            throw new IllegalArgumentException("Current organization and branch context are required");
+        }
+
+        OrganizationUser membership = organizationUserRepository
+                .findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), context.getCurrentOrganization().getId())
+                .orElseThrow(() -> new java.util.NoSuchElementException("Caller organization membership not found"));
+
+        Branch branch = branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(
+                        context.getCurrentBranch().getId(),
+                        context.getCurrentOrganization().getId())
+                .orElseThrow(() -> new java.util.NoSuchElementException("Current branch not found"));
+
+        boolean branchAccessible = membership.getBaseBranch() != null
+                && branch.getId().equals(membership.getBaseBranch().getId());
+        if (!branchAccessible) {
+            branchAccessible = userBranchAccessRepository.existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(
+                    membership.getId(),
+                    branch.getId());
+        }
+
+        if (!branchAccessible) {
+            throw new SecurityException("You do not have access to the current branch");
+        }
+
+        return new BranchScopedSearchContext(
+                context.getCurrentOrganization().getId(),
+                branch.getId());
+    }
+
     private record ManualCustomerContext(
             User actor,
             OrganizationUser membership,
             Branch branch,
             Long organizationId,
             String organizationName) {
+    }
+
+    private record BranchScopedSearchContext(
+            Long organizationId,
+            Long branchId) {
     }
 
 }

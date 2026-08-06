@@ -111,7 +111,10 @@ export class PlayZoneActivitiesComponent implements OnInit, OnDestroy {
 
     this.isLoadingParents = true;
     this.cdr.markForCheck();
-    this.http.get<ParentUserOption[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+    this.http.get<ParentUserOption[]>(
+      `/api/users/search/current-branch?query=${encodeURIComponent(query)}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (users) => {
         if (requestId !== this.parentSearchRequestId) {
           return;

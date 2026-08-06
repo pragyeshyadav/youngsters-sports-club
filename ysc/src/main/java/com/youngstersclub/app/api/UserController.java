@@ -73,6 +73,13 @@ public class UserController {
                 PageRequest.of(0, 10));
     }
 
+    @GetMapping("/api/users/search/current-branch")
+    public List<UserSearchResultDto> searchUsersForCurrentBranch(
+            @RequestParam String query,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return userService.searchUsersForCurrentBranch(query, actorEmail);
+    }
+
     @PostMapping("/api/user/phone")
     public ResponseEntity<String> updatePhone(@RequestBody UserPhoneUpdateRequest request) {
         Optional<User> optionalUser = userRepository.findByEmail(request.getEmail());

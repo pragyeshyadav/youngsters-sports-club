@@ -62,4 +62,18 @@ class UserControllerTest {
 
         assertSame(expected, response);
     }
+
+    @Test
+    void searchUsersForCurrentBranchDelegatesToUserService() {
+        List<UserSearchResultDto> expected = List.of(
+                new UserSearchResultDto(15, "Prince Singh", "prince@test.com",
+                        "105912950685681442825", null, "9876543210", true, "CUSTOMER"));
+        when(userService.searchUsersForCurrentBranch("prin", "admin@test.com"))
+                .thenReturn(expected);
+
+        List<UserSearchResultDto> response = userController.searchUsersForCurrentBranch("prin", "admin@test.com");
+
+        assertSame(expected, response);
+        verify(userService).searchUsersForCurrentBranch("prin", "admin@test.com");
+    }
 }

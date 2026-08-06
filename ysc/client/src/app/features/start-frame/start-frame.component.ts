@@ -483,7 +483,9 @@ export class StartFrameComponent implements OnInit, OnDestroy {
 
             this.isSearchingPlayers = true;
             return this.http
-              .get<Player[]>(`/api/users/search?query=${encodeURIComponent(query)}`)
+              .get<Player[]>(`/api/users/search/current-branch?query=${encodeURIComponent(query)}`, {
+                headers: this.buildActorHeaders(),
+              })
               .pipe(
                 catchError((err) => {
                   console.error('Failed to search players', err);
