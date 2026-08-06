@@ -6,8 +6,19 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface OrganizationUserRepository extends JpaRepository<OrganizationUser, Long> {
+  interface ActiveCustomerMembershipProjection {
+    Long getOrganizationId();
+    String getOrganizationName();
+    Integer getUserId();
+    String getUserName();
+    String getPhone();
+    String getBaseBranchName();
+  }
+
   @EntityGraph(attributePaths = {"organization", "baseBranch", "user"})
   List<OrganizationUser> findByUserIdAndIsActiveTrue(Integer userId);
 
@@ -22,4 +33,39 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
 
   @EntityGraph(attributePaths = {"organization", "baseBranch", "user"})
   List<OrganizationUser> findByRoleAndIsActiveTrue(UserRole role);
+
+  @Query("""
+      SELECT DISTINCT ou.organization.id
+      FROM OrganizationUser ou
+      WHERE ou.role = :role
+        AND ou.isActive = true
+        AND ou.user IS NOT NULL
+        AND ou.user.isActive = true
+        AND ou.organization IS NOT NULL
+        AND ou.organization.isActive = true
+      ORDER BY ou.organization.id ASC
+  """)
+  List<Long> findDistinctActiveOrganizationIdsByRole(@Param("role") UserRole role);
+
+  @Query("""
+      SELECT
+          ou.organization.id AS organizationId,
+          ou.organization.name AS organizationName,
+          ou.user.id AS userId,
+          ou.user.name AS userName,
+          ou.user.phone AS phone,
+          ou.baseBranch.name AS baseBranchName
+      FROM OrganizationUser ou
+      WHERE ou.role = :role
+        AND ou.organization.id = :organizationId
+        AND ou.isActive = true
+        AND ou.user IS NOT NULL
+        AND ou.user.isActive = true
+        AND ou.organization IS NOT NULL
+        AND ou.organization.isActive = true
+      ORDER BY ou.user.id ASC
+  """)
+  List<ActiveCustomerMembershipProjection> findActiveCustomerMembershipsByRoleAndOrganizationId(
+          @Param("role") UserRole role,
+          @Param("organizationId") Long organizationId);
 }

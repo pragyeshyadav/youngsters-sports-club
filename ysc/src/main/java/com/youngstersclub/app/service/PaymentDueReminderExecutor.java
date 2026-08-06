@@ -1,10 +1,8 @@
 package com.youngstersclub.app.service;
 
-import com.youngstersclub.app.dto.UserPaymentSummaryDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.entity.Branch;
-import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
@@ -19,7 +17,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -76,77 +73,43 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
     @Override
     public WhatsappTemplateExecutionResultDto execute(boolean isDryRun) {
         LocalDateTime executionTime = TimeUtil.nowIST();
-        List<OrganizationUser> customerMemberships = organizationUserRepository.findByRoleAndIsActiveTrue(UserRole.CUSTOMER)
-                .stream()
-                .filter(membership -> membership.getUser() != null
-                        && Boolean.TRUE.equals(membership.getUser().getIsActive())
-                        && membership.getOrganization() != null
-                        && Boolean.TRUE.equals(membership.getOrganization().getIsActive()))
-                .toList();
-
-        Map<Long, List<OrganizationUser>> membershipsByOrganizationId = customerMemberships.stream()
-                .collect(Collectors.groupingBy(
-                        membership -> membership.getOrganization().getId(),
-                        LinkedHashMap::new,
-                        Collectors.toList()));
-
         List<WhatsappTemplateExecutionRecipientDto> eligibleRecipients = new ArrayList<>();
         int totalCustomersScanned = 0;
 
-        for (Map.Entry<Long, List<OrganizationUser>> entry : membershipsByOrganizationId.entrySet()) {
-            Long organizationId = entry.getKey();
-            List<OrganizationUser> organizationMemberships = entry.getValue();
-            List<Integer> userIds = organizationMemberships.stream()
-                    .map(membership -> membership.getUser().getId())
-                    .distinct()
-                    .toList();
+        for (Long organizationId : organizationUserRepository.findDistinctActiveOrganizationIdsByRole(UserRole.CUSTOMER)) {
+            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> organizationMemberships =
+                    organizationUserRepository.findActiveCustomerMembershipsByRoleAndOrganizationId(
+                            UserRole.CUSTOMER,
+                            organizationId);
+            List<Integer> userIds = extractDistinctUserIds(organizationMemberships);
             if (userIds.isEmpty()) {
                 continue;
             }
 
-            Map<Integer, BigDecimal> totalDueByUserId = new LinkedHashMap<>();
-            frameRepository.getTotalDueForUsersByOrganization(userIds, organizationId)
-                    .forEach(projection -> totalDueByUserId.merge(
-                            projection.getUserId(),
-                            projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount(),
-                            BigDecimal::add));
-            consumableOrderRepository.getTotalUnpaidDueByUserIdsAndOrganizationId(userIds, organizationId)
-                    .forEach(projection -> totalDueByUserId.merge(
-                            projection.getUserId(),
-                            projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount(),
-                            BigDecimal::add));
-            kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIdsAndOrganizationId(userIds, organizationId)
-                    .forEach(projection -> totalDueByUserId.merge(
-                            projection.getUserId(),
-                            projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount(),
-                            BigDecimal::add));
-            gameActivityOrderRepository.getTotalUnpaidDueByParentUserIdsAndOrganizationId(userIds, organizationId)
-                    .forEach(projection -> totalDueByUserId.merge(
-                            projection.getUserId(),
-                            projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount(),
-                            BigDecimal::add));
-
-            Map<Long, List<Branch>> branchesByOrganization = Map.of(
-                    organizationId,
-                    branchRepository.findByOrganizationIdAndIsActiveTrueOrderByNameAsc(organizationId));
+            Map<Integer, BigDecimal> totalDueByUserId = loadOrganizationTotalDueByUserId(userIds, organizationId);
             totalCustomersScanned += organizationMemberships.size();
+            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships = organizationMemberships.stream()
+                    .filter(membership -> totalDueByUserId
+                            .getOrDefault(membership.getUserId(), BigDecimal.ZERO)
+                            .compareTo(DUE_THRESHOLD) > 0)
+                    .toList();
+            if (eligibleMemberships.isEmpty()) {
+                continue;
+            }
 
-            for (OrganizationUser membership : organizationMemberships) {
-                Integer userId = membership.getUser().getId();
+            Map<Integer, String> branchNamesByUserId = resolveDueBranchNamesByUser(organizationId, eligibleMemberships);
+
+            for (OrganizationUserRepository.ActiveCustomerMembershipProjection membership : eligibleMemberships) {
+                Integer userId = membership.getUserId();
                 BigDecimal totalDue = totalDueByUserId.getOrDefault(userId, BigDecimal.ZERO);
-                if (totalDue.compareTo(DUE_THRESHOLD) <= 0) {
-                    continue;
-                }
-
-                String dueBranchNames = resolveDueBranchNames(userId.longValue(), branchesByOrganization.get(organizationId), membership);
                 eligibleRecipients.add(new WhatsappTemplateExecutionRecipientDto(
                         userId,
-                        membership.getUser().getName(),
-                        membership.getUser().getPhone(),
+                        membership.getUserName(),
+                        membership.getPhone(),
                         totalDue,
                         null,
-                        membership.getOrganization().getName(),
-                        dueBranchNames,
+                        membership.getOrganizationName(),
+                        branchNamesByUserId.getOrDefault(userId, fallbackBranchName(membership)),
                         "TOTAL DUE ABOVE ₹500"));
             }
         }
@@ -231,21 +194,101 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         }
     }
 
-    private String resolveDueBranchNames(Long userId, List<Branch> organizationBranches, OrganizationUser membership) {
-        LinkedHashSet<String> dueBranchNames = new LinkedHashSet<>();
-        if (organizationBranches != null) {
-            for (Branch branch : organizationBranches) {
-                if (branch == null || branch.getId() == null) {
+    protected List<Integer> extractDistinctUserIds(
+            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> memberships) {
+        if (memberships == null || memberships.isEmpty()) {
+            return List.of();
+        }
+        return memberships.stream()
+                .map(OrganizationUserRepository.ActiveCustomerMembershipProjection::getUserId)
+                .filter(userId -> userId != null)
+                .distinct()
+                .toList();
+    }
+
+    protected Map<Integer, BigDecimal> loadOrganizationTotalDueByUserId(List<Integer> userIds, Long organizationId) {
+        Map<Integer, BigDecimal> totalDueByUserId = new LinkedHashMap<>();
+        if (userIds == null || userIds.isEmpty() || organizationId == null) {
+            return totalDueByUserId;
+        }
+
+        frameRepository.getTotalDueForUsersByOrganization(userIds, organizationId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        consumableOrderRepository.getTotalUnpaidDueByUserIdsAndOrganizationId(userIds, organizationId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIdsAndOrganizationId(userIds, organizationId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        gameActivityOrderRepository.getTotalUnpaidDueByParentUserIdsAndOrganizationId(userIds, organizationId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        return totalDueByUserId;
+    }
+
+    protected Map<Integer, String> resolveDueBranchNamesByUser(
+            Long organizationId,
+            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships) {
+        Map<Integer, String> dueBranchNamesByUserId = new LinkedHashMap<>();
+        List<Integer> eligibleUserIds = extractDistinctUserIds(eligibleMemberships);
+        if (organizationId == null || eligibleUserIds.isEmpty()) {
+            return dueBranchNamesByUserId;
+        }
+
+        Map<Integer, String> fallbackBranchNameByUserId = eligibleMemberships.stream()
+                .collect(Collectors.toMap(
+                        OrganizationUserRepository.ActiveCustomerMembershipProjection::getUserId,
+                        this::fallbackBranchName,
+                        (left, right) -> left,
+                        LinkedHashMap::new));
+
+        for (Branch branch : branchRepository.findByOrganizationIdAndIsActiveTrueOrderByNameAsc(organizationId)) {
+            if (branch == null || branch.getId() == null || branch.getName() == null || branch.getName().isBlank()) {
+                continue;
+            }
+            Map<Integer, BigDecimal> branchDueByUserId = loadBranchTotalDueByUserId(eligibleUserIds, branch.getId());
+            for (Map.Entry<Integer, BigDecimal> entry : branchDueByUserId.entrySet()) {
+                if (entry.getValue().compareTo(BigDecimal.ZERO) <= 0) {
                     continue;
                 }
-                if (pendingDueService.calculateCustomerDue(userId, branch.getId()).totalDue().compareTo(BigDecimal.ZERO) > 0) {
-                    dueBranchNames.add(branch.getName());
-                }
+                dueBranchNamesByUserId.merge(
+                        entry.getKey(),
+                        branch.getName(),
+                        (existing, ignored) -> existing + ", " + branch.getName());
             }
         }
-        if (dueBranchNames.isEmpty() && membership.getBaseBranch() != null && membership.getBaseBranch().getName() != null) {
-            dueBranchNames.add(membership.getBaseBranch().getName());
+
+        fallbackBranchNameByUserId.forEach((userId, fallbackBranchName) ->
+                dueBranchNamesByUserId.putIfAbsent(userId, fallbackBranchName));
+        return dueBranchNamesByUserId;
+    }
+
+    protected Map<Integer, BigDecimal> loadBranchTotalDueByUserId(List<Integer> userIds, Long branchId) {
+        Map<Integer, BigDecimal> totalDueByUserId = new LinkedHashMap<>();
+        if (userIds == null || userIds.isEmpty() || branchId == null) {
+            return totalDueByUserId;
         }
-        return dueBranchNames.isEmpty() ? "Organization-wide" : String.join(", ", dueBranchNames);
+
+        frameRepository.getTotalDueForUsersByBranch(userIds, branchId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        consumableOrderRepository.getTotalUnpaidDueByUserIdsAndBranchId(userIds, branchId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        kidsPlaySessionRepository.getTotalUnpaidDueByParentUserIdsAndBranchId(userIds, branchId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        gameActivityOrderRepository.getTotalUnpaidDueByParentUserIdsAndBranchId(userIds, branchId)
+                .forEach(projection -> mergeDueAmount(totalDueByUserId, projection.getUserId(), projection.getAmount()));
+        return totalDueByUserId;
+    }
+
+    protected void mergeDueAmount(Map<Integer, BigDecimal> totalsByUserId, Integer userId, BigDecimal amount) {
+        if (totalsByUserId == null || userId == null) {
+            return;
+        }
+        totalsByUserId.merge(userId, amount == null ? BigDecimal.ZERO : amount, BigDecimal::add);
+    }
+
+    protected String fallbackBranchName(OrganizationUserRepository.ActiveCustomerMembershipProjection membership) {
+        if (membership == null) {
+            return "Organization-wide";
+        }
+        String baseBranchName = membership.getBaseBranchName();
+        return (baseBranchName == null || baseBranchName.isBlank()) ? "Organization-wide" : baseBranchName;
     }
 }
