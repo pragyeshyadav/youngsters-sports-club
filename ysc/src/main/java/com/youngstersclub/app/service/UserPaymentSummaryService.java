@@ -43,23 +43,7 @@ public class UserPaymentSummaryService {
             return new UserPaymentSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         }
 
-        List<PendingFrameBreakdownDto> frames = frameService.getUserDueFramesByDate(userId, selectedDate);
-        List<ConsumableDueRowDto> consumables = consumableService.getDueConsumablesByDate(userId, selectedDate);
-        List<PendingKidsPlayBreakdownDto> kidsPlay = kidsPlayService.getKidsDueBreakdownByDate(userId, selectedDate);
-
-        BigDecimal frameDue = frames.stream()
-                .map(PendingFrameBreakdownDto::getDueAmount)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal consumableDue = consumables.stream()
-                .map(ConsumableDueRowDto::getTotalCost)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal kidsDue = kidsPlay.stream()
-                .map(PendingKidsPlayBreakdownDto::getAmount)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new UserPaymentSummaryDto(frameDue, consumableDue, kidsDue);
+        return buildDateDueBundle(userId, selectedDate).summary();
     }
 
     public UserPaymentSummaryDto getBranchPaymentSummaryByDate(Integer userId, LocalDate selectedDate, Long branchId) {
@@ -67,23 +51,7 @@ public class UserPaymentSummaryService {
             return new UserPaymentSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
         }
 
-        List<PendingFrameBreakdownDto> frames = frameService.getUserDueFramesByDate(userId, selectedDate, branchId);
-        List<ConsumableDueRowDto> consumables = consumableService.getDueConsumablesByDate(userId, selectedDate, branchId);
-        List<PendingKidsPlayBreakdownDto> kidsPlay = kidsPlayService.getKidsDueBreakdownByDate(userId, selectedDate, branchId);
-
-        BigDecimal frameDue = frames.stream()
-                .map(PendingFrameBreakdownDto::getDueAmount)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal consumableDue = consumables.stream()
-                .map(ConsumableDueRowDto::getTotalCost)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal kidsDue = kidsPlay.stream()
-                .map(PendingKidsPlayBreakdownDto::getAmount)
-                .filter(java.util.Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new UserPaymentSummaryDto(frameDue, consumableDue, kidsDue);
+        return buildBranchDateDueBundle(userId, selectedDate, branchId).summary();
     }
 
     public Map<Integer, UserPaymentSummaryDto> getPaymentSummaries(List<Integer> userIds) {
@@ -91,34 +59,89 @@ public class UserPaymentSummaryService {
     }
 
     public PendingDueBreakdownDto getPendingDueBreakdownByDate(Integer userId, LocalDate selectedDate) {
-        UserPaymentSummaryDto summary = getPaymentSummaryByDate(userId, selectedDate);
-        List<PendingFrameBreakdownDto> frames = frameService.getUserDueFramesByDate(userId, selectedDate);
-        List<ConsumableDueRowDto> consumables = consumableService.getDueConsumablesByDate(userId, selectedDate);
-        List<PendingKidsPlayBreakdownDto> kidsPlay = kidsPlayService.getKidsDueBreakdownByDate(userId, selectedDate);
+        DateDueBundle bundle = buildDateDueBundle(userId, selectedDate);
 
         return new PendingDueBreakdownDto(
-                frames,
-                consumables,
-                kidsPlay,
-                summary.getFrameDue(),
-                summary.getConsumableDue(),
-                summary.getKidsDue(),
-                summary.getTotalDue());
+                bundle.frames(),
+                bundle.consumables(),
+                bundle.kidsPlay(),
+                bundle.summary().getFrameDue(),
+                bundle.summary().getConsumableDue(),
+                bundle.summary().getKidsDue(),
+                bundle.summary().getTotalDue());
     }
 
     public PendingDueBreakdownDto getBranchPendingDueBreakdownByDate(Integer userId, LocalDate selectedDate, Long branchId) {
-        UserPaymentSummaryDto summary = getBranchPaymentSummaryByDate(userId, selectedDate, branchId);
+        DateDueBundle bundle = buildBranchDateDueBundle(userId, selectedDate, branchId);
+
+        return new PendingDueBreakdownDto(
+                bundle.frames(),
+                bundle.consumables(),
+                bundle.kidsPlay(),
+                bundle.summary().getFrameDue(),
+                bundle.summary().getConsumableDue(),
+                bundle.summary().getKidsDue(),
+                bundle.summary().getTotalDue());
+    }
+
+    protected DateDueBundle buildDateDueBundle(Integer userId, LocalDate selectedDate) {
+        if (userId == null || selectedDate == null) {
+            return emptyDateDueBundle();
+        }
+
+        List<PendingFrameBreakdownDto> frames = frameService.getUserDueFramesByDate(userId, selectedDate);
+        List<ConsumableDueRowDto> consumables = consumableService.getDueConsumablesByDate(userId, selectedDate);
+        List<PendingKidsPlayBreakdownDto> kidsPlay = kidsPlayService.getKidsDueBreakdownByDate(userId, selectedDate);
+        return buildDateDueBundle(frames, consumables, kidsPlay);
+    }
+
+    protected DateDueBundle buildBranchDateDueBundle(Integer userId, LocalDate selectedDate, Long branchId) {
+        if (userId == null || selectedDate == null || branchId == null) {
+            return emptyDateDueBundle();
+        }
+
         List<PendingFrameBreakdownDto> frames = frameService.getUserDueFramesByDate(userId, selectedDate, branchId);
         List<ConsumableDueRowDto> consumables = consumableService.getDueConsumablesByDate(userId, selectedDate, branchId);
         List<PendingKidsPlayBreakdownDto> kidsPlay = kidsPlayService.getKidsDueBreakdownByDate(userId, selectedDate, branchId);
+        return buildDateDueBundle(frames, consumables, kidsPlay);
+    }
 
-        return new PendingDueBreakdownDto(
-                frames,
-                consumables,
-                kidsPlay,
-                summary.getFrameDue(),
-                summary.getConsumableDue(),
-                summary.getKidsDue(),
-                summary.getTotalDue());
+    protected DateDueBundle buildDateDueBundle(
+            List<PendingFrameBreakdownDto> frames,
+            List<ConsumableDueRowDto> consumables,
+            List<PendingKidsPlayBreakdownDto> kidsPlay) {
+        List<PendingFrameBreakdownDto> safeFrames = frames == null ? List.of() : frames;
+        List<ConsumableDueRowDto> safeConsumables = consumables == null ? List.of() : consumables;
+        List<PendingKidsPlayBreakdownDto> safeKidsPlay = kidsPlay == null ? List.of() : kidsPlay;
+
+        BigDecimal frameDue = safeFrames.stream()
+                .map(PendingFrameBreakdownDto::getDueAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal consumableDue = safeConsumables.stream()
+                .map(ConsumableDueRowDto::getTotalCost)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal kidsDue = safeKidsPlay.stream()
+                .map(PendingKidsPlayBreakdownDto::getAmount)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return new DateDueBundle(
+                safeFrames,
+                safeConsumables,
+                safeKidsPlay,
+                new UserPaymentSummaryDto(frameDue, consumableDue, kidsDue));
+    }
+
+    protected DateDueBundle emptyDateDueBundle() {
+        return new DateDueBundle(List.of(), List.of(), List.of(), new UserPaymentSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+    }
+
+    protected record DateDueBundle(
+            List<PendingFrameBreakdownDto> frames,
+            List<ConsumableDueRowDto> consumables,
+            List<PendingKidsPlayBreakdownDto> kidsPlay,
+            UserPaymentSummaryDto summary) {
     }
 }

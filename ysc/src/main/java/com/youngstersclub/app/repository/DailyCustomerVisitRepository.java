@@ -14,14 +14,18 @@ import org.springframework.stereotype.Repository;
 public class DailyCustomerVisitRepository {
 
     private static final String FIND_DAILY_VISITS_BY_ORGANIZATION_SQL = """
-            SELECT DISTINCT
+            SELECT
                 visited.user_id AS userId,
                 visited.name AS name,
                 visited.phone AS phone,
                 visited.organization_id AS organizationId,
                 visited.organization_name AS organizationName,
-                visited.branch_id AS branchId,
-                visited.branch_name AS branchName
+                NULL::bigint AS branchId,
+                COALESCE(
+                    STRING_AGG(DISTINCT visited.branch_name, ', ' ORDER BY visited.branch_name)
+                        FILTER (WHERE visited.branch_name IS NOT NULL AND visited.branch_name <> ''),
+                    'Organization-wide'
+                ) AS branchName
             FROM (
                 SELECT u.id AS user_id, u.name, u.phone, o.id AS organization_id, o.name AS organization_name, b.id AS branch_id, b.name AS branch_name
                 FROM frames f
@@ -86,7 +90,13 @@ public class DailyCustomerVisitRepository {
                   AND COALESCE(ou.is_active, true) = true
                   AND ou.role = 'CUSTOMER'
             ) visited
-            ORDER BY visited.organization_name ASC, visited.name ASC, visited.branch_name ASC
+            GROUP BY
+                visited.user_id,
+                visited.name,
+                visited.phone,
+                visited.organization_id,
+                visited.organization_name
+            ORDER BY visited.organization_name ASC, visited.name ASC
             """;
 
     private static final RowMapper<DailyVisitedOrganizationDto> DAILY_VISIT_ROW_MAPPER =

@@ -86,7 +86,7 @@ public class AnalyticsService {
                 startDateTime,
                 endDateTime,
                 context.branch().getId());
-        Map<Integer, BigDecimal> activityDueByUser = gameActivityService.getUnpaidDueByUserForDate(
+        Map<Integer, TodayEarningsDuePlayerDto> activityDuePlayers = gameActivityService.getUnpaidDuePlayersByDate(
                 selectedDate,
                 context.branch().getId());
         List<SettledPaymentDto> settledPayments = paymentRepository
@@ -123,28 +123,7 @@ public class AnalyticsService {
                             row.getDueAmount() == null ? BigDecimal.ZERO : row.getDueAmount()));
         }
 
-        if (!activityDueByUser.isEmpty()) {
-            Map<Integer, String> userNames = userRepository.findAllById(activityDueByUser.keySet()).stream()
-                    .collect(java.util.stream.Collectors.toMap(User::getId, User::getName));
-            activityDueByUser.forEach((userId, amount) -> {
-                if (userId == null || amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-                    return;
-                }
-                TodayEarningsDuePlayerDto existing = duePlayersByUser.get(userId);
-                if (existing != null) {
-                    duePlayersByUser.put(
-                            userId,
-                            new TodayEarningsDuePlayerDto(userId, existing.getName(), existing.getDue().add(amount)));
-                } else {
-                    duePlayersByUser.put(
-                            userId,
-                            new TodayEarningsDuePlayerDto(
-                                    userId,
-                                    userNames.getOrDefault(userId, "Customer"),
-                                    amount));
-                }
-            });
-        }
+        mergeActivityDuePlayers(duePlayersByUser, activityDuePlayers);
 
         return new TodayEarningsResponseDto(
                 baseEarnings.add(activityEarnings),
@@ -195,6 +174,38 @@ public class AnalyticsService {
         }
 
         return new AnalyticsBranchContext(actor, context.getCurrentOrganization().getId(), branch);
+    }
+
+    protected void mergeActivityDuePlayers(
+            Map<Integer, TodayEarningsDuePlayerDto> duePlayersByUser,
+            Map<Integer, TodayEarningsDuePlayerDto> activityDuePlayers) {
+        if (duePlayersByUser == null || activityDuePlayers == null || activityDuePlayers.isEmpty()) {
+            return;
+        }
+
+        activityDuePlayers.forEach((userId, activityPlayer) -> {
+            if (userId == null || activityPlayer == null || activityPlayer.getDue() == null
+                    || activityPlayer.getDue().compareTo(BigDecimal.ZERO) <= 0) {
+                return;
+            }
+            TodayEarningsDuePlayerDto existing = duePlayersByUser.get(userId);
+            if (existing != null) {
+                duePlayersByUser.put(
+                        userId,
+                        new TodayEarningsDuePlayerDto(
+                                userId,
+                                existing.getName(),
+                                existing.getDue().add(activityPlayer.getDue())));
+                return;
+            }
+
+            duePlayersByUser.put(
+                    userId,
+                    new TodayEarningsDuePlayerDto(
+                            userId,
+                            activityPlayer.getName(),
+                            activityPlayer.getDue()));
+        });
     }
 
     private record AnalyticsBranchContext(User actor, Long organizationId, Branch branch) {

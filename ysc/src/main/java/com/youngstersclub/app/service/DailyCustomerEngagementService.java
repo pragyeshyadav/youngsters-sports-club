@@ -11,11 +11,7 @@ import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,9 +70,7 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
         LocalDateTime executionTime = TimeUtil.nowIST();
         List<DailyVisitedOrganizationDto> visitedCustomers =
                 dailyCustomerVisitRepository.findDailyVisitedCustomersByOrganization(today);
-        List<DailyVisitRecipient> aggregatedRecipients = aggregateDailyVisitRecipients(visitedCustomers);
-
-        int totalUsers = aggregatedRecipients.size();
+        int totalUsers = visitedCustomers.size();
         int sentCount = 0;
         int failedCount = 0;
         List<WhatsappTemplateExecutionRecipientDto> recipientSummaries = new ArrayList<>();
@@ -84,48 +78,32 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
 
         log.info("Daily visit thank-you job started for date: {}. Mode: {}. Total users identified: {}", today, mode, totalUsers);
 
-        for (DailyVisitRecipient customer : aggregatedRecipients) {
-            if (customer.phone() == null || customer.phone().isBlank()) {
+        for (DailyVisitedOrganizationDto customer : visitedCustomers) {
+            if (customer.getPhone() == null || customer.getPhone().isBlank()) {
                 log.warn(
                         "Daily visit thank-you skipped for userId: {}, organizationId: {} because phone number is missing",
-                        customer.userId(),
-                        customer.organizationId());
+                        customer.getUserId(),
+                        customer.getOrganizationId());
                 failedCount++;
                 continue;
             }
 
             if (isDryRun) {
                 sentCount++;
-                recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
-                        customer.userId(),
-                        customer.name(),
-                        customer.phone(),
-                        null,
-                        null,
-                        customer.organizationName(),
-                        customer.branchNames(),
-                        "VISITED TODAY"));
+                recipientSummaries.add(buildRecipientSummary(customer));
                 continue;
             }
 
-            boolean sent = whatsAppService.sendDailyVisitThankYouMessage(customer.phone(), customer.name());
+            boolean sent = whatsAppService.sendDailyVisitThankYouMessage(customer.getPhone(), customer.getName());
             if (sent) {
                 sentCount++;
-                recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
-                        customer.userId(),
-                        customer.name(),
-                        customer.phone(),
-                        null,
-                        null,
-                        customer.organizationName(),
-                        customer.branchNames(),
-                        "VISITED TODAY"));
+                recipientSummaries.add(buildRecipientSummary(customer));
             } else {
                 failedCount++;
                 log.warn(
                         "Daily visit thank-you message failed or skipped for userId: {}, organizationId: {}",
-                        customer.userId(),
-                        customer.organizationId());
+                        customer.getUserId(),
+                        customer.getOrganizationId());
             }
         }
 
@@ -153,25 +131,16 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
         return result;
     }
 
-    private List<DailyVisitRecipient> aggregateDailyVisitRecipients(
-            List<DailyVisitedOrganizationDto> visitedCustomers) {
-        Map<String, AggregatedDailyVisitRecipient> aggregated = new LinkedHashMap<>();
-        for (DailyVisitedOrganizationDto customer : visitedCustomers) {
-            String key = customer.getUserId() + "|" + customer.getOrganizationId();
-            AggregatedDailyVisitRecipient recipient = aggregated.computeIfAbsent(
-                    key,
-                    ignored -> new AggregatedDailyVisitRecipient(
-                            customer.getUserId(),
-                            customer.getName(),
-                            customer.getPhone(),
-                            customer.getOrganizationId(),
-                            customer.getOrganizationName()));
-            recipient.addBranchName(customer.getBranchName());
-        }
-
-        return aggregated.values().stream()
-                .map(AggregatedDailyVisitRecipient::toRecipient)
-                .toList();
+    protected WhatsappTemplateExecutionRecipientDto buildRecipientSummary(DailyVisitedOrganizationDto customer) {
+        return new WhatsappTemplateExecutionRecipientDto(
+                customer.getUserId(),
+                customer.getName(),
+                customer.getPhone(),
+                null,
+                null,
+                customer.getOrganizationName(),
+                customer.getBranchName(),
+                "VISITED TODAY");
     }
 
     private void sendDailySummaryEmail(WhatsappTemplateExecutionResultDto result) {
@@ -190,52 +159,6 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
                     emailSentCount);
         } catch (Exception ex) {
             log.error("Daily WhatsApp summary email failed. Reason: {}", ex.getMessage(), ex);
-        }
-    }
-
-    private record DailyVisitRecipient(
-            Integer userId,
-            String name,
-            String phone,
-            Long organizationId,
-            String organizationName,
-            String branchNames) {}
-
-    private static final class AggregatedDailyVisitRecipient {
-        private final Integer userId;
-        private final String name;
-        private final String phone;
-        private final Long organizationId;
-        private final String organizationName;
-        private final Set<String> branchNames = new LinkedHashSet<>();
-
-        private AggregatedDailyVisitRecipient(
-                Integer userId,
-                String name,
-                String phone,
-                Long organizationId,
-                String organizationName) {
-            this.userId = userId;
-            this.name = name;
-            this.phone = phone;
-            this.organizationId = organizationId;
-            this.organizationName = organizationName;
-        }
-
-        private void addBranchName(String branchName) {
-            if (branchName != null && !branchName.isBlank()) {
-                branchNames.add(branchName.trim());
-            }
-        }
-
-        private DailyVisitRecipient toRecipient() {
-            return new DailyVisitRecipient(
-                    userId,
-                    name,
-                    phone,
-                    organizationId,
-                    organizationName,
-                    branchNames.isEmpty() ? "Organization-wide" : String.join(", ", branchNames));
         }
     }
 }

@@ -5,6 +5,7 @@ import com.youngstersclub.app.dto.GameActivityOrderCreateRequest;
 import com.youngstersclub.app.dto.GameActivityOrderResponseDto;
 import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.PendingKidsPlayBreakdownDto;
+import com.youngstersclub.app.dto.TodayEarningsDuePlayerDto;
 import com.youngstersclub.app.entity.Branch;
 import com.youngstersclub.app.entity.Game;
 import com.youngstersclub.app.entity.GameActivityOrder;
@@ -427,6 +428,31 @@ public class GameActivityService {
                 .forEach(projection ->
                         dues.put(projection.getUserId(), projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
         return dues;
+    }
+
+    public Map<Integer, TodayEarningsDuePlayerDto> getUnpaidDuePlayersByDate(LocalDate selectedDate, Long branchId) {
+        if (selectedDate == null || branchId == null) {
+            return Map.of();
+        }
+
+        Map<Integer, TodayEarningsDuePlayerDto> duePlayers = new LinkedHashMap<>();
+        LocalDateTime startDateTime = selectedDate.atStartOfDay();
+        LocalDateTime endDateTime = selectedDate.plusDays(1).atStartOfDay();
+        gameActivityOrderRepository.getUnpaidDueWithNameByUserForDateAndBranchId(startDateTime, endDateTime, branchId)
+                .forEach(projection -> {
+                    if (projection.getUserId() == null) {
+                        return;
+                    }
+                    duePlayers.put(
+                            projection.getUserId(),
+                            new TodayEarningsDuePlayerDto(
+                                    projection.getUserId(),
+                                    projection.getUserName() == null || projection.getUserName().isBlank()
+                                            ? "Customer"
+                                            : projection.getUserName(),
+                                    projection.getAmount() == null ? BigDecimal.ZERO : projection.getAmount()));
+                });
+        return duePlayers;
     }
 
     private void validateDuration(Integer durationMinutes) {

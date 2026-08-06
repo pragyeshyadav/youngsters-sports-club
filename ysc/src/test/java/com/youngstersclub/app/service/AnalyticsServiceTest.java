@@ -2,6 +2,7 @@ package com.youngstersclub.app.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
@@ -9,6 +10,7 @@ import static org.mockito.Mockito.when;
 import com.youngstersclub.app.dto.BranchOptionDto;
 import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.OrganizationOptionDto;
+import com.youngstersclub.app.dto.TodayEarningsDuePlayerDto;
 import com.youngstersclub.app.dto.TodayEarningsResponseDto;
 import com.youngstersclub.app.entity.Branch;
 import com.youngstersclub.app.entity.Organization;
@@ -91,7 +93,7 @@ class AnalyticsServiceTest {
                 .thenReturn(BigDecimal.ZERO);
         when(gameActivityService.getTotalUnpaidDueBetween(selectedDate.atStartOfDay(), selectedDate.plusDays(1).atStartOfDay(), branch.getId()))
                 .thenReturn(BigDecimal.ZERO);
-        when(gameActivityService.getUnpaidDueByUserForDate(selectedDate, branch.getId())).thenReturn(java.util.Map.of());
+        when(gameActivityService.getUnpaidDuePlayersByDate(selectedDate, branch.getId())).thenReturn(java.util.Map.of());
 
         PaymentRepository.SettledPaymentProjection projection = new PaymentRepository.SettledPaymentProjection() {
             @Override
@@ -132,9 +134,10 @@ class AnalyticsServiceTest {
         verify(paymentRepository).findSettledPaymentsByBranchAndReferenceDateBetween(branch.getId(), selectedDate, selectedDate);
         verify(gameActivityService).getGrossEarningsBetween(selectedDate.atStartOfDay(), selectedDate.plusDays(1).atStartOfDay(), branch.getId());
         verify(gameActivityService).getTotalUnpaidDueBetween(selectedDate.atStartOfDay(), selectedDate.plusDays(1).atStartOfDay(), branch.getId());
-        verify(gameActivityService).getUnpaidDueByUserForDate(selectedDate, branch.getId());
+        verify(gameActivityService).getUnpaidDuePlayersByDate(selectedDate, branch.getId());
         verify(frameRepository, never()).findEarningsAnalyticsByDate(selectedDate);
         verify(frameRepository, never()).findTodayEarningsAnalytics();
+        verify(userRepository, never()).findAllById(any());
     }
 
     @Test
@@ -159,6 +162,22 @@ class AnalyticsServiceTest {
                 () -> analyticsService.getEarningsForDate(LocalDate.of(2026, 7, 31), "manager@test.com"));
 
         assertEquals("You do not have access to the current branch", exception.getMessage());
+    }
+
+    @Test
+    void mergeActivityDuePlayersAddsToExistingAndCreatesMissingUsers() {
+        java.util.Map<Integer, TodayEarningsDuePlayerDto> duePlayersByUser = new java.util.LinkedHashMap<>();
+        duePlayersByUser.put(1, new TodayEarningsDuePlayerDto(1, "Rahul", BigDecimal.valueOf(100)));
+
+        java.util.Map<Integer, TodayEarningsDuePlayerDto> activityDuePlayers = new java.util.LinkedHashMap<>();
+        activityDuePlayers.put(1, new TodayEarningsDuePlayerDto(1, "Rahul", BigDecimal.valueOf(25)));
+        activityDuePlayers.put(2, new TodayEarningsDuePlayerDto(2, "Prince", BigDecimal.valueOf(50)));
+
+        analyticsService.mergeActivityDuePlayers(duePlayersByUser, activityDuePlayers);
+
+        assertEquals(new BigDecimal("125"), duePlayersByUser.get(1).getDue());
+        assertEquals("Prince", duePlayersByUser.get(2).getName());
+        assertEquals(new BigDecimal("50"), duePlayersByUser.get(2).getDue());
     }
 
     private void mockAuthorizedContext() {

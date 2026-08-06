@@ -32,6 +32,12 @@ public interface GameActivityOrderRepository extends JpaRepository<GameActivityO
         BigDecimal getAmount();
     }
 
+    interface UserActivityDueWithNameProjection {
+        Integer getUserId();
+        String getUserName();
+        BigDecimal getAmount();
+    }
+
     @Query("""
         SELECT gao FROM GameActivityOrder gao
         JOIN FETCH gao.game g
@@ -177,6 +183,24 @@ public interface GameActivityOrderRepository extends JpaRepository<GameActivityO
         GROUP BY gao.parentUser.id
     """)
     List<UserActivityDueProjection> getUnpaidDueByUserForDateAndBranchId(
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime,
+            @Param("branchId") Long branchId);
+
+    @Query("""
+        SELECT
+            gao.parentUser.id AS userId,
+            gao.parentUser.name AS userName,
+            COALESCE(SUM(gao.totalAmount), 0) AS amount
+        FROM GameActivityOrder gao
+        WHERE gao.branch.id = :branchId
+        AND COALESCE(gao.isPaid, false) = false
+        AND gao.totalAmount > 0
+        AND gao.createdAt >= :startDateTime
+        AND gao.createdAt < :endDateTime
+        GROUP BY gao.parentUser.id, gao.parentUser.name
+    """)
+    List<UserActivityDueWithNameProjection> getUnpaidDueWithNameByUserForDateAndBranchId(
             @Param("startDateTime") LocalDateTime startDateTime,
             @Param("endDateTime") LocalDateTime endDateTime,
             @Param("branchId") Long branchId);
