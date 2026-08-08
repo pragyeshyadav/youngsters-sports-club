@@ -1,5 +1,6 @@
 package com.youngstersclub.app.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.youngstersclub.app.enums.PaymentMethod;
 import com.youngstersclub.app.enums.PaymentStatus;
 import jakarta.persistence.*;
@@ -23,6 +24,11 @@ public class Payment {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     private User user;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
 
     @Column(precision = 10, scale = 2, nullable = false)
     private BigDecimal amount;
@@ -51,6 +57,8 @@ public class Payment {
     public void setFrame(Frame frame) { this.frame = frame; }
     public User getUser() { return user; }
     public void setUser(User user) { this.user = user; }
+    public Branch getBranch() { return branch; }
+    public void setBranch(Branch branch) { this.branch = branch; }
     public BigDecimal getAmount() { return amount; }
     public void setAmount(BigDecimal amount) { this.amount = amount; }
     public BigDecimal getDiscount() { return discount; }

@@ -21,16 +21,22 @@ public class TournamentController {
     }
 
     @GetMapping("/active")
-    public ResponseEntity<List<TournamentResponse>> getActiveSummerOlympicsEvents() {
-        return ResponseEntity.ok(tournamentService.getActiveSummerOlympicsEvents());
+    public ResponseEntity<List<TournamentResponse>> getActiveSummerOlympicsEvents(
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(tournamentService.getActiveSummerOlympicsEvents(actorEmail));
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> registerUserForTournaments(@RequestBody TournamentRegistrationRequest request) {
+    public ResponseEntity<?> registerUserForTournaments(
+            @RequestBody TournamentRegistrationRequest request,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         if (request.getUserId() == null || request.getTournamentIds() == null || request.getTournamentIds().isEmpty()) {
             return ResponseEntity.badRequest().body("User ID and at least one tournament are required.");
         }
-        TournamentRegistrationResult result = tournamentService.registerUserForTournaments(request.getUserId(), request.getTournamentIds());
+        TournamentRegistrationResult result = tournamentService.registerUserForTournaments(
+                request.getUserId(),
+                request.getTournamentIds(),
+                actorEmail);
         return ResponseEntity.ok(result);
     }
 }

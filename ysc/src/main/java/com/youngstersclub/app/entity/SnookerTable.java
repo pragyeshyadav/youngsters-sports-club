@@ -27,6 +27,11 @@ public class SnookerTable {
     @Column(name = "is_available", nullable = false)
     private Boolean isAvailable = true;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -55,6 +60,9 @@ public class SnookerTable {
 
     public Boolean getIsAvailable() { return isAvailable; }
     public void setIsAvailable(Boolean isAvailable) { this.isAvailable = isAvailable; }
+
+    public Branch getBranch() { return branch; }
+    public void setBranch(Branch branch) { this.branch = branch; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

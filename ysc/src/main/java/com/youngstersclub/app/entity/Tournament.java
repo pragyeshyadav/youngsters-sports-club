@@ -1,5 +1,6 @@
 package com.youngstersclub.app.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -27,6 +28,11 @@ public class Tournament {
 
     @Column(name = "registration_fee")
     private BigDecimal registrationFee;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
 
     @Column(name = "is_active")
     private Boolean isActive = true;
@@ -67,6 +73,8 @@ public class Tournament {
 
     public BigDecimal getRegistrationFee() { return registrationFee; }
     public void setRegistrationFee(BigDecimal registrationFee) { this.registrationFee = registrationFee; }
+    public Branch getBranch() { return branch; }
+    public void setBranch(Branch branch) { this.branch = branch; }
 
     public Boolean getIsActive() { return isActive; }
     public void setIsActive(Boolean isActive) { this.isActive = isActive; }

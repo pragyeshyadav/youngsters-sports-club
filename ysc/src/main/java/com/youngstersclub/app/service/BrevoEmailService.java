@@ -2,7 +2,6 @@ package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
-import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
@@ -35,16 +34,6 @@ public class BrevoEmailService {
     private static final String HAPPY_BIRTHDAY_WISHES_SUBJECT = "Happy Birthday Wishes Summary";
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd MMM yyyy");
 
-    private static final class CustomerSummary {
-        private final String name;
-        private final String phone;
-
-        private CustomerSummary(String name, String phone) {
-            this.name = name;
-            this.phone = phone;
-        }
-    }
-
     private static final class UserSummary {
         private final String name;
         private final String phone;
@@ -63,10 +52,9 @@ public class BrevoEmailService {
     @Value("${brevo.sender-email:}")
     private String senderEmail;
 
-    public int sendSummaryEmail(
-            List<UserRepository.DailyVisitedCustomerProjection> customers,
-            List<String> adminEmails,
-            boolean isDryRun) {
+    public int sendDailyVisitSummaryEmail(
+            WhatsappTemplateExecutionResultDto result,
+            List<String> adminEmails) {
         if (adminEmails == null || adminEmails.isEmpty()) {
             log.warn("Brevo summary email skipped because no admin recipient emails were found");
             return 0;
@@ -77,22 +65,7 @@ public class BrevoEmailService {
             return 0;
         }
 
-        LocalDate currentDate = TimeUtil.nowIST().toLocalDate();
-        List<CustomerSummary> sortedCustomers = (customers == null ? List.<UserRepository.DailyVisitedCustomerProjection>of() : customers)
-                .stream()
-                .map(customer -> new CustomerSummary(
-                        sanitizeName(customer.getName()),
-                        sanitizePhone(customer.getPhone())))
-                .collect(Collectors.toMap(
-                        customer -> customer.name.toLowerCase() + "|" + customer.phone,
-                        customer -> customer,
-                        (existing, ignored) -> existing))
-                .values()
-                .stream()
-                .sorted((left, right) -> left.name.compareToIgnoreCase(right.name))
-                .toList();
-
-        String htmlContent = buildSummaryHtml(currentDate, sortedCustomers, isDryRun);
+        String htmlContent = buildDailyVisitSummaryHtml(result);
         int sentCount = 0;
 
         for (String adminEmail : sanitizeEmails(adminEmails)) {
@@ -267,17 +240,27 @@ public class BrevoEmailService {
         log.info("Brevo summary email response for {}. status: {}, body: {}", adminEmail, response.getStatusCode(), response.getBody());
     }
 
-    private String buildSummaryHtml(LocalDate currentDate, List<CustomerSummary> customerSummaries, boolean isDryRun) {
-        String customerListHtml = customerSummaries.isEmpty()
+    private String buildDailyVisitSummaryHtml(WhatsappTemplateExecutionResultDto result) {
+        List<WhatsappTemplateExecutionRecipientDto> recipients = result == null ? List.of() : result.getRecipients();
+        LocalDate currentDate = (result == null ? TimeUtil.nowIST() : result.getExecutionTime()).toLocalDate();
+        String customerListHtml = recipients.isEmpty()
                 ? "<li>No users found.</li>"
-                : customerSummaries.stream()
-                        .map(summary -> "<li>" + escapeHtml(summary.name) + " - " + escapeHtml(summary.phone) + "</li>")
+                : recipients.stream()
+                        .map(recipient -> "<li>"
+                                + escapeHtml(sanitizeName(recipient.getName()))
+                                + "<br/>Organization : " + escapeHtml(recipient.getOrganizationName())
+                                + "<br/>Branches : " + escapeHtml(recipient.getBranchName())
+                                + "<br/>Phone : " + escapeHtml(sanitizePhone(recipient.getPhone()))
+                                + "<br/>Status : " + escapeHtml(defaultString(recipient.getStatus(), "VISITED"))
+                                + "</li>")
                         .collect(Collectors.joining());
 
         return "<h3>Daily WhatsApp Notification Summary</h3>"
-                + "<p>Mode: " + (isDryRun ? "DRY RUN" : "ACTUAL RUN") + "</p>"
+                + "<p>Mode: " + ((result != null && result.isDryRun()) ? "DRY RUN" : "ACTUAL RUN") + "</p>"
                 + "<p>Date: " + escapeHtml(currentDate.format(DATE_FORMATTER)) + "</p>"
-                + "<p>Total Users Notified: " + customerSummaries.size() + "</p>"
+                + "<p>Total Users Notified: " + (result == null ? 0 : result.getEligibleCustomers()) + "</p>"
+                + "<p>Messages Sent Successfully: " + (result == null ? 0 : result.getSuccessfulMessages()) + "</p>"
+                + "<p>Failed Messages: " + (result == null ? 0 : result.getFailedMessages()) + "</p>"
                 + "<ul>" + customerListHtml + "</ul>";
     }
 
@@ -316,8 +299,11 @@ public class BrevoEmailService {
                 : recipients.stream()
                         .map(recipient -> "<li>"
                                 + escapeHtml(sanitizeName(recipient.getName()))
+                                + "<br/>Organization : " + escapeHtml(defaultString(recipient.getOrganizationName(), "Unknown"))
+                                + "<br/>Branches : " + escapeHtml(defaultString(recipient.getBranchName(), "Organization-wide"))
                                 + "<br/>Due : ₹"
                                 + escapeHtml(recipient.getAmount() == null ? "0" : recipient.getAmount().stripTrailingZeros().toPlainString())
+                                + "<br/>Status : " + escapeHtml(defaultString(recipient.getStatus(), "DUE"))
                                 + "</li>")
                         .collect(Collectors.joining());
 
@@ -341,8 +327,11 @@ public class BrevoEmailService {
                 : recipients.stream()
                         .map(recipient -> "<li>"
                                 + "Customer : " + escapeHtml(sanitizeName(recipient.getName()))
+                                + "<br/>Organization : " + escapeHtml(defaultString(recipient.getOrganizationName(), "Unknown"))
+                                + "<br/>Base Branch : " + escapeHtml(defaultString(recipient.getBranchName(), "Not available"))
                                 + "<br/>Kid : " + escapeHtml(sanitizeName(recipient.getDetail()))
                                 + "<br/>Phone : " + escapeHtml(sanitizePhone(recipient.getPhone()))
+                                + "<br/>Status : " + escapeHtml(defaultString(recipient.getStatus(), "BIRTHDAY"))
                                 + "</li>")
                         .collect(Collectors.joining());
 
@@ -389,5 +378,9 @@ public class BrevoEmailService {
 
     private String sanitizePhone(String value) {
         return (value == null || value.isBlank()) ? "Phone not available" : value.trim();
+    }
+
+    private String defaultString(String value, String fallback) {
+        return (value == null || value.isBlank()) ? fallback : value.trim();
     }
 }

@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -24,25 +25,33 @@ public class KidsPlaySessionController {
     }
 
     @PostMapping("/start")
-    public ResponseEntity<KidsSessionResponseDto> start(@RequestBody KidsSessionStartRequest request) {
-        return ResponseEntity.ok(kidsPlayService.startSession(request));
+    public ResponseEntity<KidsSessionResponseDto> start(
+            @RequestBody KidsSessionStartRequest request,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(kidsPlayService.startSession(request, actorEmail));
     }
 
     @PostMapping("/end")
-    public ResponseEntity<KidsSessionResponseDto> end(@RequestBody KidsSessionEndRequest request) {
-        return ResponseEntity.ok(kidsPlayService.endSession(request));
+    public ResponseEntity<KidsSessionResponseDto> end(
+            @RequestBody KidsSessionEndRequest request,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(kidsPlayService.endSession(request, actorEmail));
     }
 
     @PostMapping("/reject")
-    public ResponseEntity<KidsSessionResponseDto> reject(@RequestBody KidsSessionEndRequest request) {
-        return ResponseEntity.ok(kidsPlayService.rejectSession(request.getSessionId()));
+    public ResponseEntity<KidsSessionResponseDto> reject(
+            @RequestBody KidsSessionEndRequest request,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(kidsPlayService.rejectSession(request.getSessionId(), actorEmail));
     }
 
     @GetMapping("/active")
-    public ResponseEntity<List<KidsSessionResponseDto>> active(@RequestParam(required = false) Integer parentUserId) {
+    public ResponseEntity<List<KidsSessionResponseDto>> active(
+            @RequestParam(required = false) Integer parentUserId,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         if (parentUserId == null) {
-            return ResponseEntity.ok(kidsPlayService.getAllActiveSessions());
+            return ResponseEntity.ok(kidsPlayService.getAllActiveSessions(actorEmail));
         }
-        return ResponseEntity.ok(kidsPlayService.getActiveSessions(parentUserId));
+        return ResponseEntity.ok(kidsPlayService.getActiveSessions(parentUserId, actorEmail));
     }
 }

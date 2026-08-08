@@ -3,3 +3,6 @@ export const AUTH_SESSION_STORAGE_KEY = 'ysc_auth_session';
 
 /** GIS credential (JWT) — used by AuthGuard and quick restore. */
 export const GOOGLE_TOKEN_STORAGE_KEY = 'google_token';
+
+/** Organization/branch working context for the current signed-in session. */
+export const ORGANIZATION_CONTEXT_STORAGE_KEY = 'ysc_organization_context';

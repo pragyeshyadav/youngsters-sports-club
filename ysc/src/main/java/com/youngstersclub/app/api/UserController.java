@@ -1,26 +1,31 @@
 package com.youngstersclub.app.api;
 
 import com.youngstersclub.app.dto.CreateCustomerRequest;
+import com.youngstersclub.app.dto.CreateCustomerResponseDto;
 import com.youngstersclub.app.dto.MergeUserAccountRequest;
 import com.youngstersclub.app.dto.MessageResponseDto;
 import com.youngstersclub.app.dto.PhoneVerificationResponse;
 import com.youngstersclub.app.dto.PlayerSummaryDto;
 import com.youngstersclub.app.dto.UpdateCustomerRequest;
+import com.youngstersclub.app.dto.UserSearchResultDto;
 import com.youngstersclub.app.dto.VerifyPhoneRequest;
 import com.youngstersclub.app.dto.UserPhoneUpdateRequest;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.service.OrganizationContextService;
 import com.youngstersclub.app.service.PlayerSummaryService;
 import com.youngstersclub.app.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Optional;
 import java.util.regex.Pattern;
+import org.springframework.data.domain.PageRequest;
 
 @RestController
 public class UserController {
@@ -29,14 +34,17 @@ public class UserController {
     private static final Pattern PHONE_PATTERN = Pattern.compile("^[0-9]{10}$");
     private final UserRepository userRepository;
     private final UserService userService;
+    private final OrganizationContextService organizationContextService;
     private final PlayerSummaryService playerSummaryService;
 
     public UserController(
             UserRepository userRepository,
             UserService userService,
+            OrganizationContextService organizationContextService,
             PlayerSummaryService playerSummaryService) {
         this.userRepository = userRepository;
         this.userService = userService;
+        this.organizationContextService = organizationContextService;
         this.playerSummaryService = playerSummaryService;
     }
 
@@ -48,13 +56,28 @@ public class UserController {
     }
 
     @GetMapping("/api/users/search")
-    public List<User> searchUsers(@RequestParam String query) {
+    public List<UserSearchResultDto> searchUsers(@RequestParam String query) {
         String normalizedQuery = query == null ? "" : query.trim();
         if (normalizedQuery.isEmpty()) {
             return List.of();
         }
 
-        return userRepository.findTop10ByNameContainingIgnoreCaseOrderByNameAsc(normalizedQuery);
+        String digitsQuery = normalizedQuery.replaceAll("\\D", "");
+        if (normalizedQuery.length() < 3 && digitsQuery.length() < 3) {
+            return List.of();
+        }
+
+        return userRepository.searchActiveUserSummaries(
+                normalizedQuery,
+                digitsQuery,
+                PageRequest.of(0, 10));
+    }
+
+    @GetMapping("/api/users/search/current-branch")
+    public List<UserSearchResultDto> searchUsersForCurrentBranch(
+            @RequestParam String query,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return userService.searchUsersForCurrentBranch(query, actorEmail);
     }
 
     @PostMapping("/api/user/phone")
@@ -74,7 +97,13 @@ public class UserController {
         }
 
         user.setPhone(request.getPhone());
-        userRepository.save(user);
+        User savedUser = userRepository.save(user);
+        if (request.getOrganizationId() != null && request.getBranchId() != null) {
+            organizationContextService.ensureContextForResolvedUser(
+                    savedUser,
+                    request.getOrganizationId(),
+                    request.getBranchId());
+        }
 
         log.info("Phone number saved successfully for user: {}", request.getEmail());
         return ResponseEntity.ok("Phone number saved successfully");
@@ -113,6 +142,12 @@ public class UserController {
 
         try {
             User mergedUser = userService.mergeUserAccounts(email, phoneNumber);
+            if (request.getOrganizationId() != null && request.getBranchId() != null) {
+                organizationContextService.ensureContextForResolvedUser(
+                        mergedUser,
+                        request.getOrganizationId(),
+                        request.getBranchId());
+            }
             return ResponseEntity.ok(mergedUser);
         } catch (IllegalArgumentException | IllegalStateException ex) {
             log.warn("User merge failed for email {} and phone {}: {}", email, phoneNumber, ex.getMessage());
@@ -125,56 +160,37 @@ public class UserController {
 
     @GetMapping("/api/users/player-summary")
     public ResponseEntity<org.springframework.data.domain.Page<PlayerSummaryDto>> getPlayerSummary(
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
-        return ResponseEntity.ok(playerSummaryService.getPlayerSummaries(pageable));
+        try {
+            return ResponseEntity.ok(playerSummaryService.getPlayerSummaries(pageable, actorEmail));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(403).build();
+        } catch (java.util.NoSuchElementException ex) {
+            return ResponseEntity.status(404).build();
+        }
     }
 
     @PostMapping("/api/users/create-customer")
-    public ResponseEntity<?> createCustomer(@RequestBody CreateCustomerRequest request) {
-        if (request == null) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer details are required"));
+    public ResponseEntity<?> createCustomer(
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail,
+            @RequestBody CreateCustomerRequest request) {
+        try {
+            CreateCustomerResponseDto response = userService.createManualCustomerInCurrentContext(request, actorEmail);
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(403).body(new MessageResponseDto(ex.getMessage()));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(409).body(new MessageResponseDto(ex.getMessage()));
+        } catch (java.util.NoSuchElementException ex) {
+            return ResponseEntity.status(404).body(new MessageResponseDto(ex.getMessage()));
+        } catch (DataIntegrityViolationException ex) {
+            return ResponseEntity.status(409).body(new MessageResponseDto("Customer creation conflicted with an existing membership mapping"));
         }
-
-        String name = request.getName() == null ? "" : request.getName().trim();
-        String email = request.getEmail() == null ? "" : request.getEmail().trim().toLowerCase();
-        String mobileNumber = request.getMobileNumber() == null ? "" : request.getMobileNumber().trim();
-
-        if (name.isEmpty()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Name is required"));
-        }
-
-        if (!email.isEmpty() && !EMAIL_PATTERN.matcher(email).matches()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Valid email is required"));
-        }
-
-        if (!PHONE_PATTERN.matcher(mobileNumber).matches()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Mobile number must be exactly 10 digits"));
-        }
-
-        if (email.isEmpty()) {
-            email = buildDummyEmail(name, mobileNumber);
-        }
-
-        if (userRepository.findByEmail(email).isPresent()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer with this email already exists"));
-        }
-
-        if (userRepository.findByPhone(mobileNumber).isPresent()) {
-            return ResponseEntity.badRequest().body(new MessageResponseDto("Customer with this mobile number already exists"));
-        }
-
-        User user = new User();
-        user.setName(name);
-        user.setEmail(email);
-        user.setGoogleId("MANUAL_USER_" + mobileNumber);
-        user.setPhone(mobileNumber);
-        user.setRole(UserRole.CUSTOMER);
-        user.setIsActive(true);
-        userRepository.save(user);
-
-        return ResponseEntity.ok(new MessageResponseDto("Customer created successfully"));
     }
 
     @PutMapping("/api/customer/update")
@@ -229,18 +245,4 @@ public class UserController {
         return ResponseEntity.ok(user);
     }
 
-    private String buildDummyEmail(String name, String mobileNumber) {
-        String normalizedName = name == null
-                ? "customer"
-                : name.toLowerCase()
-                        .trim()
-                        .replaceAll("\\s+", "_")
-                        .replaceAll("[^a-z0-9_]", "");
-
-        if (normalizedName.isBlank()) {
-            normalizedName = "customer";
-        }
-
-        return "dummy_" + normalizedName + "_" + mobileNumber + "@gmail.com";
-    }
 }

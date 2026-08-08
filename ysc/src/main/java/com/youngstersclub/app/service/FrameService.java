@@ -2,32 +2,43 @@ package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.StartFrameRequest;
 import com.youngstersclub.app.dto.PendingFrameBreakdownDto;
+import com.youngstersclub.app.dto.OrganizationContextDto;
+import com.youngstersclub.app.entity.Branch;
 import com.youngstersclub.app.entity.Frame;
 import com.youngstersclub.app.entity.FramePlayer;
+import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.SnookerTable;
 import com.youngstersclub.app.entity.User;
+import com.youngstersclub.app.entity.UserBranchAccess;
 import com.youngstersclub.app.enums.FrameStatus;
 import com.youngstersclub.app.enums.PaymentStatus;
 import com.youngstersclub.app.enums.UserRole;
+import com.youngstersclub.app.repository.BranchRepository;
 import com.youngstersclub.app.repository.FramePlayerRepository;
 import com.youngstersclub.app.repository.FrameRepository;
+import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.SnookerTableRepository;
+import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import jakarta.transaction.Transactional;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.NoSuchElementException;
+import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,21 +56,39 @@ public class FrameService {
     private final FrameRepository frameRepository;
     private final FramePlayerRepository framePlayerRepository;
     private final UserRepository userRepository;
+    private final OrganizationContextService organizationContextService;
+    private final OrganizationUserRepository organizationUserRepository;
+    private final BranchRepository branchRepository;
+    private final UserBranchAccessRepository userBranchAccessRepository;
+    private final UserDueService userDueService;
+    private final LeaderboardCacheService leaderboardCacheService;
 
     public FrameService(
             SnookerTableRepository tableRepository,
             FrameRepository frameRepository,
             FramePlayerRepository framePlayerRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            OrganizationContextService organizationContextService,
+            OrganizationUserRepository organizationUserRepository,
+            BranchRepository branchRepository,
+            UserBranchAccessRepository userBranchAccessRepository,
+            UserDueService userDueService,
+            LeaderboardCacheService leaderboardCacheService) {
         this.tableRepository = tableRepository;
         this.frameRepository = frameRepository;
         this.framePlayerRepository = framePlayerRepository;
         this.userRepository = userRepository;
+        this.organizationContextService = organizationContextService;
+        this.organizationUserRepository = organizationUserRepository;
+        this.branchRepository = branchRepository;
+        this.userBranchAccessRepository = userBranchAccessRepository;
+        this.userDueService = userDueService;
+        this.leaderboardCacheService = leaderboardCacheService;
     }
 
     @Transactional
-    public Integer startFrame(StartFrameRequest request) {
-        if (request == null || request.getTableId() == null || request.getStartedBy() == null) {
+    public Integer startFrame(StartFrameRequest request, String actorEmail) {
+        if (request == null || request.getTableId() == null) {
             throw new IllegalArgumentException("Missing start frame details");
         }
 
@@ -68,9 +97,11 @@ public class FrameService {
             throw new IllegalArgumentException("At least one player is required");
         }
 
-        User startedBy = userRepository.findById(request.getStartedBy()).orElseThrow();
-        List<SnookerTable> availableTables = tableRepository.findByIsAvailableTrueOrderByIdAsc();
-        boolean isPrivileged = PRIVILEGED_ROLES.contains(startedBy.getRole());
+        FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+        User startedBy = context.actor();
+        Branch currentBranch = context.branch();
+        List<SnookerTable> availableTables = tableRepository.findAvailableTablesSafeByBranchId(currentBranch.getId());
+        boolean isPrivileged = PRIVILEGED_ROLES.contains(context.role());
 
         if (availableTables.isEmpty()) {
             throw new RuntimeException("No table available");
@@ -89,7 +120,16 @@ public class FrameService {
             throw new IllegalArgumentException("Table id is required");
         }
 
-        SnookerTable table = tableRepository.findById(requestedTableId).orElseThrow();
+        SnookerTable table = tableRepository
+                .findByIdAndBranch_IdAndIsActiveTrue(requestedTableId, currentBranch.getId())
+                .orElseThrow(() -> {
+                    log.warn(
+                            "action=DENY_START_FRAME requestedTableId={} branchId={} actorUserId={} reason=CROSS_BRANCH_TABLE",
+                            requestedTableId,
+                            currentBranch.getId(),
+                            startedBy.getId());
+                    return new NoSuchElementException("Table not found");
+                });
         if (!Boolean.TRUE.equals(table.getIsAvailable())) {
             throw new RuntimeException("Table is not available");
         }
@@ -98,6 +138,7 @@ public class FrameService {
         tableRepository.save(table);
 
         Frame frame = new Frame();
+        frame.setBranch(currentBranch);
         frame.setSnookerTable(table);
         frame.setStartedBy(startedBy);
         frame.setStartTime(TimeUtil.nowIST());
@@ -118,7 +159,66 @@ public class FrameService {
             framePlayerRepository.save(framePlayer);
         }
 
+        log.info(
+                "action=START_FRAME organizationId={} branchId={} tableId={} frameId={} playerCount={} actorUserId={}",
+                context.organizationId(),
+                currentBranch.getId(),
+                table.getId(),
+                frame.getId(),
+                players.size(),
+                startedBy.getId());
         return frame.getId();
+    }
+
+    private FrameOperationContext resolveFrameOperationContext(String actorEmail) {
+        String normalizedEmail = actorEmail == null ? "" : actorEmail.trim().toLowerCase();
+        if (normalizedEmail.isEmpty()) {
+            throw new SecurityException("Authenticated user email is required");
+        }
+
+        User actor = userRepository.findByEmail(normalizedEmail)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                .orElseThrow(() -> new SecurityException("Authenticated user not found"));
+
+        OrganizationContextDto context = organizationContextService.resolveContext(normalizedEmail);
+        if (context.getCurrentOrganization() == null || context.getCurrentBranch() == null) {
+            throw new IllegalArgumentException("Current organization and branch context are required");
+        }
+
+        UserRole actorRole = context.getCurrentRole() == null || context.getCurrentRole().isBlank()
+                ? actor.getRole()
+                : UserRole.valueOf(context.getCurrentRole());
+
+        OrganizationUser membership = organizationUserRepository
+                .findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), context.getCurrentOrganization().getId())
+                .orElseThrow(() -> new NoSuchElementException("Caller organization membership not found"));
+
+        Branch branch = branchRepository
+                .findByIdAndOrganizationIdAndIsActiveTrue(
+                        context.getCurrentBranch().getId(),
+                        context.getCurrentOrganization().getId())
+                .orElseThrow(() -> new NoSuchElementException("Current branch not found"));
+
+        boolean branchAccessible = membership.getBaseBranch() != null
+                && branch.getId().equals(membership.getBaseBranch().getId());
+        if (!branchAccessible) {
+            branchAccessible = userBranchAccessRepository
+                    .existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(membership.getId(), branch.getId());
+        }
+
+        if (!branchAccessible) {
+            throw new SecurityException("You do not have access to the current branch");
+        }
+
+        return new FrameOperationContext(actor, membership, branch, context.getCurrentOrganization().getId(), actorRole);
+    }
+
+    private record FrameOperationContext(
+            User actor,
+            OrganizationUser membership,
+            Branch branch,
+            Long organizationId,
+            UserRole role) {
     }
 
     private <T> T executeWithRetry(String operationName, Supplier<T> action) {
@@ -127,6 +227,9 @@ public class FrameService {
             try {
                 return action.get();
             } catch (Exception e) {
+                if (!isRetryableDataAccessException(e)) {
+                    throw e;
+                }
                 if (attempt == maxRetries) {
                     log.error("DB connection failed after {} attempts for {}", maxRetries, operationName, e);
                     throw e;
@@ -140,6 +243,10 @@ public class FrameService {
             }
         }
         return null;
+    }
+
+    private boolean isRetryableDataAccessException(Exception exception) {
+        return exception instanceof DataAccessException;
     }
 
     public Map<String, Object> getActiveFrame(Integer userId) {
@@ -182,18 +289,15 @@ public class FrameService {
         return getActiveFrame(userId);
     }
 
-    public Map<String, Object> getFrameDetails(Integer frameId) {
+    public Map<String, Object> getFrameDetails(Integer frameId, String actorEmail) {
         if (frameId == null) {
             return null;
         }
 
         return executeWithRetry("getFrameDetails", () -> {
-            Optional<Frame> frameOpt = frameRepository.findDetailedById(frameId);
-            if (frameOpt.isEmpty()) {
-                return null;
-            }
-
-            Frame frame = frameOpt.get();
+            FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+            Frame frame = frameRepository.findDetailedByIdAndBranchId(frameId, context.branch().getId())
+                    .orElseThrow(() -> new NoSuchElementException("Frame not found"));
             List<FramePlayer> players = framePlayerRepository.findByFrame_Id(frame.getId());
 
             Map<String, Object> frameDetails = new HashMap<>();
@@ -220,11 +324,21 @@ public class FrameService {
     }
 
     public List<Map<String, Object>> getFramePlayers(Integer frameId) {
+        return getFramePlayers(frameId, null);
+    }
+
+    public List<Map<String, Object>> getFramePlayers(Integer frameId, String actorEmail) {
         if (frameId == null) {
             return List.of();
         }
 
         return executeWithRetry("getFramePlayers", () -> {
+            if (actorEmail != null && !actorEmail.isBlank()) {
+                FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+                frameRepository.findByIdAndBranch_Id(frameId, context.branch().getId())
+                        .orElseThrow(() -> new NoSuchElementException("Frame not found"));
+            }
+
             return framePlayerRepository.findByFrame_Id(frameId).stream().map(player -> {
                 Map<String, Object> playerMap = new HashMap<>();
                 playerMap.put("id", player.getId());
@@ -240,20 +354,8 @@ public class FrameService {
             return List.of();
         }
 
-        return executeWithRetry("getUserFrameHistory", () -> {
-            return frameRepository.findUserFrameHistory(userId).stream().map(frame -> {
-                Map<String, Object> frameMap = new HashMap<>();
-                frameMap.put("frameId", frame.getId());
-                frameMap.put("startTime", frame.getStartTime());
-                frameMap.put("endTime", frame.getEndTime());
-                frameMap.put("duration", frame.getDurationMinutes());
-                frameMap.put("amount", frame.getTotalAmount());
-                frameMap.put("paymentDue", frame.getPaymentDue());
-                frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
-                frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
-                return frameMap;
-            }).toList();
-        });
+        return executeWithRetry("getUserFrameHistory", () ->
+                buildUserFrameHistoryResponse(frameRepository.findUserFrameHistoryRows(userId)));
     }
 
     public BigDecimal getTotalDue(Integer userId) {
@@ -267,43 +369,29 @@ public class FrameService {
         });
     }
 
-    public List<Map<String, Object>> getTodayOngoingFrames() {
+    public List<Map<String, Object>> getTodayOngoingFrames(String actorEmail) {
         return executeWithRetry("getTodayOngoingFrames", () -> {
-            LocalDate today = LocalDate.now();
+            FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+            LocalDate today = TimeUtil.nowIST().toLocalDate();
             LocalDateTime startOfDay = today.atStartOfDay();
             LocalDateTime endOfDay = today.plusDays(1).atStartOfDay();
 
-            return frameRepository.findTodayOngoingFrames(startOfDay, endOfDay).stream().map(frame -> {
-                Map<String, Object> frameMap = new HashMap<>();
-                frameMap.put("id", frame.getId());
-                frameMap.put("tableId", frame.getSnookerTable() != null ? frame.getSnookerTable().getId() : null);
-                frameMap.put("tableName", frame.getSnookerTable() != null ? frame.getSnookerTable().getTableName() : null);
-                frameMap.put("startTime", frame.getStartTime());
-                frameMap.put("status", frame.getStatus());
-                frameMap.put("startedBy", frame.getStartedBy() != null ? frame.getStartedBy().getName() : null);
-                frameMap.put(
-                        "players",
-                        frame.getFramePlayers() == null
-                                ? List.of()
-                                : frame.getFramePlayers().stream()
-                                        .map(player -> player.getUser() != null
-                                                ? player.getUser().getName()
-                                                : player.getPlayerName())
-                                        .filter(playerName -> playerName != null && !playerName.isBlank())
-                                        .distinct()
-                                        .toList());
-                return frameMap;
-            }).toList();
+            return buildTodayOngoingFramesResponse(
+                    frameRepository.findTodayOngoingFrameRowsByBranchId(
+                            context.branch().getId(),
+                            startOfDay,
+                            endOfDay));
         });
     }
 
-    public List<Map<String, Object>> getTodayCompletedFrames() {
+    public List<Map<String, Object>> getTodayCompletedFrames(String actorEmail) {
         return executeWithRetry("getTodayCompletedFrames", () -> {
-            LocalDate today = LocalDate.now();
+            FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+            LocalDate today = TimeUtil.nowIST().toLocalDate();
             LocalDateTime startOfDay = today.atStartOfDay();
             LocalDateTime endOfDay = today.plusDays(1).atStartOfDay();
 
-            return frameRepository.findTodayCompletedFrames(startOfDay, endOfDay).stream().map(frame -> {
+            return frameRepository.findTodayCompletedFramesByBranchId(context.branch().getId(), startOfDay, endOfDay).stream().map(frame -> {
                 Map<String, Object> frameMap = new HashMap<>();
                 frameMap.put("id", frame.getId());
                 frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
@@ -318,14 +406,15 @@ public class FrameService {
         });
     }
 
-    public List<Map<String, Object>> getCompletedFramesByDate(LocalDate selectedDate) {
+    public List<Map<String, Object>> getCompletedFramesByDate(LocalDate selectedDate, String actorEmail) {
         LocalDate targetDate = selectedDate == null ? TimeUtil.nowIST().toLocalDate() : selectedDate;
 
         return executeWithRetry("getCompletedFramesByDate", () -> {
+            FrameOperationContext context = resolveFrameOperationContext(actorEmail);
             LocalDateTime startOfDay = targetDate.atStartOfDay();
             LocalDateTime endOfDay = targetDate.plusDays(1).atStartOfDay();
 
-            return frameRepository.findTodayCompletedFrames(startOfDay, endOfDay).stream().map(frame -> {
+            return frameRepository.findTodayCompletedFramesByBranchId(context.branch().getId(), startOfDay, endOfDay).stream().map(frame -> {
                 Map<String, Object> frameMap = new HashMap<>();
                 frameMap.put("id", frame.getId());
                 frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
@@ -345,20 +434,20 @@ public class FrameService {
             return List.of();
         }
 
-        return executeWithRetry("getUserDueFrames", () -> {
-            return frameRepository.findDueFramesByUser(userId).stream().map(frame -> {
-                Map<String, Object> frameMap = new HashMap<>();
-                frameMap.put("frameId", frame.getId());
-                frameMap.put("startTime", frame.getStartTime());
-                frameMap.put("endTime", frame.getEndTime());
-                frameMap.put("duration", frame.getDurationMinutes());
-                frameMap.put("amount", frame.getTotalAmount());
-                frameMap.put("paymentDue", frame.getPaymentDue());
-                frameMap.put("winnerName", frame.getWinner() != null ? frame.getWinner().getName() : null);
-                frameMap.put("looserName", frame.getLooser() != null ? frame.getLooser().getName() : null);
-                return frameMap;
-            }).toList();
-        });
+        return executeWithRetry("getUserDueFrames", () ->
+                buildDueFramesResponse(frameRepository.findDueFrameRowsByUser(userId), false));
+    }
+
+    public List<Map<String, Object>> getUserDueFrames(Integer userId, String actorEmail) {
+        if (userId == null) {
+            return List.of();
+        }
+
+        FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+        return executeWithRetry("getUserDueFramesByBranch", () ->
+                buildDueFramesResponse(
+                        frameRepository.findDueFrameRowsByUserAndBranch(userId, context.branch().getId()),
+                        true));
     }
 
     public List<PendingFrameBreakdownDto> getUserDueFramesByDate(Integer userId, LocalDate selectedDate) {
@@ -366,19 +455,33 @@ public class FrameService {
             return List.of();
         }
 
-        return executeWithRetry("getUserDueFramesByDate", () ->
-                frameRepository.findDueFramesByUserOrderByStartTime(userId).stream()
-                        .filter(frame -> frame.getStartTime() != null && selectedDate.equals(frame.getStartTime().toLocalDate()))
-                        .map(frame -> new PendingFrameBreakdownDto(
-                                frame.getId(),
-                                buildMatchupLabel(frame),
-                                frame.getEndTime() != null ? frame.getEndTime() : frame.getStartTime(),
-                                getDueAmountForUser(frame, userId)))
-                        .toList());
+        return executeWithRetry("getUserDueFramesByDate", () -> {
+            LocalDateTime startOfDay = selectedDate.atStartOfDay();
+            LocalDateTime endOfDay = selectedDate.plusDays(1).atStartOfDay();
+            return buildPendingFrameBreakdownResponse(
+                    frameRepository.findDueFrameRowsByUserAndStartTimeBetween(userId, startOfDay, endOfDay));
+        });
+    }
+
+    public List<PendingFrameBreakdownDto> getUserDueFramesByDate(Integer userId, LocalDate selectedDate, Long branchId) {
+        if (userId == null || selectedDate == null || branchId == null) {
+            return List.of();
+        }
+
+        return executeWithRetry("getUserDueFramesByDateAndBranch", () -> {
+            LocalDateTime startOfDay = selectedDate.atStartOfDay();
+            LocalDateTime endOfDay = selectedDate.plusDays(1).atStartOfDay();
+            return buildPendingFrameBreakdownResponse(
+                    frameRepository.findDueFrameRowsByUserAndBranchAndStartTimeBetween(
+                            userId,
+                            branchId,
+                            startOfDay,
+                            endOfDay));
+        });
     }
 
     @Transactional
-    public Map<String, Object> endFrame(Integer frameId, com.youngstersclub.app.dto.EndFrameTeamRequest request) {
+    public Map<String, Object> endFrame(Integer frameId, com.youngstersclub.app.dto.EndFrameTeamRequest request, String actorEmail) {
         if (frameId == null) {
             throw new IllegalArgumentException("Frame id is required");
         }
@@ -386,8 +489,35 @@ public class FrameService {
             throw new IllegalArgumentException("End frame details are required");
         }
 
-        Frame frame = frameRepository.findById(frameId)
-                .orElseThrow(() -> new RuntimeException("Frame not found"));
+        FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+        Frame frame = frameRepository.findForUpdateByIdAndBranchId(frameId, context.branch().getId())
+                .orElseThrow(() -> {
+                    log.warn(
+                            "action=DENY_END_FRAME organizationId={} activeBranchId={} requestedFrameId={} actorUserId={} reason=FRAME_NOT_IN_ACTIVE_BRANCH",
+                            context.organizationId(),
+                            context.branch().getId(),
+                            frameId,
+                            context.actor().getId());
+                    return new NoSuchElementException("Frame not found");
+                });
+
+        Branch historicalBranch = frame.getBranch();
+        if (historicalBranch == null) {
+            throw new IllegalStateException("Frame branch is missing");
+        }
+        if (!historicalBranch.getId().equals(context.branch().getId())) {
+            log.warn(
+                    "action=DENY_END_FRAME organizationId={} activeBranchId={} requestedFrameId={} actorUserId={} reason=FRAME_BRANCH_MISMATCH",
+                    context.organizationId(),
+                    context.branch().getId(),
+                    frameId,
+                    context.actor().getId());
+            throw new NoSuchElementException("Frame not found");
+        }
+        if (historicalBranch.getOrganization() == null
+                || !context.organizationId().equals(historicalBranch.getOrganization().getId())) {
+            throw new SecurityException("Active organization does not match frame organization");
+        }
 
         if (frame.getStatus() != FrameStatus.STARTED) {
             throw new RuntimeException("Frame already ended");
@@ -406,6 +536,9 @@ public class FrameService {
         SnookerTable table = frame.getSnookerTable();
         if (table == null) {
             throw new RuntimeException("Table not found");
+        }
+        if (table.getBranch() == null || !historicalBranch.getId().equals(table.getBranch().getId())) {
+            throw new IllegalStateException("Frame table does not belong to the frame branch");
         }
 
         List<FramePlayer> framePlayers = framePlayerRepository.findByFrame_Id(frameId);
@@ -635,9 +768,22 @@ public class FrameService {
         frame.setPaymentDue(totalAmount);
         frame.setStatus(FrameStatus.ENDED);
         frameRepository.save(frame);
+        syncBranchScopedUserDues(framePlayers, historicalBranch);
 
         table.setIsAvailable(true);
         tableRepository.save(table);
+
+        log.info(
+                "action=END_FRAME organizationId={} branchId={} frameId={} tableId={} actorUserId={} playerCount={} winnerCount={} loserCount={} totalAmount={}",
+                context.organizationId(),
+                historicalBranch.getId(),
+                frame.getId(),
+                table.getId(),
+                context.actor().getId(),
+                playerCount,
+                countWinners(framePlayers),
+                countLosers(framePlayers),
+                totalAmount);
 
         Map<String, Object> response = new HashMap<>();
         response.put("duration", duration);
@@ -645,7 +791,50 @@ public class FrameService {
         response.put("frameId", frame.getId());
         response.put("tableId", table.getId());
         response.put("paymentDue", frame.getPaymentDue());
+        response.put("branchId", historicalBranch.getId());
+        response.put("branchName", historicalBranch.getName());
+        response.put("status", frame.getStatus());
+        response.put("tableName", table.getTableName());
+        response.put("endedAt", frame.getEndTime());
         return response;
+    }
+
+    private void syncBranchScopedUserDues(List<FramePlayer> framePlayers, Branch branch) {
+        if (framePlayers == null || framePlayers.isEmpty() || branch == null) {
+            return;
+        }
+
+        for (FramePlayer framePlayer : framePlayers) {
+            if (framePlayer.getUser() == null || framePlayer.getUser().getId() == null) {
+                continue;
+            }
+            userDueService.syncBranchDue(framePlayer.getUser(), branch);
+
+            log.info(
+                    "action=GENERATE_FRAME_DUE branchId={} frameId={} customerId={} amount={}",
+                    branch.getId(),
+                    framePlayer.getFrame() != null ? framePlayer.getFrame().getId() : null,
+                    framePlayer.getUser().getId(),
+                    framePlayer.getAmountDue());
+        }
+    }
+
+    private int countWinners(List<FramePlayer> framePlayers) {
+        if (framePlayers == null) {
+            return 0;
+        }
+        return (int) framePlayers.stream().filter(player -> Boolean.TRUE.equals(player.getIsWinner())).count();
+    }
+
+    private int countLosers(List<FramePlayer> framePlayers) {
+        if (framePlayers == null) {
+            return 0;
+        }
+        return (int) framePlayers.stream().filter(player -> Boolean.TRUE.equals(player.getIsLoser())).count();
+    }
+
+    private BigDecimal normalizeMoney(BigDecimal amount) {
+        return amount == null ? BigDecimal.ZERO.setScale(2, java.math.RoundingMode.HALF_UP) : amount.setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     private Map<Integer, BigDecimal> splitAmounts(BigDecimal totalAmount, List<Integer> loserIds) {
@@ -655,19 +844,85 @@ public class FrameService {
         }
 
         int loserCount = loserIds.size();
-        BigDecimal baseShare = totalAmount.divide(BigDecimal.valueOf(loserCount), 2, RoundingMode.DOWN);
+        BigDecimal baseShare = totalAmount.divide(BigDecimal.valueOf(loserCount), 2, java.math.RoundingMode.DOWN);
         BigDecimal distributed = BigDecimal.ZERO;
 
         for (int index = 0; index < loserCount; index++) {
             Integer loserId = loserIds.get(index);
             BigDecimal share = index == loserCount - 1
-                    ? totalAmount.subtract(distributed).setScale(2, RoundingMode.HALF_UP)
+                    ? totalAmount.subtract(distributed).setScale(2, java.math.RoundingMode.HALF_UP)
                     : baseShare;
             amounts.put(loserId, share);
             distributed = distributed.add(share);
         }
 
         return amounts;
+    }
+
+    protected List<Map<String, Object>> buildUserFrameHistoryResponse(
+            List<FrameRepository.UserFrameHistoryRowProjection> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        return rows.stream()
+                .map(row -> {
+                    Map<String, Object> frameMap = new HashMap<>();
+                    frameMap.put("frameId", row.getFrameId());
+                    frameMap.put("startTime", row.getStartTime());
+                    frameMap.put("endTime", row.getEndTime());
+                    frameMap.put("duration", row.getDuration());
+                    frameMap.put("amount", row.getAmount());
+                    frameMap.put("paymentDue", row.getPaymentDue());
+                    frameMap.put("winnerName", row.getWinnerName());
+                    frameMap.put("looserName", row.getLooserName());
+                    return frameMap;
+                })
+                .toList();
+    }
+
+    protected List<Map<String, Object>> buildDueFramesResponse(
+            List<FrameRepository.DueFrameRowProjection> rows,
+            boolean useUserSpecificDue) {
+        return aggregateDueFrameRows(rows).values().stream()
+                .map(aggregatedRow -> aggregatedRow.toDueFrameResponse(useUserSpecificDue))
+                .toList();
+    }
+
+    protected List<PendingFrameBreakdownDto> buildPendingFrameBreakdownResponse(
+            List<FrameRepository.DueFrameRowProjection> rows) {
+        return aggregateDueFrameRows(rows).values().stream()
+                .map(AggregatedDueFrameRow::toPendingBreakdown)
+                .toList();
+    }
+
+    protected LinkedHashMap<Integer, AggregatedDueFrameRow> aggregateDueFrameRows(
+            List<FrameRepository.DueFrameRowProjection> rows) {
+        LinkedHashMap<Integer, AggregatedDueFrameRow> aggregatedRows = new LinkedHashMap<>();
+        if (rows == null || rows.isEmpty()) {
+            return aggregatedRows;
+        }
+
+        for (FrameRepository.DueFrameRowProjection row : rows) {
+            if (row == null || row.getFrameId() == null) {
+                continue;
+            }
+
+            AggregatedDueFrameRow aggregatedRow = aggregatedRows.computeIfAbsent(
+                    row.getFrameId(),
+                    ignored -> new AggregatedDueFrameRow(
+                            row.getFrameId(),
+                            row.getStartTime(),
+                            row.getEndTime(),
+                            row.getDuration(),
+                            row.getAmount(),
+                            row.getPaymentDue(),
+                            row.getWinnerName(),
+                            row.getLooserName()));
+            aggregatedRow.addPlayer(row.getPlayerName(), row.getIsWinner(), row.getIsLoser(), row.getUserAmountDue());
+        }
+
+        return aggregatedRows;
     }
 
     private BigDecimal getDueAmountForUser(Frame frame, Integer userId) {
@@ -766,48 +1021,265 @@ public class FrameService {
 
     public List<Map<String, Object>> getAllTableStatuses() {
         return executeWithRetry("getAllTableStatuses", () -> {
-            List<SnookerTable> allTables = tableRepository.findAll();
-            List<Frame> activeFrames = frameRepository.findAllOngoingFrames();
-            
-            Map<Long, Frame> tableActiveFrameMap = new HashMap<>();
-            if (activeFrames != null) {
-                for (Frame f : activeFrames) {
-                    if (f.getSnookerTable() != null) {
-                        tableActiveFrameMap.put(f.getSnookerTable().getId(), f);
-                    }
-                }
-            }
-            
-            List<Map<String, Object>> statuses = new java.util.ArrayList<>();
-            for (SnookerTable table : allTables) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("tableName", table.getTableName());
-                map.put("isAvailable", table.getIsAvailable());
-                
-                List<String> players = new java.util.ArrayList<>();
-                if (!Boolean.TRUE.equals(table.getIsAvailable()) && tableActiveFrameMap.containsKey(table.getId())) {
-                    Frame f = tableActiveFrameMap.get(table.getId());
-                    if (f.getFramePlayers() != null) {
-                        for(FramePlayer fp : f.getFramePlayers()) {
-                           players.add(fp.getUser() != null ? fp.getUser().getName() : fp.getPlayerName());
-                        }
-                    }
-                }
-                map.put("players", players);
-                statuses.add(map);
-            }
-            return statuses;
+            return buildAllTableStatusesResponse(frameRepository.findAllTableStatusRows());
         });
     }
 
-    public List<Map<String, Object>> getTopPlayers() {
+    public List<Map<String, Object>> getTopPlayers(String actorEmail, Integer year, Integer month) {
         return executeWithRetry("getTopPlayers", () -> {
-            return frameRepository.findTopPlayersOfCurrentMonth().stream().map(projection -> {
-                Map<String, Object> map = new HashMap<>();
-                map.put("name", projection.getName());
-                map.put("wins", projection.getWins());
-                return map;
-            }).toList();
+            FrameOperationContext context = resolveFrameOperationContext(actorEmail);
+            YearMonth selectedMonth = resolveLeaderboardMonth(year, month);
+            LocalDateTime startInclusive = selectedMonth.atDay(1).atStartOfDay();
+            LocalDateTime endExclusive = selectedMonth.plusMonths(1).atDay(1).atStartOfDay();
+
+            List<Map<String, Object>> result = leaderboardCacheService.getTopPlayersForBranchMonth(
+                    context.branch().getId(),
+                    context.branch().getName(),
+                    selectedMonth.getYear(),
+                    selectedMonth.getMonthValue(),
+                    startInclusive,
+                    endExclusive);
+
+            log.info(
+                    "action=GET_MONTHLY_TOP10_LEADERBOARD organizationId={} branchId={} year={} month={} actorUserId={} resultCount={}",
+                    context.organizationId(),
+                    context.branch().getId(),
+                    selectedMonth.getYear(),
+                    selectedMonth.getMonthValue(),
+                    context.actor().getId(),
+                    result.size());
+            return result;
         });
+    }
+
+    private YearMonth resolveLeaderboardMonth(Integer year, Integer month) {
+        YearMonth currentMonth = YearMonth.from(TimeUtil.nowIST());
+        if (year == null && month == null) {
+            return currentMonth;
+        }
+        if (year == null || month == null) {
+            throw new IllegalArgumentException("Both year and month are required together");
+        }
+        if (month < 1 || month > 12) {
+            throw new IllegalArgumentException("Month must be between 1 and 12");
+        }
+        if (year < 2000 || year > currentMonth.getYear() + 1) {
+            throw new IllegalArgumentException("Year is out of supported range");
+        }
+        return YearMonth.of(year, month);
+    }
+
+    protected List<Map<String, Object>> buildTodayOngoingFramesResponse(
+            List<FrameRepository.OngoingFrameRowProjection> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Integer, AggregatedOngoingFrameRow> groupedRows = new LinkedHashMap<>();
+        for (FrameRepository.OngoingFrameRowProjection row : rows) {
+            if (row == null || row.getFrameId() == null) {
+                continue;
+            }
+
+            AggregatedOngoingFrameRow aggregate = groupedRows.computeIfAbsent(
+                    row.getFrameId(),
+                    ignored -> new AggregatedOngoingFrameRow(
+                            row.getFrameId(),
+                            row.getTableId(),
+                            row.getTableName(),
+                            row.getStartTime(),
+                            row.getStatus(),
+                            row.getStartedByName()));
+            aggregate.addPlayer(row.getPlayerName());
+        }
+
+        return groupedRows.values().stream()
+                .map(AggregatedOngoingFrameRow::toResponse)
+                .toList();
+    }
+
+    protected List<Map<String, Object>> buildAllTableStatusesResponse(
+            List<FrameRepository.TableStatusRowProjection> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, AggregatedTableStatusRow> groupedRows = new LinkedHashMap<>();
+        for (FrameRepository.TableStatusRowProjection row : rows) {
+            if (row == null || row.getTableId() == null) {
+                continue;
+            }
+
+            AggregatedTableStatusRow aggregate = groupedRows.computeIfAbsent(
+                    row.getTableId(),
+                    ignored -> new AggregatedTableStatusRow(
+                            row.getTableId(),
+                            row.getTableName(),
+                            row.getIsAvailable()));
+            aggregate.addPlayer(row.getPlayerName());
+        }
+
+        return groupedRows.values().stream()
+                .map(AggregatedTableStatusRow::toResponse)
+                .toList();
+    }
+
+    protected static final class AggregatedOngoingFrameRow {
+        private final Integer frameId;
+        private final Long tableId;
+        private final String tableName;
+        private final LocalDateTime startTime;
+        private final String status;
+        private final String startedByName;
+        private final LinkedHashSet<String> players = new LinkedHashSet<>();
+
+        protected AggregatedOngoingFrameRow(
+                Integer frameId,
+                Long tableId,
+                String tableName,
+                LocalDateTime startTime,
+                String status,
+                String startedByName) {
+            this.frameId = frameId;
+            this.tableId = tableId;
+            this.tableName = tableName;
+            this.startTime = startTime;
+            this.status = status;
+            this.startedByName = startedByName;
+        }
+
+        protected void addPlayer(String playerName) {
+            if (playerName != null && !playerName.isBlank()) {
+                players.add(playerName);
+            }
+        }
+
+        protected Map<String, Object> toResponse() {
+            Map<String, Object> frameMap = new HashMap<>();
+            frameMap.put("id", frameId);
+            frameMap.put("tableId", tableId);
+            frameMap.put("tableName", tableName);
+            frameMap.put("startTime", startTime);
+            frameMap.put("status", status);
+            frameMap.put("startedBy", startedByName);
+            frameMap.put("players", List.copyOf(players));
+            return frameMap;
+        }
+    }
+
+    protected static final class AggregatedTableStatusRow {
+        private final Long tableId;
+        private final String tableName;
+        private final Boolean isAvailable;
+        private final LinkedHashSet<String> players = new LinkedHashSet<>();
+
+        protected AggregatedTableStatusRow(Long tableId, String tableName, Boolean isAvailable) {
+            this.tableId = tableId;
+            this.tableName = tableName;
+            this.isAvailable = isAvailable;
+        }
+
+        protected void addPlayer(String playerName) {
+            if (playerName != null && !playerName.isBlank()) {
+                players.add(playerName);
+            }
+        }
+
+        protected Map<String, Object> toResponse() {
+            Map<String, Object> map = new HashMap<>();
+            map.put("tableName", tableName);
+            map.put("isAvailable", isAvailable);
+            map.put("players", List.copyOf(players));
+            return map;
+        }
+    }
+
+    protected static final class AggregatedDueFrameRow {
+        private final Integer frameId;
+        private final LocalDateTime startTime;
+        private final LocalDateTime endTime;
+        private final Integer duration;
+        private final BigDecimal amount;
+        private final BigDecimal paymentDue;
+        private final String winnerName;
+        private final String looserName;
+        private final LinkedHashSet<String> winners = new LinkedHashSet<>();
+        private final LinkedHashSet<String> losers = new LinkedHashSet<>();
+        private BigDecimal userSpecificDue;
+
+        protected AggregatedDueFrameRow(
+                Integer frameId,
+                LocalDateTime startTime,
+                LocalDateTime endTime,
+                Integer duration,
+                BigDecimal amount,
+                BigDecimal paymentDue,
+                String winnerName,
+                String looserName) {
+            this.frameId = frameId;
+            this.startTime = startTime;
+            this.endTime = endTime;
+            this.duration = duration;
+            this.amount = amount;
+            this.paymentDue = paymentDue;
+            this.winnerName = winnerName;
+            this.looserName = looserName;
+        }
+
+        protected void addPlayer(
+                String playerName,
+                Boolean isWinner,
+                Boolean isLoser,
+                BigDecimal rowUserSpecificDue) {
+            if (playerName != null && !playerName.isBlank()) {
+                if (Boolean.TRUE.equals(isWinner)) {
+                    winners.add(playerName);
+                }
+                if (Boolean.TRUE.equals(isLoser)) {
+                    losers.add(playerName);
+                }
+            }
+            if (rowUserSpecificDue != null && rowUserSpecificDue.compareTo(BigDecimal.ZERO) > 0) {
+                this.userSpecificDue = rowUserSpecificDue;
+            }
+        }
+
+        protected Map<String, Object> toDueFrameResponse(boolean useUserSpecificDue) {
+            Map<String, Object> frameMap = new HashMap<>();
+            frameMap.put("frameId", frameId);
+            frameMap.put("startTime", startTime);
+            frameMap.put("endTime", endTime);
+            frameMap.put("duration", duration);
+            frameMap.put("amount", amount);
+            frameMap.put("paymentDue", resolveDueAmount(useUserSpecificDue));
+            frameMap.put("winnerName", winnerName);
+            frameMap.put("looserName", looserName);
+            return frameMap;
+        }
+
+        protected PendingFrameBreakdownDto toPendingBreakdown() {
+            return new PendingFrameBreakdownDto(
+                    frameId,
+                    resolveMatchupLabel(),
+                    endTime != null ? endTime : startTime,
+                    resolveDueAmount(true));
+        }
+
+        protected BigDecimal resolveDueAmount(boolean useUserSpecificDue) {
+            if (useUserSpecificDue && userSpecificDue != null) {
+                return userSpecificDue;
+            }
+            return paymentDue == null ? BigDecimal.ZERO : paymentDue;
+        }
+
+        protected String resolveMatchupLabel() {
+            if (!winners.isEmpty() && !losers.isEmpty()) {
+                return String.join(" & ", winners) + " vs " + String.join(" & ", losers);
+            }
+            if (winnerName != null && !winnerName.isBlank() && looserName != null && !looserName.isBlank()) {
+                return winnerName + " vs " + looserName;
+            }
+            return "Frame";
+        }
     }
 }

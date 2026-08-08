@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -203,7 +203,10 @@ export class AdminPageComponent implements OnInit {
     this.stockError = '';
     this.cdr.markForCheck();
 
-    this.http.get<ConsumableItemOption[]>(`/api/consumables/items/search?query=${encodeURIComponent(query)}`).subscribe({
+    this.http.get<ConsumableItemOption[]>(
+      `/api/consumables/items/search?query=${encodeURIComponent(query)}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (items) => {
         if (requestId !== this.stockItemSearchRequestId) {
           return;
@@ -247,11 +250,15 @@ export class AdminPageComponent implements OnInit {
     this.stockError = '';
     this.cdr.markForCheck();
 
-    this.http.post<{ message?: string }>('/api/admin/consumables/stock', {
-      itemId: this.selectedStockItem.id,
-      quantityAdded: this.selectedStockQuantity,
-      addedBy: this.currentUserId,
-    }).subscribe({
+    this.http.post<{ message?: string }>(
+      '/api/admin/consumables/stock',
+      {
+        itemId: this.selectedStockItem.id,
+        quantityAdded: this.selectedStockQuantity,
+        addedBy: this.currentUserId,
+      },
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (response) => {
         this.stockItemSearchText = '';
         this.stockItems = [];
@@ -334,6 +341,7 @@ export class AdminPageComponent implements OnInit {
 
     this.http.get<ConsumableStockReportRow[]>(
       `/api/admin/consumables/stock-report?month=${this.selectedConsumableReportMonth}&year=${this.selectedConsumableReportYear}`,
+      { headers: this.buildActorHeaders() },
     ).subscribe({
       next: (report) => {
         this.consumableStockReport = report ?? [];
@@ -357,5 +365,28 @@ export class AdminPageComponent implements OnInit {
 
     const parsed = typeof value === 'number' ? value : Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.auth.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private getStoredUserEmail(): string {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      const rawUser = window.localStorage.getItem('user');
+      if (!rawUser) {
+        return '';
+      }
+      const parsed = JSON.parse(rawUser) as { email?: string | null };
+      return parsed?.email?.trim() ?? '';
+    } catch {
+      return '';
+    }
   }
 }
