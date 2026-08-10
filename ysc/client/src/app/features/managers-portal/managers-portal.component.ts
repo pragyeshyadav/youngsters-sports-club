@@ -128,6 +128,35 @@ interface ChildProfile {
   school?: string | null;
 }
 
+interface BranchExpense {
+  id: number;
+  expenseName: string;
+  amount: number | string | null;
+  expenseType: 'COUNTER_CASH' | 'POCKET_CASH';
+  expenseDate: string;
+  notes?: string | null;
+  paidByUserId: number;
+  paidByName: string;
+  createdByUserId: number;
+  createdByName: string;
+  branchId: number;
+  branchName: string;
+  createdAt: string;
+}
+
+interface ExpensePayerOption {
+  userId: number;
+  name: string;
+  role: string | null;
+}
+
+interface ExpenseMonthOption {
+  value: string;
+  label: string;
+  year: number;
+  month: number;
+}
+
 interface OnboardingBranchOption {
   id: number;
   name: string;
@@ -201,6 +230,8 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   private currentBranchId: number | null = null;
   private playersRequestVersion = 0;
   private branchStateVersion = 0;
+  private expensesRequestVersion = 0;
+  private expensePayersRequestVersion = 0;
 
   isOngoingExpanded = false;
   ongoingFrames: OngoingFrame[] = [];
@@ -270,6 +301,24 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   selectedOnboardingOrganizationId: number | null = null;
   selectedOnboardingBranchIds: number[] = [];
   selectedOnboardingBaseBranchId: number | null = null;
+  isMonthlyExpensesExpanded = false;
+  isLoadingMonthlyExpenses = false;
+  hasLoadedMonthlyExpenses = false;
+  monthlyExpenses: BranchExpense[] = [];
+  expenseMonthOptions: ExpenseMonthOption[] = [];
+  selectedExpenseMonthValue = '';
+  isAddExpenseExpanded = false;
+  isLoadingExpensePayers = false;
+  expensePayers: ExpensePayerOption[] = [];
+  isSavingExpense = false;
+  expenseForm = {
+    expenseName: '',
+    amount: null as number | null,
+    expenseType: '',
+    paidByUserId: null as number | null,
+    expenseDate: '',
+    notes: '',
+  };
 
   isPlayersExpanded = false;
   isLoadingPlayers = false;
@@ -312,6 +361,8 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.maxEarningsDate = this.maxCompletedDate;
     this.selectedEarningsDate = this.maxEarningsDate;
     this.minEarningsDate = this.minCompletedDate;
+    this.initializeExpenseMonthOptions();
+    this.resetExpenseForm();
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
     this.bindOrganizationContext();
@@ -542,6 +593,27 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   toggleUpdateCustomer(): void {
     this.isUpdateCustomerExpanded = !this.isUpdateCustomerExpanded;
+  }
+
+  toggleMonthlyExpenses(): void {
+    this.isMonthlyExpensesExpanded = !this.isMonthlyExpensesExpanded;
+
+    if (this.isMonthlyExpensesExpanded) {
+      if (!this.hasLoadedMonthlyExpenses && !this.isLoadingMonthlyExpenses) {
+        this.loadMonthlyExpenses();
+      }
+      if (this.expensePayers.length === 0 && !this.isLoadingExpensePayers) {
+        this.loadExpensePayers();
+      }
+    }
+  }
+
+  toggleAddExpensePanel(): void {
+    this.isAddExpenseExpanded = !this.isAddExpenseExpanded;
+
+    if (this.isAddExpenseExpanded && this.expensePayers.length === 0 && !this.isLoadingExpensePayers) {
+      this.loadExpensePayers();
+    }
   }
 
   toggleOnboardExistingUser(): void {
@@ -1021,6 +1093,68 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
   }
 
+  onExpenseMonthChange(): void {
+    if (!this.isMonthlyExpensesExpanded || !this.selectedExpenseMonthValue) {
+      return;
+    }
+    this.loadMonthlyExpenses();
+  }
+
+  isExpenseFormValid(): boolean {
+    return this.expenseForm.expenseName.trim().length > 0
+      && this.expenseForm.expenseName.trim().length <= 200
+      && this.expenseForm.amount !== null
+      && Number(this.expenseForm.amount) > 0
+      && !!this.expenseForm.expenseType
+      && this.expenseForm.paidByUserId !== null
+      && !!this.expenseForm.expenseDate
+      && this.expenseForm.expenseDate <= this.maxCompletedDate
+      && !this.isSavingExpense;
+  }
+
+  saveExpense(): void {
+    if (!this.isExpenseFormValid()) {
+      return;
+    }
+
+    this.isSavingExpense = true;
+    this.http.post<BranchExpense>('/api/manager/expenses', {
+      expenseName: this.expenseForm.expenseName.trim(),
+      amount: this.expenseForm.amount,
+      expenseType: this.expenseForm.expenseType,
+      paidByUserId: this.expenseForm.paidByUserId,
+      expenseDate: this.expenseForm.expenseDate,
+      notes: this.expenseForm.notes.trim(),
+    }, { headers: this.buildActorHeaders() }).subscribe({
+      next: (expense) => {
+        this.isSavingExpense = false;
+        const savedMonthValue = (expense?.expenseDate ?? '').slice(0, 7);
+        const savedMonthLabel = this.getExpenseMonthLabel(savedMonthValue);
+        this.resetExpenseForm();
+
+        if (savedMonthValue && savedMonthValue === this.selectedExpenseMonthValue) {
+          this.loadMonthlyExpenses();
+          alert('Expense added successfully');
+          return;
+        }
+
+        if (savedMonthValue && this.expenseMonthOptions.some((option) => option.value === savedMonthValue)) {
+          this.selectedExpenseMonthValue = savedMonthValue;
+          this.loadMonthlyExpenses();
+          alert(`Expense added successfully for ${savedMonthLabel}.`);
+          return;
+        }
+
+        alert(`Expense added successfully${savedMonthLabel ? ` for ${savedMonthLabel}` : ''}.`);
+      },
+      error: (err) => {
+        console.error('Failed to save expense', err);
+        this.isSavingExpense = false;
+        alert(err?.error?.message || 'Unable to save expense right now');
+      },
+    });
+  }
+
   loadPlayers(): void {
     if (this.isLoadingPlayers || !this.hasMorePlayers) return;
     const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
@@ -1173,6 +1307,7 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.resetFrameListsForBranchChange();
         this.resetEarningsForBranchChange();
         this.resetPlayersForBranchChange();
+        this.resetMonthlyExpensesForBranchChange();
         if (nextBranchId) {
           if (this.isOngoingExpanded) {
             this.loadOngoingFrames();
@@ -1185,6 +1320,10 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
           }
           if (this.isPlayersExpanded) {
             this.loadPlayers();
+          }
+          if (this.isMonthlyExpensesExpanded) {
+            this.loadMonthlyExpenses();
+            this.loadExpensePayers();
           }
         }
       }),
@@ -1244,6 +1383,69 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     };
   }
 
+  private initializeExpenseMonthOptions(): void {
+    const monthFormatter = new Intl.DateTimeFormat('en-IN', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const options: ExpenseMonthOption[] = [];
+    const baseDate = new Date();
+
+    for (let offset = 0; offset < 6; offset++) {
+      const optionDate = new Date(baseDate.getFullYear(), baseDate.getMonth() - offset, 1);
+      const year = optionDate.getFullYear();
+      const month = optionDate.getMonth() + 1;
+      options.push({
+        value: `${year}-${`${month}`.padStart(2, '0')}`,
+        label: monthFormatter.format(optionDate),
+        year,
+        month,
+      });
+    }
+
+    this.expenseMonthOptions = options;
+    this.selectedExpenseMonthValue = options[0]?.value ?? '';
+  }
+
+  private loadMonthlyExpenses(): void {
+    const selectedMonth = this.expenseMonthOptions.find((option) => option.value === this.selectedExpenseMonthValue);
+    if (!selectedMonth) {
+      this.monthlyExpenses = [];
+      this.hasLoadedMonthlyExpenses = false;
+      this.isLoadingMonthlyExpenses = false;
+      return;
+    }
+
+    this.isLoadingMonthlyExpenses = true;
+    this.monthlyExpenses = [];
+    const requestVersion = ++this.expensesRequestVersion;
+    const branchVersion = this.branchStateVersion;
+
+    this.http.get<BranchExpense[]>(
+      '/api/manager/expenses',
+      { headers: this.buildActorHeaders(), params: { year: selectedMonth.year, month: selectedMonth.month } as any },
+    ).subscribe({
+      next: (expenses) => {
+        if (requestVersion !== this.expensesRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        this.monthlyExpenses = expenses ?? [];
+        this.hasLoadedMonthlyExpenses = true;
+        this.isLoadingMonthlyExpenses = false;
+      },
+      error: (err) => {
+        if (requestVersion !== this.expensesRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        console.error('Failed to load monthly expenses', err);
+        this.monthlyExpenses = [];
+        this.hasLoadedMonthlyExpenses = false;
+        this.isLoadingMonthlyExpenses = false;
+        alert(err?.error?.message || 'Unable to load monthly expenses right now');
+      },
+    });
+  }
+
   private buildActorHeaders(): HttpHeaders {
     const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
     return actorEmail
@@ -1267,6 +1469,84 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       duePlayers: [],
       settledPayments: [],
     };
+  }
+
+  private loadExpensePayers(): void {
+    this.isLoadingExpensePayers = true;
+    this.expensePayers = [];
+    const requestVersion = ++this.expensePayersRequestVersion;
+    const branchVersion = this.branchStateVersion;
+
+    this.http.get<ExpensePayerOption[]>(
+      '/api/manager/expenses/eligible-payers',
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
+      next: (payers) => {
+        if (requestVersion !== this.expensePayersRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        this.expensePayers = payers ?? [];
+        this.isLoadingExpensePayers = false;
+      },
+      error: (err) => {
+        if (requestVersion !== this.expensePayersRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        console.error('Failed to load expense payers', err);
+        this.expensePayers = [];
+        this.isLoadingExpensePayers = false;
+        alert(err?.error?.message || 'Unable to load eligible payers right now');
+      },
+    });
+  }
+
+  private resetMonthlyExpensesForBranchChange(): void {
+    this.expensesRequestVersion++;
+    this.expensePayersRequestVersion++;
+    this.isLoadingMonthlyExpenses = false;
+    this.hasLoadedMonthlyExpenses = false;
+    this.monthlyExpenses = [];
+    this.isAddExpenseExpanded = false;
+    this.isLoadingExpensePayers = false;
+    this.expensePayers = [];
+    this.isSavingExpense = false;
+    this.initializeExpenseMonthOptions();
+    this.resetExpenseForm();
+  }
+
+  private resetExpenseForm(): void {
+    this.expenseForm = {
+      expenseName: '',
+      amount: null,
+      expenseType: '',
+      paidByUserId: null,
+      expenseDate: this.maxCompletedDate || this.formatDate(new Date()),
+      notes: '',
+    };
+  }
+
+  private getExpenseMonthLabel(value: string): string {
+    return this.expenseMonthOptions.find((option) => option.value === value)?.label ?? '';
+  }
+
+  getSelectedExpenseMonthLabel(): string {
+    return this.getExpenseMonthLabel(this.selectedExpenseMonthValue);
+  }
+
+  getMonthlyExpenseTotal(): number {
+    return this.monthlyExpenses.reduce((total, expense) => total + this.toNumber(expense.amount), 0);
+  }
+
+  formatExpenseTypeLabel(expenseType: string | null | undefined): string {
+    if (!expenseType) {
+      return '-';
+    }
+
+    return expenseType
+      .toLowerCase()
+      .split('_')
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(' ');
   }
 
   private loadParentChildren(parentId: number): void {
