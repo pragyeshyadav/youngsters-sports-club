@@ -19,6 +19,12 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
     String getBaseBranchName();
   }
 
+  interface ActiveBranchStaffProjection {
+    Integer getUserId();
+    String getName();
+    UserRole getRole();
+  }
+
   @EntityGraph(attributePaths = {"organization", "baseBranch", "user"})
   List<OrganizationUser> findByUserIdAndIsActiveTrue(Integer userId);
 
@@ -68,4 +74,32 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
   List<ActiveCustomerMembershipProjection> findActiveCustomerMembershipsByRoleAndOrganizationId(
           @Param("role") UserRole role,
           @Param("organizationId") Long organizationId);
+
+  @Query("""
+      SELECT
+          ou.user.id AS userId,
+          ou.user.name AS name,
+          ou.role AS role
+      FROM OrganizationUser ou
+      WHERE ou.organization.id = :organizationId
+        AND ou.role IN :roles
+        AND ou.isActive = true
+        AND ou.user IS NOT NULL
+        AND ou.user.isActive = true
+        AND (
+            (ou.baseBranch IS NOT NULL AND ou.baseBranch.id = :branchId)
+            OR EXISTS (
+                SELECT 1
+                FROM UserBranchAccess uba
+                WHERE uba.organizationUser = ou
+                  AND uba.branch.id = :branchId
+                  AND uba.isActive = true
+            )
+        )
+      ORDER BY ou.user.name ASC, ou.user.id ASC
+  """)
+  List<ActiveBranchStaffProjection> findActiveStaffByOrganizationIdAndBranchIdAndRoles(
+          @Param("organizationId") Long organizationId,
+          @Param("branchId") Long branchId,
+          @Param("roles") List<UserRole> roles);
 }

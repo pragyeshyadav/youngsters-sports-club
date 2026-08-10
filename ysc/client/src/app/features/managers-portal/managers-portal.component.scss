@@ -81,6 +81,10 @@
   background: linear-gradient(135deg, #b45309 0%, #ea580c 48%, #f59e0b 100%);
 }
 
+.monthly-expenses-header {
+  background: linear-gradient(135deg, #be185d 0%, #db2777 48%, #f97316 100%);
+}
+
 .panel-chevron {
   font-size: 0.95rem;
 }
@@ -500,7 +504,8 @@
   }
 
   input,
-  select {
+  select,
+  textarea {
     width: 100%;
     padding: 0.85rem 1rem;
     border: 1px solid #cbd5e1;
@@ -508,6 +513,16 @@
     font-size: 1rem;
     background: white;
   }
+
+  textarea {
+    resize: vertical;
+    min-height: 92px;
+    font-family: inherit;
+  }
+}
+
+.customer-field--full {
+  grid-column: 1 / -1;
 }
 
 .customer-search-field {
@@ -797,6 +812,70 @@
   padding: 0.5rem 0 0;
 }
 
+.monthly-expenses-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.monthly-expenses-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(220px, 0.8fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.monthly-expenses-total {
+  background: #ffffff;
+  border-radius: 0.95rem;
+  padding: 0.95rem 1rem;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+
+  span {
+    color: #475569;
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  strong {
+    color: #be123c;
+    font-size: 1.35rem;
+  }
+}
+
+.expenses-table td {
+  vertical-align: top;
+}
+
+.expense-card {
+  border-left-color: #db2777;
+}
+
+.expense-notes-row span:last-child {
+  color: #475569;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.nested-expense-panel {
+  margin-top: 0.5rem;
+}
+
+.nested-expense-header {
+  background: linear-gradient(135deg, #0f766e 0%, #0d9488 48%, #14b8a6 100%);
+}
+
+.add-expense-body {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.expense-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .completed-table {
   tbody tr.paid-row,
   tbody tr.partial-row,
@@ -873,6 +952,11 @@
   }
 
   .onboarding-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .expense-form-grid,
+  .monthly-expenses-toolbar {
     grid-template-columns: 1fr;
   }
 

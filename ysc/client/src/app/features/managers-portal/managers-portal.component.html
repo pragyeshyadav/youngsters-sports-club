@@ -857,6 +857,208 @@
       }
     </div>
 
+    <div class="portal-panel monthly-expenses-panel">
+      <button type="button" class="panel-header monthly-expenses-header" (click)="toggleMonthlyExpenses()">
+        <span>💸 Add Monthly Expenses</span>
+        <span class="panel-chevron">{{ isMonthlyExpensesExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isMonthlyExpensesExpanded) {
+        <div class="panel-body monthly-expenses-body">
+          <div class="monthly-expenses-toolbar">
+            <div class="customer-field">
+              <label for="monthly-expense-month">Select Month</label>
+              <select
+                id="monthly-expense-month"
+                [(ngModel)]="selectedExpenseMonthValue"
+                (change)="onExpenseMonthChange()">
+                @for (monthOption of expenseMonthOptions; track monthOption.value) {
+                  <option [value]="monthOption.value">{{ monthOption.label }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="monthly-expenses-total">
+              <span>Total Expenses for {{ getSelectedExpenseMonthLabel() }}</span>
+              <strong>₹{{ getMonthlyExpenseTotal() }}</strong>
+            </div>
+          </div>
+
+          @if (isLoadingMonthlyExpenses) {
+            <div class="spinner-container compact-spinner">
+              <div class="spinner" aria-label="Loading monthly expenses"></div>
+            </div>
+          } @else if (monthlyExpenses.length === 0) {
+            <p class="panel-message">No expenses found for {{ getSelectedExpenseMonthLabel() }}.</p>
+          } @else if (!isMobile) {
+            <div class="table-wrap">
+              <table class="frames-table expenses-table">
+                <thead>
+                  <tr>
+                    <th>Expense</th>
+                    <th>Paid By</th>
+                    <th>Amount</th>
+                    <th>Type</th>
+                    <th>Date</th>
+                    <th>Notes</th>
+                    <th>Created By</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (expense of monthlyExpenses; track expense.id) {
+                    <tr>
+                      <td>{{ expense.expenseName }}</td>
+                      <td>{{ expense.paidByName || '-' }}</td>
+                      <td class="text-red">₹{{ expense.amount ?? 0 }}</td>
+                      <td>{{ formatExpenseTypeLabel(expense.expenseType) }}</td>
+                      <td>{{ expense.expenseDate | date: 'dd MMM y' }}</td>
+                      <td>{{ expense.notes || '-' }}</td>
+                      <td>{{ expense.createdByName || '-' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <div class="card-container">
+              @for (expense of monthlyExpenses; track expense.id) {
+                <div class="history-card expense-card">
+                  <div class="card-row">
+                    <span>💸 Expense</span>
+                    <strong>{{ expense.expenseName }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>Amount</span>
+                    <strong class="text-red">₹{{ expense.amount ?? 0 }}</strong>
+                  </div>
+                  <div class="card-row">
+                    <span>Type</span>
+                    <span>{{ formatExpenseTypeLabel(expense.expenseType) }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>Paid By</span>
+                    <span>{{ expense.paidByName || '-' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>Date</span>
+                    <span>{{ expense.expenseDate | date: 'dd MMM y' }}</span>
+                  </div>
+                  <div class="card-row">
+                    <span>Created By</span>
+                    <span>{{ expense.createdByName || '-' }}</span>
+                  </div>
+                  <div class="card-row expense-notes-row">
+                    <span>Notes</span>
+                    <span>{{ expense.notes || '-' }}</span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+
+          <div class="portal-panel nested-expense-panel">
+            <button type="button" class="panel-header nested-expense-header" (click)="toggleAddExpensePanel()">
+              <span>➕ Add Expense</span>
+              <span class="panel-chevron">{{ isAddExpenseExpanded ? '▲' : '▼' }}</span>
+            </button>
+
+            @if (isAddExpenseExpanded) {
+              <div class="panel-body add-expense-body">
+                <div class="customer-form-grid expense-form-grid">
+                  <div class="customer-field">
+                    <label for="expense-name">Expense Name</label>
+                    <input
+                      id="expense-name"
+                      type="text"
+                      [(ngModel)]="expenseForm.expenseName"
+                      placeholder="Enter expense name"
+                      autocomplete="off"
+                    />
+                  </div>
+
+                  <div class="customer-field">
+                    <label for="expense-amount">Amount</label>
+                    <input
+                      id="expense-amount"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      [(ngModel)]="expenseForm.amount"
+                      placeholder="Enter amount"
+                      autocomplete="off"
+                    />
+                  </div>
+
+                  <div class="customer-field">
+                    <label for="expense-type">Expense Type</label>
+                    <select id="expense-type" [(ngModel)]="expenseForm.expenseType">
+                      <option value="">Select expense type</option>
+                      <option value="COUNTER_CASH">Counter Cash</option>
+                      <option value="POCKET_CASH">Pocket Cash</option>
+                    </select>
+                  </div>
+
+                  <div class="customer-field">
+                    <label for="expense-paid-by">Paid By</label>
+                    <select id="expense-paid-by" [(ngModel)]="expenseForm.paidByUserId">
+                      <option [ngValue]="null">Select paid by</option>
+                      @for (payer of expensePayers; track payer.userId) {
+                        <option [ngValue]="payer.userId">
+                          {{ payer.name }}{{ payer.role ? ' (' + payer.role + ')' : '' }}
+                        </option>
+                      }
+                    </select>
+                    @if (isLoadingExpensePayers) {
+                      <div class="customer-search-status">Loading eligible payers...</div>
+                    }
+                  </div>
+
+                  <div class="customer-field">
+                    <label for="expense-date">Expense Date</label>
+                    <input
+                      id="expense-date"
+                      type="date"
+                      [(ngModel)]="expenseForm.expenseDate"
+                      [max]="maxCompletedDate"
+                      autocomplete="off"
+                    />
+                  </div>
+
+                  <div class="customer-field customer-field--full">
+                    <label for="expense-notes">Notes</label>
+                    <textarea
+                      id="expense-notes"
+                      rows="3"
+                      [(ngModel)]="expenseForm.notes"
+                      placeholder="Add notes (optional)"
+                    ></textarea>
+                  </div>
+                </div>
+
+                @if (!expenseForm.expenseName.trim() || expenseForm.amount === null || !expenseForm.expenseType || expenseForm.paidByUserId === null || !expenseForm.expenseDate) {
+                  <p class="customer-validation-message">Expense name, amount, expense type, paid by, and expense date are required.</p>
+                } @else if ((expenseForm.amount ?? 0) <= 0) {
+                  <p class="customer-validation-message">Expense amount must be greater than zero.</p>
+                } @else if (expenseForm.expenseName.trim().length > 200) {
+                  <p class="customer-validation-message">Expense name cannot exceed 200 characters.</p>
+                } @else if (expenseForm.expenseDate > maxCompletedDate) {
+                  <p class="customer-validation-message">Future expense dates are not allowed.</p>
+                }
+
+                <button
+                  type="button"
+                  class="save-customer-btn"
+                  [disabled]="!isExpenseFormValid()"
+                  (click)="saveExpense()">
+                  {{ isSavingExpense ? 'Saving Expense...' : 'Save Expense' }}
+                </button>
+              </div>
+            }
+          </div>
+        </div>
+      }
+    </div>
+
     <button type="button" class="settle-btn" (click)="goToSettlement()">
       💳 Settle Customer Payment
     </button>
