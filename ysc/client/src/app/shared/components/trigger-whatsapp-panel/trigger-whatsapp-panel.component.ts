@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { ChangeDetectorRef, Component, inject } from '@angular/core';
+import { ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { finalize } from 'rxjs';
+import { Subscription, finalize } from 'rxjs';
+import { BranchOption, OrganizationContext } from '../../../core/models/organization-context.models';
+import { OrganizationContextService } from '../../../core/services/organization-context.service';
 
 interface MessageResponse {
   message: string;
@@ -12,6 +14,11 @@ interface CustomerOption {
   id: number;
   name: string;
   email: string;
+}
+
+interface BranchScopeOption {
+  id: number | null;
+  label: string;
 }
 
 type RecipientType = 'SNOOKER_PLAYERS' | 'ALL_CUSTOMERS' | 'SELECTED_CUSTOMERS';
@@ -24,9 +31,11 @@ type SchedulerTemplate = 'daily_visit_thanks_message' | 'payment_due_reminder' |
   templateUrl: './trigger-whatsapp-panel.component.html',
   styleUrl: './trigger-whatsapp-panel.component.scss',
 })
-export class TriggerWhatsappPanelComponent {
+export class TriggerWhatsappPanelComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly organizationContextService = inject(OrganizationContextService);
+  private readonly subscriptions = new Subscription();
   private customerSearchRequestId = 0;
 
   isExpanded = false;
@@ -40,6 +49,21 @@ export class TriggerWhatsappPanelComponent {
   selectedCustomers: CustomerOption[] = [];
   isSearchingCustomers = false;
   isSendingNotification = false;
+  branchScopeOptions: BranchScopeOption[] = [{ id: null, label: 'All Branches' }];
+  selectedBranchId: number | null = null;
+
+  ngOnInit(): void {
+    this.applyBranchScopeOptions(this.organizationContextService.getSnapshot());
+    this.subscriptions.add(
+      this.organizationContextService.currentContext$.subscribe((context) => {
+        this.applyBranchScopeOptions(context);
+      }),
+    );
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe();
+  }
 
   toggle(): void {
     this.isExpanded = !this.isExpanded;
@@ -87,7 +111,8 @@ export class TriggerWhatsappPanelComponent {
 
     this.isSearchingCustomers = true;
     this.cdr.markForCheck();
-    this.http.get<unknown>(`/api/users/search?query=${encodeURIComponent(query)}`).pipe(
+    const branchQuery = this.selectedBranchId === null ? '' : `&branchId=${this.selectedBranchId}`;
+    this.http.get<unknown>(`/api/admin/notification-customers/search?query=${encodeURIComponent(query)}${branchQuery}`).pipe(
       finalize(() => {
         if (requestId === this.customerSearchRequestId) {
           this.isSearchingCustomers = false;
@@ -127,6 +152,11 @@ export class TriggerWhatsappPanelComponent {
     if (type !== 'SELECTED_CUSTOMERS') {
       this.selectedCustomers = [];
     }
+    this.cdr.markForCheck();
+  }
+
+  onBranchScopeChange(): void {
+    this.resetCustomerSelectionState();
     this.cdr.markForCheck();
   }
 
@@ -173,6 +203,7 @@ export class TriggerWhatsappPanelComponent {
     this.http.post<MessageResponse>('/api/admin/send-notification-message', {
       message: this.notificationMessage.trim(),
       recipientType: this.recipientType,
+      branchId: this.selectedBranchId,
       customerIds: this.recipientType === 'SELECTED_CUSTOMERS'
         ? this.selectedCustomers.map((customer) => customer.id)
         : undefined,
@@ -197,11 +228,43 @@ export class TriggerWhatsappPanelComponent {
 
   private resetNotificationComposer(): void {
     this.notificationMessage = '';
+    this.resetCustomerSelectionState();
+  }
+
+  private resetCustomerSelectionState(): void {
     this.customerSearchText = '';
     this.customerOptions = [];
     this.selectedCustomers = [];
     this.isSearchingCustomers = false;
     this.customerSearchRequestId++;
+  }
+
+  private applyBranchScopeOptions(context: OrganizationContext | null): void {
+    const accessibleBranches = context?.accessibleBranches ?? [];
+    this.branchScopeOptions = [
+      { id: null, label: 'All Branches' },
+      ...accessibleBranches.map((branch) => this.toBranchScopeOption(branch)),
+    ];
+
+    const preferredBranchId = context?.currentBranch?.id ?? null;
+    const hasExistingSelection = this.branchScopeOptions.some((option) => option.id === this.selectedBranchId);
+    const nextBranchId = hasExistingSelection
+      ? this.selectedBranchId
+      : preferredBranchId;
+
+    if (this.selectedBranchId !== nextBranchId) {
+      this.selectedBranchId = nextBranchId;
+      this.resetCustomerSelectionState();
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  private toBranchScopeOption(branch: BranchOption): BranchScopeOption {
+    return {
+      id: branch.id,
+      label: branch.name,
+    };
   }
 
   private normalizeCustomerOptions(response: unknown): CustomerOption[] {
