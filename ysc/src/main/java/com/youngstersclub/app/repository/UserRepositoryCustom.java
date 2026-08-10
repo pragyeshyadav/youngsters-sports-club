@@ -18,6 +18,13 @@ public interface UserRepositoryCustom {
             Long organizationId,
             Long branchId);
 
+    List<UserSearchResultDto> searchActiveUserSummariesForOrganizationScope(
+            String query,
+            String digitsQuery,
+            Pageable pageable,
+            Long organizationId,
+            Long branchId);
+
     List<User> findDistinctUsersWithFrameParticipation(UserRole role);
 
     List<PlayerSummaryBaseProjection> getPlayerSummaryBasesForBranch(Long organizationId, Long branchId);

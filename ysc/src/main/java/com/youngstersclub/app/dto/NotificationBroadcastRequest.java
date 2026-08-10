@@ -6,6 +6,7 @@ public class NotificationBroadcastRequest {
     private String message;
     private String recipientType;
     private List<Integer> customerIds;
+    private Long branchId;
 
     public String getMessage() {
         return message;
@@ -29,5 +30,13 @@ public class NotificationBroadcastRequest {
 
     public void setCustomerIds(List<Integer> customerIds) {
         this.customerIds = customerIds;
+    }
+
+    public Long getBranchId() {
+        return branchId;
+    }
+
+    public void setBranchId(Long branchId) {
+        this.branchId = branchId;
     }
 }

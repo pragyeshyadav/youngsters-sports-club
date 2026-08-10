@@ -1,8 +1,16 @@
 package com.youngstersclub.app.service;
 
+import com.youngstersclub.app.dto.OrganizationContextDto;
+import com.youngstersclub.app.dto.UserSearchResultDto;
+import com.youngstersclub.app.entity.Branch;
+import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
+import com.youngstersclub.app.repository.BranchRepository;
+import com.youngstersclub.app.repository.OrganizationUserRepository;
+import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -10,6 +18,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -21,33 +30,56 @@ public class AdminNotificationBroadcastService {
     private final UserRepository userRepository;
     private final WhatsAppService whatsAppService;
     private final BrevoEmailService brevoEmailService;
+    private final OrganizationContextService organizationContextService;
+    private final OrganizationUserRepository organizationUserRepository;
+    private final BranchRepository branchRepository;
+    private final UserBranchAccessRepository userBranchAccessRepository;
 
     public AdminNotificationBroadcastService(
             UserRepository userRepository,
             WhatsAppService whatsAppService,
-            BrevoEmailService brevoEmailService) {
+            BrevoEmailService brevoEmailService,
+            OrganizationContextService organizationContextService,
+            OrganizationUserRepository organizationUserRepository,
+            BranchRepository branchRepository,
+            UserBranchAccessRepository userBranchAccessRepository) {
         this.userRepository = userRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
+        this.organizationContextService = organizationContextService;
+        this.organizationUserRepository = organizationUserRepository;
+        this.branchRepository = branchRepository;
+        this.userBranchAccessRepository = userBranchAccessRepository;
     }
 
     @Async
-    public void triggerNotificationBroadcast(String message, String recipientType, List<Integer> customerIds) {
+    public void triggerNotificationBroadcast(
+            String message,
+            String recipientType,
+            List<Integer> customerIds,
+            String actorEmail,
+            Long branchId) {
         try {
-            processNotificationBroadcast(message, recipientType, customerIds);
+            processNotificationBroadcast(message, recipientType, customerIds, actorEmail, branchId);
         } catch (Exception ex) {
             log.error("Notification broadcast failed. recipientType: {}. Reason: {}", recipientType, ex.getMessage(), ex);
         }
     }
 
-    public void processNotificationBroadcast(String message, String recipientType, List<Integer> customerIds) {
+    public void processNotificationBroadcast(
+            String message,
+            String recipientType,
+            List<Integer> customerIds,
+            String actorEmail,
+            Long branchId) {
         String normalizedMessage = message == null ? "" : message.trim();
         if (normalizedMessage.isBlank()) {
             throw new IllegalArgumentException("Notification message is required");
         }
 
+        NotificationScope scope = resolveNotificationScope(actorEmail, branchId);
         RecipientType resolvedRecipientType = RecipientType.from(recipientType);
-        List<User> recipients = resolveRecipients(resolvedRecipientType, customerIds);
+        List<User> recipients = resolveRecipients(resolvedRecipientType, customerIds, scope);
         List<User> uniqueRecipients = deduplicateRecipients(recipients);
 
         int successCount = 0;
@@ -86,10 +118,39 @@ public class AdminNotificationBroadcastService {
                 failedCount);
     }
 
-    private List<User> resolveRecipients(RecipientType recipientType, List<Integer> customerIds) {
+    public List<UserSearchResultDto> searchCustomers(String query, String actorEmail, Long branchId) {
+        String normalizedQuery = query == null ? "" : query.trim();
+        if (normalizedQuery.isEmpty()) {
+            return List.of();
+        }
+
+        String digitsQuery = normalizedQuery.replaceAll("\\D", "");
+        if (normalizedQuery.length() < 3 && digitsQuery.length() < 3) {
+            return List.of();
+        }
+
+        NotificationScope scope = resolveNotificationScope(actorEmail, branchId);
+        return userRepository.searchActiveUserSummariesForOrganizationScope(
+                normalizedQuery,
+                digitsQuery,
+                PageRequest.of(0, 10),
+                scope.organizationId(),
+                scope.branchId());
+    }
+
+    protected List<User> resolveRecipients(
+            RecipientType recipientType,
+            List<Integer> customerIds,
+            NotificationScope scope) {
         return switch (recipientType) {
-            case SNOOKER_PLAYERS -> userRepository.findDistinctUsersWithFrameParticipation(UserRole.CUSTOMER);
-            case ALL_CUSTOMERS -> userRepository.findByRoleAndIsActiveTrue(UserRole.CUSTOMER);
+            case SNOOKER_PLAYERS -> userRepository.findDistinctUsersWithFrameParticipationByRoleAndOrganizationAndOptionalBranch(
+                    UserRole.CUSTOMER,
+                    scope.organizationId(),
+                    scope.branchId());
+            case ALL_CUSTOMERS -> userRepository.findActiveUsersByRoleAndOrganizationAndOptionalBranch(
+                    UserRole.CUSTOMER,
+                    scope.organizationId(),
+                    scope.branchId());
             case SELECTED_CUSTOMERS -> {
                 if (customerIds == null || customerIds.isEmpty()) {
                     throw new IllegalArgumentException("At least one selected customer is required");
@@ -97,12 +158,16 @@ public class AdminNotificationBroadcastService {
                 if (customerIds.size() > 20) {
                     throw new IllegalArgumentException("You can select up to 20 customers");
                 }
-                yield userRepository.findByIdInAndRoleAndIsActiveTrue(customerIds, UserRole.CUSTOMER);
+                yield userRepository.findActiveUsersByIdsAndRoleAndOrganizationAndOptionalBranch(
+                        customerIds,
+                        UserRole.CUSTOMER,
+                        scope.organizationId(),
+                        scope.branchId());
             }
         };
     }
 
-    private List<User> deduplicateRecipients(List<User> recipients) {
+    protected List<User> deduplicateRecipients(List<User> recipients) {
         Map<Integer, User> byId = new LinkedHashMap<>();
         for (User user : recipients == null ? List.<User>of() : recipients) {
             if (user == null || user.getId() == null) {
@@ -143,6 +208,59 @@ public class AdminNotificationBroadcastService {
         }
     }
 
+    protected NotificationScope resolveNotificationScope(String actorEmail, Long requestedBranchId) {
+        String normalizedEmail = actorEmail == null ? "" : actorEmail.trim().toLowerCase(Locale.ROOT);
+        if (normalizedEmail.isEmpty()) {
+            throw new SecurityException("Authenticated user email is required");
+        }
+
+        User actor = userRepository.findByEmail(normalizedEmail)
+                .filter(user -> Boolean.TRUE.equals(user.getIsActive()))
+                .orElseThrow(() -> new SecurityException("Authenticated user not found"));
+
+        OrganizationContextDto context = organizationContextService.resolveContext(normalizedEmail);
+        if (context.getCurrentOrganization() == null || context.getAccessibleBranches() == null) {
+            throw new IllegalArgumentException("Current organization context is required");
+        }
+
+        Long organizationId = context.getCurrentOrganization().getId();
+        OrganizationUser membership = organizationUserRepository
+                .findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organizationId)
+                .orElseThrow(() -> new java.util.NoSuchElementException("Caller organization membership not found"));
+
+        List<Long> accessibleBranchIds = context.getAccessibleBranches() == null
+                ? List.of()
+                : context.getAccessibleBranches().stream()
+                        .map(branch -> branch == null ? null : branch.getId())
+                        .filter(id -> id != null)
+                        .toList();
+
+        if (requestedBranchId == null) {
+            return new NotificationScope(organizationId, null, "All Branches");
+        }
+
+        if (!accessibleBranchIds.contains(requestedBranchId)) {
+            throw new SecurityException("You do not have access to the selected branch");
+        }
+
+        Branch branch = branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(requestedBranchId, organizationId)
+                .orElseThrow(() -> new java.util.NoSuchElementException("Selected branch not found"));
+
+        boolean branchAccessible = membership.getBaseBranch() != null
+                && requestedBranchId.equals(membership.getBaseBranch().getId());
+        if (!branchAccessible) {
+            branchAccessible = userBranchAccessRepository.existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(
+                    membership.getId(),
+                    requestedBranchId);
+        }
+
+        if (!branchAccessible) {
+            throw new SecurityException("You do not have access to the selected branch");
+        }
+
+        return new NotificationScope(organizationId, branch.getId(), branch.getName());
+    }
+
     private enum RecipientType {
         SNOOKER_PLAYERS,
         ALL_CUSTOMERS,
@@ -162,5 +280,11 @@ public class AdminNotificationBroadcastService {
                 case SELECTED_CUSTOMERS -> "Selected Customers";
             };
         }
+    }
+
+    protected record NotificationScope(
+            Long organizationId,
+            Long branchId,
+            String branchLabel) {
     }
 }
