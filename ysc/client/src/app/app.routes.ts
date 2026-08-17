@@ -3,7 +3,12 @@ import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
 
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'dashboard' },
+  {
+    path: '',
+    pathMatch: 'full',
+    loadComponent: () =>
+      import('./features/public/landing-page/landing-page.component').then((m) => m.LandingPageComponent),
+  },
   {
     path: 'login',
     canActivate: [guestGuard],

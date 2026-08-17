@@ -1037,7 +1037,7 @@
 
                 @if (!expenseForm.expenseName.trim() || expenseForm.amount === null || !expenseForm.expenseType || expenseForm.paidByUserId === null || !expenseForm.expenseDate) {
                   <p class="customer-validation-message">Expense name, amount, expense type, paid by, and expense date are required.</p>
-                } @else if ((expenseForm.amount ?? 0) <= 0) {
+                } @else if (expenseForm.amount <= 0) {
                   <p class="customer-validation-message">Expense amount must be greater than zero.</p>
                 } @else if (expenseForm.expenseName.trim().length > 200) {
                   <p class="customer-validation-message">Expense name cannot exceed 200 characters.</p>
