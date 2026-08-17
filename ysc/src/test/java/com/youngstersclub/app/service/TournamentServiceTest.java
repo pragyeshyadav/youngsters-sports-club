@@ -100,18 +100,16 @@ class TournamentServiceTest {
     void getActiveSummerOlympicsEventsUsesCurrentBranch() {
         mockAuthorizedContext();
         Tournament tournament = buildTournament(101L, "Snooker Singles");
-        when(tournamentRepository.findByBranch_IdAndEventNameAndIsActiveTrueOrderByNameAsc(
-                branch.getId(),
-                "Summer Olympics 2K26"))
-                .thenReturn(List.of(tournament));
+        Tournament secondTournament = buildTournament(102L, "Table Tennis Singles");
+        when(tournamentRepository.findByBranch_IdAndIsActiveTrueOrderByNameAsc(branch.getId()))
+                .thenReturn(List.of(tournament, secondTournament));
 
         List<TournamentResponse> response = tournamentService.getActiveSummerOlympicsEvents("player@test.com");
 
-        assertEquals(1, response.size());
+        assertEquals(2, response.size());
         assertEquals("Snooker Singles", response.get(0).getName());
-        verify(tournamentRepository).findByBranch_IdAndEventNameAndIsActiveTrueOrderByNameAsc(
-                branch.getId(),
-                "Summer Olympics 2K26");
+        assertEquals("Table Tennis Singles", response.get(1).getName());
+        verify(tournamentRepository).findByBranch_IdAndIsActiveTrueOrderByNameAsc(branch.getId());
     }
 
     @Test
@@ -178,7 +176,7 @@ class TournamentServiceTest {
         Tournament tournament = new Tournament();
         tournament.setId(id);
         tournament.setName(name);
-        tournament.setEventName("Summer Olympics 2K26");
+        tournament.setEventName("Vindhya Olympics 2K26");
         tournament.setRegistrationFee(BigDecimal.valueOf(100));
         tournament.setStartDate(LocalDate.of(2026, 8, 10));
         tournament.setEndDate(LocalDate.of(2026, 8, 12));

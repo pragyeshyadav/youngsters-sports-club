@@ -1,6 +1,6 @@
-@if (auth.isAuthenticated$ | async) {
+@if ((auth.isAuthenticated$ | async) && !isPublicShellRoute()) {
   <app-header />
 }
-<main class="app-main">
+<main class="app-main" [class.app-main--public]="isPublicShellRoute()">
   <router-outlet />
 </main>

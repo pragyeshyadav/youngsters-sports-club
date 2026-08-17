@@ -1,0 +1,575 @@
+<div class="landing-page" id="home">
+    <header class="landing-header">
+      <div class="landing-header__inner">
+        <a routerLink="/" class="landing-brand" aria-label="Youngsters Sports Club home" (click)="closeMobileMenu()">
+          <app-club-logo size="sm"></app-club-logo>
+          <div class="landing-brand__copy">
+            <app-brand-title size="small"></app-brand-title>
+            <span class="landing-brand__subtitle">Sports, play and family fun</span>
+          </div>
+        </a>
+
+        <nav class="landing-nav landing-nav--desktop" aria-label="Primary navigation">
+          @for (item of navItems; track trackByLabel($index, item)) {
+            <a [href]="'/#' + item.id" class="landing-nav__link">{{ item.label }}</a>
+          }
+        </nav>
+
+        <div class="landing-header__actions">
+          <a [routerLink]="isAuthenticated() ? '/dashboard' : '/login'" class="landing-header__login">
+            {{ getPrimaryCtaLabel(isAuthenticated()) }}
+          </a>
+          <button
+            type="button"
+            class="landing-header__menu"
+            [attr.aria-expanded]="mobileMenuOpen()"
+            aria-label="Toggle navigation"
+            (click)="toggleMobileMenu()">
+            ☰
+          </button>
+        </div>
+      </div>
+
+      <nav
+        class="landing-nav landing-nav--mobile"
+        [ngClass]="{ 'landing-nav--open': mobileMenuOpen() }"
+        aria-label="Mobile navigation">
+        @for (item of navItems; track trackByLabel($index, item)) {
+          <a [href]="'/#' + item.id" class="landing-nav__link" (click)="closeMobileMenu()">{{ item.label }}</a>
+        }
+        <a [routerLink]="isAuthenticated() ? '/dashboard' : '/login'" class="landing-nav__cta" (click)="closeMobileMenu()">
+          {{ getPrimaryCtaLabel(isAuthenticated()) }}
+        </a>
+      </nav>
+    </header>
+
+    <main class="landing-main">
+      <section class="hero">
+        <div class="hero__content">
+          <span class="hero__eyebrow">Youngsters Sports Club &amp; Cafe</span>
+          <h1>Play, compete and feel the energy before you even visit.</h1>
+          <p>
+            Real tournament moments, real club atmosphere and direct links to Satna, Rewa and the existing member
+            login flow.
+          </p>
+
+          <div class="hero__actions">
+            <a href="/#activities" class="hero__button hero__button--primary">Explore Activities</a>
+            <a href="/#moments" class="hero__button hero__button--secondary">View Moments</a>
+            <a [routerLink]="isAuthenticated() ? '/dashboard' : '/login'" class="hero__button hero__button--ghost">
+              {{ getPrimaryCtaLabel(isAuthenticated()) }}
+            </a>
+          </div>
+
+          <div class="hero__stats" aria-label="Club quick facts">
+            @for (stat of stats; track trackByLabel($index, stat)) {
+              <div class="hero__stat">
+                <strong>{{ stat.value }}</strong>
+                <span>{{ stat.label }}</span>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="hero__media">
+          <figure class="hero__photo-card">
+            <img
+              src="/images/landing/winter-olympics-2k25-hero.jpg"
+              alt="Winter Olympics 2K25 champions and organizers at Youngsters Sports Club Satna" />
+            <figcaption class="hero__photo-caption">
+              <span>Winter Olympics 2K25</span>
+              <strong>Real championship moments from Youngsters Sports Club Satna</strong>
+            </figcaption>
+          </figure>
+          <div class="hero__floating hero__floating--rating">
+            <span>Google rating</span>
+            <strong>4.9 / 5</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--upcoming-event" [id]="upcomingEvent.id">
+        <div class="landing-section__header landing-section__header--compact">
+          <span class="section-tag">{{ upcomingEvent.title }}</span>
+          <h2>{{ upcomingEvent.tagline }}</h2>
+          <p class="landing-section__summary">{{ upcomingEvent.summary }}</p>
+        </div>
+
+        <div class="upcoming-event">
+          <figure class="gallery-card upcoming-event__poster">
+            <img [src]="upcomingEvent.posterUrl" [alt]="upcomingEvent.posterAlt" loading="lazy" />
+          </figure>
+
+          <article class="branch-card upcoming-event__content">
+            <span class="testimonial-card__business">Be part of the next big tournament</span>
+            <h3>5 games, 5 champions and one historic stage in Satna.</h3>
+
+            <div class="branch-card__chips">
+              @for (sport of upcomingEvent.sports; track sport) {
+                <span>{{ sport }}</span>
+              }
+            </div>
+
+            <div class="upcoming-event__facts">
+              @for (fact of upcomingEvent.facts; track fact.label) {
+                <div class="upcoming-event__fact">
+                  <span>{{ fact.label }}</span>
+                  <strong>{{ fact.value }}</strong>
+                </div>
+              }
+            </div>
+
+            <div class="upcoming-event__location">
+              <span>Location</span>
+              <strong>{{ upcomingEvent.location }}</strong>
+            </div>
+
+            <div class="upcoming-event__actions">
+              <a [routerLink]="isAuthenticated() ? '/dashboard' : '/login'" class="hero__button hero__button--primary">
+                Login to Register
+              </a>
+              <a class="hero__button hero__button--secondary" [href]="upcomingEvent.contactHref">
+                Call {{ upcomingEvent.contactLabel }}
+              </a>
+            </div>
+
+            <p class="upcoming-event__cta-note">Be a part of a historic tournament.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-section" id="activities">
+        <div class="landing-section__header landing-section__header--compact">
+          <span class="section-tag">Activities</span>
+          <h2>Short, visual and easy to scan.</h2>
+        </div>
+
+        <div class="activity-grid">
+          @for (activity of activities; track trackByTitle($index, activity)) {
+            <article class="activity-card">
+              <img
+                class="activity-card__image"
+                [src]="activity.imageUrl"
+                [alt]="activity.alt"
+                [style.object-position]="activity.imagePosition || null"
+                loading="lazy" />
+              <div class="activity-card__overlay">
+                <span class="activity-card__icon">{{ activity.icon }}</span>
+                <h3>{{ activity.title }}</h3>
+                <p>{{ activity.description }}</p>
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--moments" id="moments">
+        <div class="landing-section__header">
+          <span class="section-tag">Moments at YSC</span>
+          <h2>Real photographs now carry the story instead of repeated logo placeholders.</h2>
+        </div>
+
+        <div class="gallery-shell">
+          <button
+            type="button"
+            class="gallery-nav gallery-nav--prev"
+            (click)="showPreviousGallerySlide()"
+            aria-label="Previous gallery slide">
+            ‹
+          </button>
+          <div
+            class="gallery-feature"
+            (touchstart)="handleGalleryTouchStart($event)"
+            (touchend)="handleGalleryTouchEnd($event)">
+            <figure class="gallery-card gallery-card--featured">
+              <img
+                [src]="galleryItems[activeGalleryIndex()].imageUrl"
+                [alt]="galleryItems[activeGalleryIndex()].alt"
+                [loading]="activeGalleryIndex() === 0 ? 'eager' : 'lazy'" />
+              <figcaption>
+                <span class="gallery-card__eyebrow">
+                  {{ galleryItems[activeGalleryIndex()].business }} · {{ galleryItems[activeGalleryIndex()].location }}
+                </span>
+                <strong>{{ galleryItems[activeGalleryIndex()].title }}</strong>
+                <span>{{ galleryItems[activeGalleryIndex()].caption }}</span>
+              </figcaption>
+            </figure>
+          </div>
+          <button
+            type="button"
+            class="gallery-nav gallery-nav--next"
+            (click)="showNextGallerySlide()"
+            aria-label="Next gallery slide">
+            ›
+          </button>
+        </div>
+
+        <div class="gallery-thumbs" aria-label="Gallery slides">
+          @for (item of galleryItems; track trackByGalleryId($index, item)) {
+            <button
+              type="button"
+              class="gallery-thumb"
+              [ngClass]="{ 'gallery-thumb--active': activeGalleryIndex() === $index }"
+              (click)="selectGallerySlide($index)">
+              <img [src]="item.imageUrl" [alt]="item.alt" loading="lazy" />
+              <span>{{ item.title }}</span>
+            </button>
+          }
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--winter" [id]="winterOlympics.id">
+        <div class="landing-section__header">
+          <span class="section-tag">Winter Olympics 2K25</span>
+          <h2>{{ winterOlympics.tagline }}</h2>
+          <p class="landing-section__summary">{{ winterOlympics.summary }}</p>
+        </div>
+
+        <div class="winter-showcase">
+          <article class="winter-showcase__feature">
+            <img [src]="winterOlympics.featureImageUrl" [alt]="winterOlympics.featureImageAlt" />
+            <div class="winter-showcase__feature-copy">
+              <strong>{{ winterOlympics.title }}</strong>
+              <p>{{ winterOlympics.closingNote }}</p>
+              <div class="winter-showcase__sports">
+                @for (sport of winterOlympics.sports; track sport) {
+                  <span>{{ sport }}</span>
+                }
+              </div>
+            </div>
+          </article>
+
+          <aside class="winter-showcase__press">
+            <img [src]="winterOlympics.pressImageUrl" [alt]="winterOlympics.pressImageAlt" loading="lazy" />
+            <div>
+              <span class="winter-showcase__press-label">Press coverage</span>
+              <p>Official newspaper coverage from the Winter Olympics 2K25 tournament season.</p>
+            </div>
+          </aside>
+        </div>
+
+        <article class="winter-summary-card">
+          <button
+            type="button"
+            class="winter-summary-card__toggle"
+            [attr.aria-expanded]="winterSummaryOpen()"
+            (click)="toggleWinterSummary()">
+            <div class="winter-summary-card__intro">
+              <span class="winter-summary-card__eyebrow">Champions &amp; Finalists</span>
+              <h3>All Winter Olympics 2K25 winner details in one place.</h3>
+            </div>
+            <span class="winter-summary-card__chevron" [ngClass]="{ 'winter-summary-card__chevron--open': winterSummaryOpen() }">
+              ▾
+            </span>
+          </button>
+
+          @if (winterSummaryOpen()) {
+            <div class="winter-summary-grid">
+              @for (card of winterOlympicsCards; track card.sport) {
+                <section class="winter-summary-sport">
+                  <header class="winter-card__header">
+                    <span class="winter-card__icon">{{ card.icon }}</span>
+                    <div>
+                      <h4>{{ card.sport }}</h4>
+                      @if (card.note) {
+                        <p class="winter-card__note">{{ card.note }}</p>
+                      }
+                    </div>
+                  </header>
+
+                  @if (card.groups.length) {
+                    <div class="winter-card__groups">
+                      @for (group of card.groups; track $index) {
+                        <section class="winter-card__group">
+                          @if (group.heading) {
+                            <h5>{{ group.heading }}</h5>
+                          }
+                          <dl>
+                            @for (result of group.results; track result.label + result.name) {
+                              <div class="winter-card__result">
+                                <dt>{{ result.label }}</dt>
+                                <dd>{{ result.name }}</dd>
+                              </div>
+                            }
+                          </dl>
+                        </section>
+                      }
+                    </div>
+                  }
+                </section>
+              }
+            </div>
+          }
+        </article>
+
+        <div class="winter-future">
+          <span>More event galleries can be added here next:</span>
+          <strong>Summer Olympics 2K25 · Winter Olympics 2K24 · Summer Olympics 2K24</strong>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--cricket" [id]="cricketAcademy.id">
+        <div class="landing-section__header">
+          <span class="section-tag">Youngsters Cricket Academy Satna</span>
+          <h2>{{ cricketAcademy.tagline }}</h2>
+          <p class="landing-section__summary">{{ cricketAcademy.summary }}</p>
+        </div>
+
+        <div class="cricket-showcase">
+          <article class="branch-card cricket-showcase__profile">
+            <span class="winter-summary-card__eyebrow">Coach Highlight</span>
+            <h3>{{ cricketAcademy.coachName }}</h3>
+            <p>{{ cricketAcademy.coachHighlight }}</p>
+
+            <div class="branch-card__chips">
+              @for (achievement of cricketAcademy.achievements; track achievement) {
+                <span>{{ achievement }}</span>
+              }
+            </div>
+
+            <p class="cricket-showcase__closing">{{ cricketAcademy.closingNote }}</p>
+          </article>
+
+          <div class="cricket-carousel">
+            <button
+              type="button"
+              class="gallery-nav gallery-nav--prev"
+              (click)="showPreviousCricketImage()"
+              aria-label="Previous cricket academy image">
+              ‹
+            </button>
+
+            <figure class="gallery-card cricket-carousel__frame">
+              <img
+                [src]="cricketAcademyImages[activeCricketImageIndex()].imageUrl"
+                [alt]="cricketAcademyImages[activeCricketImageIndex()].alt"
+                [loading]="activeCricketImageIndex() === 0 ? 'eager' : 'lazy'" />
+              <figcaption>
+                <strong>{{ cricketAcademy.title }}</strong>
+                <span>{{ cricketAcademyImages[activeCricketImageIndex()].caption }}</span>
+              </figcaption>
+            </figure>
+
+            <button
+              type="button"
+              class="gallery-nav gallery-nav--next"
+              (click)="showNextCricketImage()"
+              aria-label="Next cricket academy image">
+              ›
+            </button>
+          </div>
+        </div>
+
+        <div class="cricket-carousel__dots" aria-label="Cricket academy image selection">
+          @for (image of cricketAcademyImages; track trackByCarouselId($index, image)) {
+            <button
+              type="button"
+              class="cricket-carousel__dot"
+              [ngClass]="{ 'cricket-carousel__dot--active': activeCricketImageIndex() === $index }"
+              [attr.aria-label]="'Show cricket academy image ' + ($index + 1)"
+              (click)="selectCricketImage($index)">
+            </button>
+          }
+        </div>
+      </section>
+
+      <section class="landing-section" id="branches">
+        <div class="landing-section__header landing-section__header--compact">
+          <span class="section-tag">Branches</span>
+          <h2>Verified destination cards for Satna and Rewa.</h2>
+        </div>
+        <div class="branch-grid">
+          @for (branch of branches; track trackByLabel($index, branch)) {
+            <article class="branch-card">
+              <div class="branch-card__eyebrow">
+                <span>{{ branch.category || branch.label }}</span>
+                <strong>{{ branch.city }}</strong>
+              </div>
+              <h3>{{ branch.title }}</h3>
+              <p>{{ branch.description }}</p>
+              <dl class="branch-card__facts">
+                @for (fact of branch.facts; track trackByLabel($index, fact)) {
+                  <div class="branch-card__fact">
+                    <dt>{{ fact.label }}</dt>
+                    <dd>{{ fact.value }}</dd>
+                  </div>
+                }
+              </dl>
+              @if (branch.highlights?.length) {
+                <div class="branch-card__chips">
+                  @for (highlight of branch.highlights; track highlight) {
+                    <span>{{ highlight }}</span>
+                  }
+                </div>
+              }
+              <div class="branch-card__actions">
+                <a [href]="branch.mapUrl" target="_blank" rel="noopener noreferrer">Get Directions</a>
+                @if (branch.phoneHref && branch.callLabel) {
+                  <a [href]="branch.phoneHref" class="branch-card__call">Call Now</a>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--kids" id="kids-ocean">
+        <div class="kids-showcase">
+          <div class="kids-showcase__content">
+            <span class="section-tag section-tag--light">Kids Ocean Dreamland</span>
+            <h2>{{ kidsOcean.tagline }}</h2>
+            <p>{{ kidsOcean.summary }}</p>
+            <div class="kids-showcase__actions">
+              @for (action of kidsOcean.actions; track trackByLabel($index, action)) {
+                <a [href]="action.href" target="_blank" rel="noopener noreferrer">{{ action.label }}</a>
+              }
+            </div>
+          </div>
+
+          <div class="cricket-carousel kids-showcase__carousel">
+            <button
+              type="button"
+              class="gallery-nav gallery-nav--prev"
+              (click)="showPreviousKidsOceanImage()"
+              aria-label="Previous Kids Ocean Dreamland image">
+              ‹
+            </button>
+
+            <figure class="gallery-card cricket-carousel__frame">
+              <img
+                [src]="kidsOceanImages[activeKidsOceanImageIndex()].imageUrl"
+                [alt]="kidsOceanImages[activeKidsOceanImageIndex()].alt"
+                [loading]="activeKidsOceanImageIndex() === 0 ? 'eager' : 'lazy'" />
+              <figcaption>
+                <strong>{{ kidsOcean.title }}</strong>
+                <span>{{ kidsOceanImages[activeKidsOceanImageIndex()].caption }}</span>
+              </figcaption>
+            </figure>
+
+            <button
+              type="button"
+              class="gallery-nav gallery-nav--next"
+              (click)="showNextKidsOceanImage()"
+              aria-label="Next Kids Ocean Dreamland image">
+              ›
+            </button>
+          </div>
+        </div>
+
+        <div class="cricket-carousel__dots" aria-label="Kids Ocean Dreamland image selection">
+          @for (image of kidsOceanImages; track trackByCarouselId($index, image)) {
+            <button
+              type="button"
+              class="cricket-carousel__dot"
+              [ngClass]="{ 'cricket-carousel__dot--active': activeKidsOceanImageIndex() === $index }"
+              [attr.aria-label]="'Show Kids Ocean Dreamland image ' + ($index + 1)"
+              (click)="selectKidsOceanImage($index)">
+            </button>
+          }
+        </div>
+      </section>
+
+      <section class="landing-section" id="testimonials">
+        <div class="landing-section__header landing-section__header--compact">
+          <span class="section-tag">Testimonials</span>
+          <h2>Public-facing proof without heavy paragraphs.</h2>
+        </div>
+        <div class="testimonial-grid">
+          @for (testimonial of testimonials; track testimonial.author + testimonial.quote) {
+            <article class="testimonial-card">
+              <span class="testimonial-card__business">{{ testimonial.business }}</span>
+              <p>“{{ testimonial.quote }}”</p>
+              <footer>
+                <strong>{{ testimonial.author }}</strong>
+                @if (testimonial.ratingLabel) {
+                  <span>{{ testimonial.ratingLabel }}</span>
+                }
+              </footer>
+            </article>
+          }
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--founder" [id]="founder.id">
+        <div class="landing-section__header landing-section__header--compact">
+          <span class="section-tag">Meet the Founder</span>
+          <h2>{{ founder.name }}</h2>
+        </div>
+
+        <div class="founder-showcase">
+          <div class="founder-showcase__images">
+            @for (image of founder.images; track trackByCarouselId($index, image)) {
+              <figure class="gallery-card founder-showcase__image">
+                <img [src]="image.imageUrl" [alt]="image.alt" loading="lazy" />
+              </figure>
+            }
+          </div>
+
+          <article class="branch-card founder-showcase__content">
+            <span class="testimonial-card__business">{{ founder.title }}</span>
+            <h3>{{ founder.role }}</h3>
+            <p class="founder-showcase__credentials">{{ founder.credentials }}</p>
+            <blockquote class="founder-showcase__quote">“{{ founder.quote }}”</blockquote>
+
+            <div class="founder-showcase__story">
+              @for (paragraph of founder.story; track paragraph) {
+                <p>{{ paragraph }}</p>
+              }
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--club-managers" id="club-managers">
+        <div class="landing-section__header landing-section__header--compact">
+          <span class="section-tag">Meet Our Club Manager</span>
+          <h2>Satna and Rewa leadership, kept short and easy to scan.</h2>
+        </div>
+
+        <div class="club-manager-grid">
+          @for (manager of clubManagers; track manager.id) {
+            <article class="branch-card club-manager-card">
+              <figure class="club-manager-card__image gallery-card">
+                <img [src]="manager.imageUrl" [alt]="manager.alt" loading="lazy" />
+              </figure>
+              <div class="club-manager-card__content">
+                <span class="testimonial-card__business">{{ manager.role }}</span>
+                <h3>{{ manager.name }}</h3>
+                <p>{{ manager.summary }}</p>
+              </div>
+            </article>
+          }
+        </div>
+      </section>
+
+      <section class="landing-section landing-section--contact" id="contact">
+        <div class="landing-section__header landing-section__header--compact">
+          <span class="section-tag">Contact &amp; Visit</span>
+          <h2>Directions, contact and social links stay easy to reach.</h2>
+        </div>
+        <div class="contact-grid">
+          <article class="contact-card">
+            <h3>Directions</h3>
+            <div class="contact-links">
+              @for (branch of branches; track trackByLabel($index, branch)) {
+                <a [href]="branch.mapUrl" target="_blank" rel="noopener noreferrer">{{ branch.label }} · {{ branch.city }}</a>
+              }
+            </div>
+          </article>
+          <article class="contact-card">
+            <h3>Community</h3>
+            <div class="contact-links">
+              @for (link of socialLinks; track trackByLabel($index, link)) {
+                <a [href]="link.href" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
+              }
+            </div>
+          </article>
+          <article class="contact-card">
+            <h3>Call the Satna club</h3>
+            <p>The publicly verified phone number currently available belongs to Youngsters Sports Club &amp; Cafe in Satna.</p>
+            <a href="tel:+919765657902" class="contact-card__button">Call +91 97656 57902</a>
+          </article>
+        </div>
+      </section>
+    </main>
+</div>

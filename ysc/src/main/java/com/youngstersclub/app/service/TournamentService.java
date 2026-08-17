@@ -25,8 +25,6 @@ import com.youngstersclub.app.dto.TournamentRegistrationResult;
 @Service
 public class TournamentService {
 
-    private static final String SUMMER_OLYMPICS_EVENT_NAME = "Summer Olympics 2K26";
-
     private final TournamentRepository tournamentRepository;
     private final TournamentRegistrationRepository registrationRepository;
     private final UserRepository userRepository;
@@ -53,9 +51,7 @@ public class TournamentService {
 
     public List<TournamentResponse> getActiveSummerOlympicsEvents(String actorEmail) {
         TournamentBranchContext context = resolveTournamentContext(actorEmail);
-        return tournamentRepository.findByBranch_IdAndEventNameAndIsActiveTrueOrderByNameAsc(
-                        context.branch().getId(),
-                        SUMMER_OLYMPICS_EVENT_NAME)
+        return tournamentRepository.findByBranch_IdAndIsActiveTrueOrderByNameAsc(context.branch().getId())
                 .stream()
                 .map(t -> new TournamentResponse(
                         t.getId(),
