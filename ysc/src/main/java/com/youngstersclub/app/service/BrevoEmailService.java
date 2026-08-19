@@ -52,6 +52,9 @@ public class BrevoEmailService {
     @Value("${brevo.sender-email:}")
     private String senderEmail;
 
+    @Value("${tournament.registration.notification-email:pragyesh.yadav@gmail.com}")
+    private String tournamentRegistrationNotificationEmail;
+
     public int sendDailyVisitSummaryEmail(
             WhatsappTemplateExecutionResultDto result,
             List<String> adminEmails) {
@@ -218,6 +221,56 @@ public class BrevoEmailService {
         return sentCount;
     }
 
+    public boolean sendTournamentRegistrationNotification(
+            String userName,
+            String phone,
+            List<String> successfullyRegistered,
+            List<String> alreadyRegistered) {
+        if (successfullyRegistered == null || successfullyRegistered.isEmpty()) {
+            log.info("Tournament registration notification skipped because no new games were registered");
+            return false;
+        }
+
+        String recipient = defaultString(tournamentRegistrationNotificationEmail, "").trim().toLowerCase();
+        if (recipient.isBlank()) {
+            log.warn("Tournament registration notification skipped because recipient configuration is missing");
+            return false;
+        }
+
+        if (brevoApiKey == null || brevoApiKey.isBlank() || senderEmail == null || senderEmail.isBlank()) {
+            log.warn("Tournament registration notification skipped because Brevo configuration is missing");
+            return false;
+        }
+
+        String sanitizedName = sanitizeTournamentRegistrantName(userName);
+        String sanitizedPhone = sanitizeTournamentRegistrantPhone(phone);
+        List<String> newGames = normalizeTournamentNames(successfullyRegistered);
+        List<String> existingGames = normalizeTournamentNames(alreadyRegistered);
+        String subject = buildTournamentRegistrationNotificationSubject(sanitizedName);
+        String htmlContent = buildTournamentRegistrationNotificationHtml(
+                sanitizedName,
+                sanitizedPhone,
+                newGames,
+                existingGames,
+                TimeUtil.nowIST());
+
+        try {
+            sendToRecipient(recipient, subject, htmlContent);
+            log.info("Tournament registration notification email sent successfully");
+            return true;
+        } catch (RestClientResponseException ex) {
+            log.error(
+                    "Tournament registration notification email failed. status: {}, responseBody: {}, reason: {}",
+                    ex.getStatusCode(),
+                    ex.getResponseBodyAsString(),
+                    ex.getMessage());
+        } catch (Exception ex) {
+            log.error("Tournament registration notification email failed. Reason: {}", ex.getMessage(), ex);
+        }
+
+        return false;
+    }
+
     private void sendToRecipient(String adminEmail, String htmlContent) {
         sendToRecipient(adminEmail, SUMMARY_SUBJECT, htmlContent);
     }
@@ -345,6 +398,77 @@ public class BrevoEmailService {
                 + "<p>Failed : " + (result == null ? 0 : result.getFailedMessages()) + "</p>"
                 + "<hr/>"
                 + "<ul>" + recipientListHtml + "</ul>";
+    }
+
+    protected String buildTournamentRegistrationNotificationSubject(String customerName) {
+        String sanitizedName = sanitizeTournamentRegistrantName(customerName);
+        return "Unknown".equals(sanitizedName)
+                ? "New Tournament Registration"
+                : "New Tournament Registration - " + sanitizedName;
+    }
+
+    protected String buildTournamentRegistrationNotificationHtml(
+            String userName,
+            String phone,
+            List<String> successfullyRegistered,
+            List<String> alreadyRegistered,
+            LocalDateTime registrationTime) {
+        String successfulGamesHtml = normalizeTournamentNames(successfullyRegistered).stream()
+                .map(game -> "<li>" + escapeHtml(game) + "</li>")
+                .collect(Collectors.joining());
+
+        String alreadyRegisteredHtml = normalizeTournamentNames(alreadyRegistered).stream()
+                .map(game -> "<li>" + escapeHtml(game) + "</li>")
+                .collect(Collectors.joining());
+
+        LocalDateTime safeRegistrationTime = registrationTime == null ? TimeUtil.nowIST() : registrationTime;
+        String formattedRegistrationTime =
+                safeRegistrationTime.format(DateTimeFormatter.ofPattern("dd MMM yyyy hh:mm a")) + " IST";
+
+        StringBuilder html = new StringBuilder();
+        html.append("<h3>New Tournament Registration</h3>")
+                .append("<p><strong>Name:</strong> ")
+                .append(escapeHtml(sanitizeTournamentRegistrantName(userName)))
+                .append("</p>")
+                .append("<p><strong>Mobile:</strong> ")
+                .append(escapeHtml(sanitizeTournamentRegistrantPhone(phone)))
+                .append("</p>")
+                .append("<p><strong>Successfully Registered Games:</strong></p>")
+                .append("<ul>")
+                .append(successfulGamesHtml)
+                .append("</ul>");
+
+        if (!alreadyRegisteredHtml.isBlank()) {
+            html.append("<p><strong>Already Registered:</strong></p>")
+                    .append("<ul>")
+                    .append(alreadyRegisteredHtml)
+                    .append("</ul>");
+        }
+
+        html.append("<p><strong>Registration Time:</strong> ")
+                .append(escapeHtml(formattedRegistrationTime))
+                .append("</p>");
+
+        return html.toString();
+    }
+
+    protected List<String> normalizeTournamentNames(List<String> tournamentNames) {
+        if (tournamentNames == null || tournamentNames.isEmpty()) {
+            return List.of();
+        }
+        return tournamentNames.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+    }
+
+    protected String sanitizeTournamentRegistrantName(String value) {
+        return (value == null || value.isBlank()) ? "Unknown" : value.trim();
+    }
+
+    protected String sanitizeTournamentRegistrantPhone(String value) {
+        return (value == null || value.isBlank()) ? "Not provided" : value.trim();
     }
 
     private List<String> sanitizeEmails(List<String> emails) {

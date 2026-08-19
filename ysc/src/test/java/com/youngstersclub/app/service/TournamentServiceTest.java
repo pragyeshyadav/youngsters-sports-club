@@ -2,6 +2,8 @@ package com.youngstersclub.app.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -28,6 +30,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -35,6 +38,8 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @ExtendWith(MockitoExtension.class)
 class TournamentServiceTest {
@@ -59,6 +64,9 @@ class TournamentServiceTest {
 
     @Mock
     private UserBranchAccessRepository userBranchAccessRepository;
+
+    @Mock
+    private BrevoEmailService brevoEmailService;
 
     @InjectMocks
     private TournamentService tournamentService;
@@ -96,6 +104,13 @@ class TournamentServiceTest {
         membership.setIsActive(true);
     }
 
+    @AfterEach
+    void tearDown() {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
     @Test
     void getActiveSummerOlympicsEventsUsesCurrentBranch() {
         mockAuthorizedContext();
@@ -115,6 +130,9 @@ class TournamentServiceTest {
     @Test
     void registerUserForTournamentsRegistersWithinCurrentBranch() {
         mockAuthorizedContext();
+        TransactionSynchronizationManager.initSynchronization();
+        actor.setName("Rahul Sharma");
+        actor.setPhone("9876543210");
         Tournament tournament = buildTournament(101L, "Snooker Singles");
         when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
         when(tournamentRepository.findByIdAndBranch_IdAndIsActiveTrue(101L, branch.getId()))
@@ -129,6 +147,65 @@ class TournamentServiceTest {
         verify(registrationRepository).save(captor.capture());
         assertEquals(tournament, captor.getValue().getTournament());
         assertEquals(actor, captor.getValue().getUser());
+
+        runAfterCommitCallbacks();
+        verify(brevoEmailService).sendTournamentRegistrationNotification(
+                eq("Rahul Sharma"),
+                eq("9876543210"),
+                eq(List.of("Snooker Singles")),
+                eq(List.of()));
+    }
+
+    @Test
+    void registerUserForTournamentsSendsSingleNotificationForMixedResults() {
+        mockAuthorizedContext();
+        TransactionSynchronizationManager.initSynchronization();
+        actor.setName("Rahul Sharma");
+        actor.setPhone("9876543210");
+
+        Tournament snooker = buildTournament(101L, "Snooker Singles");
+        Tournament chess = buildTournament(102L, "Chess Championship");
+
+        when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
+        when(tournamentRepository.findByIdAndBranch_IdAndIsActiveTrue(101L, branch.getId()))
+                .thenReturn(Optional.of(snooker));
+        when(tournamentRepository.findByIdAndBranch_IdAndIsActiveTrue(102L, branch.getId()))
+                .thenReturn(Optional.of(chess));
+        when(registrationRepository.existsByTournamentIdAndUserId(101L, actor.getId())).thenReturn(false);
+        when(registrationRepository.existsByTournamentIdAndUserId(102L, actor.getId())).thenReturn(true);
+
+        TournamentRegistrationResult result =
+                tournamentService.registerUserForTournaments(actor.getId(), List.of(101L, 102L), "player@test.com");
+
+        assertEquals(List.of("Snooker Singles"), result.getSuccessfullyRegistered());
+        assertEquals(List.of("Chess Championship"), result.getAlreadyRegistered());
+
+        runAfterCommitCallbacks();
+        verify(brevoEmailService).sendTournamentRegistrationNotification(
+                eq("Rahul Sharma"),
+                eq("9876543210"),
+                eq(List.of("Snooker Singles")),
+                eq(List.of("Chess Championship")));
+    }
+
+    @Test
+    void registerUserForTournamentsSkipsNotificationWhenEverythingAlreadyRegistered() {
+        mockAuthorizedContext();
+        TransactionSynchronizationManager.initSynchronization();
+        Tournament chess = buildTournament(102L, "Chess Championship");
+
+        when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
+        when(tournamentRepository.findByIdAndBranch_IdAndIsActiveTrue(102L, branch.getId()))
+                .thenReturn(Optional.of(chess));
+        when(registrationRepository.existsByTournamentIdAndUserId(102L, actor.getId())).thenReturn(true);
+
+        TournamentRegistrationResult result =
+                tournamentService.registerUserForTournaments(actor.getId(), List.of(102L), "player@test.com");
+
+        assertEquals(List.of(), result.getSuccessfullyRegistered());
+        assertEquals(List.of("Chess Championship"), result.getAlreadyRegistered());
+        assertEquals(0, TransactionSynchronizationManager.getSynchronizations().size());
+        verify(brevoEmailService, never()).sendTournamentRegistrationNotification(any(), any(), any(), any());
     }
 
     @Test
@@ -183,5 +260,11 @@ class TournamentServiceTest {
         tournament.setBranch(branch);
         tournament.setIsActive(true);
         return tournament;
+    }
+
+    private void runAfterCommitCallbacks() {
+        List<TransactionSynchronization> synchronizations =
+                List.copyOf(TransactionSynchronizationManager.getSynchronizations());
+        synchronizations.forEach(TransactionSynchronization::afterCommit);
     }
 }
