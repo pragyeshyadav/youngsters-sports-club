@@ -1,7 +1,8 @@
 package com.youngstersclub.app.service;
 
-import com.youngstersclub.app.dto.TournamentResponse;
 import com.youngstersclub.app.dto.OrganizationContextDto;
+import com.youngstersclub.app.dto.TournamentRegistrationResult;
+import com.youngstersclub.app.dto.TournamentResponse;
 import com.youngstersclub.app.entity.Branch;
 import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.Tournament;
@@ -14,16 +15,19 @@ import com.youngstersclub.app.repository.TournamentRepository;
 import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import java.util.Locale;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import java.util.List;
 import java.util.stream.Collectors;
-
-import com.youngstersclub.app.dto.TournamentRegistrationResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class TournamentService {
+
+    private static final Logger log = LoggerFactory.getLogger(TournamentService.class);
 
     private final TournamentRepository tournamentRepository;
     private final TournamentRegistrationRepository registrationRepository;
@@ -32,6 +36,7 @@ public class TournamentService {
     private final BranchRepository branchRepository;
     private final OrganizationUserRepository organizationUserRepository;
     private final UserBranchAccessRepository userBranchAccessRepository;
+    private final BrevoEmailService brevoEmailService;
 
     public TournamentService(TournamentRepository tournamentRepository,
                              TournamentRegistrationRepository registrationRepository,
@@ -39,7 +44,8 @@ public class TournamentService {
                              OrganizationContextService organizationContextService,
                              BranchRepository branchRepository,
                              OrganizationUserRepository organizationUserRepository,
-                             UserBranchAccessRepository userBranchAccessRepository) {
+                             UserBranchAccessRepository userBranchAccessRepository,
+                             BrevoEmailService brevoEmailService) {
         this.tournamentRepository = tournamentRepository;
         this.registrationRepository = registrationRepository;
         this.userRepository = userRepository;
@@ -47,6 +53,7 @@ public class TournamentService {
         this.branchRepository = branchRepository;
         this.organizationUserRepository = organizationUserRepository;
         this.userBranchAccessRepository = userBranchAccessRepository;
+        this.brevoEmailService = brevoEmailService;
     }
 
     public List<TournamentResponse> getActiveSummerOlympicsEvents(String actorEmail) {
@@ -98,7 +105,40 @@ public class TournamentService {
                 result.getSuccessfullyRegistered().add(tournament.getName());
             }
         }
+
+        registerTournamentRegistrationNotification(user, result);
         return result;
+    }
+
+    protected void registerTournamentRegistrationNotification(User user, TournamentRegistrationResult result) {
+        if (user == null || result == null || result.getSuccessfullyRegistered().isEmpty()) {
+            return;
+        }
+
+        String customerName = user.getName();
+        String customerPhone = user.getPhone();
+        List<String> newlyRegistered = List.copyOf(result.getSuccessfullyRegistered());
+        List<String> alreadyRegistered = List.copyOf(result.getAlreadyRegistered());
+
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            log.warn("Tournament registration email skipped because transaction synchronization is not active");
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    brevoEmailService.sendTournamentRegistrationNotification(
+                            customerName,
+                            customerPhone,
+                            newlyRegistered,
+                            alreadyRegistered);
+                } catch (Exception ex) {
+                    log.error("Failed to send tournament registration notification email. Reason: {}", ex.getMessage(), ex);
+                }
+            }
+        });
     }
 
     private void validateTournamentMembership(Integer userId, Long organizationId) {
