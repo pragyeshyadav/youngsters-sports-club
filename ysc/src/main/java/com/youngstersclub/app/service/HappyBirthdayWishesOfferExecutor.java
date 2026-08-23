@@ -58,7 +58,10 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
                         child.getParentName(),
                         child.getParentPhone(),
                         BigDecimal.ZERO,
-                        child.getChildName()))
+                        child.getChildName(),
+                        child.getOrganizationName(),
+                        child.getBaseBranchName(),
+                        "BIRTHDAY TODAY"))
                 .toList();
 
         int successCount = 0;
@@ -73,8 +76,9 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
 
         for (WhatsappTemplateExecutionRecipientDto recipient : recipients) {
             log.info(
-                    "Happy birthday eligible parent. userId: {}, parentName: {}, kidName: {}",
+                    "Happy birthday eligible parent. userId: {}, organization: {}, parentName: {}, kidName: {}",
                     recipient.getUserId(),
+                    recipient.getOrganizationName(),
                     recipient.getName(),
                     recipient.getDetail());
 

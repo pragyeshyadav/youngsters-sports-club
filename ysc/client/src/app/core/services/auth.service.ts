@@ -8,6 +8,7 @@ import { AuthSession, AuthUser, GoogleIdTokenClaims } from '../models/auth.model
 import { decodeJwtPayload } from '../utils/jwt.util';
 import { ApiService } from './api.service';
 import { AuthAccessTokenStore } from './auth-access-token.store';
+import { OrganizationContextService } from './organization-context.service';
 
 /**
  * Frontend-only Google Identity Services (GIS) session.
@@ -19,6 +20,7 @@ export class AuthService {
   private readonly router = inject(Router);
   private readonly accessTokenStore = inject(AuthAccessTokenStore);
   private readonly api = inject(ApiService);
+  private readonly organizationContext = inject(OrganizationContextService);
 
   private readonly sessionSubject = new BehaviorSubject<AuthSession | null>(this.readStoredSession());
 
@@ -106,7 +108,9 @@ export class AuthService {
       }
       localStorage.removeItem(GOOGLE_TOKEN_STORAGE_KEY);
       localStorage.removeItem(AUTH_SESSION_STORAGE_KEY);
+      localStorage.removeItem('user');
     }
+    this.organizationContext.clearContext();
     this.accessTokenStore.setAccessToken(null);
     this.sessionSubject.next(null);
     void this.router.navigate(['/login']);

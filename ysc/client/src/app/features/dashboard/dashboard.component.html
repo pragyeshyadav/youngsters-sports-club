@@ -13,7 +13,71 @@
       </div>
       <h1 class="welcome-head">Welcome, {{ user.name }}</h1>
 
-      @if (!showPhoneInput) {
+      @if (isLoadingContext) {
+        <div class="context-card context-card--loading">
+          <p>Loading organization and branch context...</p>
+        </div>
+      }
+
+      @if (contextErrorMessage) {
+        <div class="context-card context-card--error">
+          <p>{{ contextErrorMessage }}</p>
+        </div>
+      }
+
+      @if (!showOrganizationSetup && currentOrganizationName && currentBranchName) {
+        <div class="context-pill">
+          <span><strong>Organization:</strong> {{ currentOrganizationName }}</span>
+          <span><strong>Branch:</strong> {{ currentBranchName }}</span>
+        </div>
+      }
+
+      @if (showOrganizationSetup) {
+        <section class="context-card context-card--setup">
+          <h3>Select Organization / Base Branch</h3>
+          <p>Choose your working organization and branch before continuing.</p>
+
+          @if (availableOrganizations.length !== 1) {
+            <label class="context-label" for="organization-select">Select Organization</label>
+            <select
+              id="organization-select"
+              class="context-select"
+              [ngModel]="selectedOrganizationId"
+              (ngModelChange)="onOrganizationSelectionChange($event)">
+              <option [ngValue]="null">Choose organization</option>
+              @for (organization of availableOrganizations; track organization.id) {
+                <option [ngValue]="organization.id">{{ organization.name }}</option>
+              }
+            </select>
+          } @else if (availableOrganizations.length === 1) {
+            <p class="context-auto-selected">
+              <strong>Organization:</strong> {{ availableOrganizations[0].name }}
+            </p>
+          }
+
+          <label class="context-label" for="branch-select">Select Base Branch</label>
+          <select
+            id="branch-select"
+            class="context-select"
+            [ngModel]="selectedBranchId"
+            (ngModelChange)="onBranchSelectionChange($event)">
+            <option [ngValue]="null">Choose branch</option>
+            @for (branch of availableBranches; track branch.id) {
+              <option [ngValue]="branch.id">{{ branch.name }}</option>
+            }
+          </select>
+
+          <button
+            type="button"
+            class="btn-save context-btn"
+            [disabled]="!hasResolvedOrganizationSelection()"
+            (click)="continueWithOrganizationSelection()">
+            Continue
+          </button>
+        </section>
+      }
+
+      @if (!showPhoneInput && !showOrganizationSetup) {
         <button type="button" class="kids-entry-card" (click)="goToKidsPlay()">
           <div class="kids-entry-copy">
             <span class="kids-entry-badge">🌈 Family Fun</span>
@@ -27,15 +91,15 @@
           <button type="button" class="kids-entry-card olympics-card" (click)="goToSummerOlympicsRegistration()">
             <div class="kids-entry-copy">
               <span class="kids-entry-badge" style="background: linear-gradient(135deg, #FFD700, #FDB931); color: #000; box-shadow: 0 4px 15px rgba(255, 215, 0, 0.3);">🏆 Premier Event</span>
-              <strong>Summer Olympics 2K26</strong>
+              <strong>Vindhya Olympics 2K26</strong>
               <span>Register for your favorite sporting events</span>
             </div>
-            <img src="/images/summer-olympics-logo.png" alt="Summer Olympics 2K26" class="kids-entry-logo" style="border-radius: 12px; transform: scale(1.1);" />
+            <img src="/images/summer-olympics-logo.png" alt="Vindhya Olympics 2K26" class="kids-entry-logo" style="border-radius: 12px; transform: scale(1.1);" />
           </button>
         }
       }
 
-      @if (showPhoneInput) {
+      @if (showPhoneInput && !showOrganizationSetup) {
         <div class="phone-section">
           <h3>Add Your Phone Number</h3>
           <input type="text"
@@ -53,7 +117,7 @@
         </div>
       }
 
-      @if (!showPhoneInput) {
+      @if (!showPhoneInput && !showOrganizationSetup) {
         <app-top-rankers></app-top-rankers>
         <app-available-tables></app-available-tables>
         
@@ -136,6 +200,52 @@
             <button class="manager-btn" (click)="goToManagersPortal()">
               🧑‍💼 Manager's Portal
             </button>
+          }
+
+          @if (currentOrganizationName && currentBranchName) {
+            <section class="context-card context-card--switch">
+              <button type="button" class="context-switcher-toggle" (click)="toggleContextSwitcher()">
+                <span>Change Organization / Branch</span>
+                <span>{{ showContextSwitcher ? '▲' : '▼' }}</span>
+              </button>
+
+              @if (showContextSwitcher) {
+                <div class="context-switcher-body">
+                  <p><strong>Current Organization:</strong> {{ currentOrganizationName }}</p>
+                  <p><strong>Current Branch:</strong> {{ currentBranchName }}</p>
+
+                  <label class="context-label" for="switch-organization-select">Organization</label>
+                  <select
+                    id="switch-organization-select"
+                    class="context-select"
+                    [ngModel]="switchOrganizationId"
+                    (ngModelChange)="onSwitchOrganizationChange($event)">
+                    @for (organization of switchOrganizations; track organization.id) {
+                      <option [ngValue]="organization.id">{{ organization.name }}</option>
+                    }
+                  </select>
+
+                  <label class="context-label" for="switch-branch-select">Branch</label>
+                  <select
+                    id="switch-branch-select"
+                    class="context-select"
+                    [ngModel]="switchBranchId"
+                    (ngModelChange)="onSwitchBranchChange($event)">
+                    @for (branch of switchBranches; track branch.id) {
+                      <option [ngValue]="branch.id">{{ branch.name }}</option>
+                    }
+                  </select>
+
+                  <button
+                    type="button"
+                    class="btn-save context-btn"
+                    [disabled]="!switchOrganizationId || !switchBranchId || isSavingContext"
+                    (click)="changeOrganizationContext()">
+                    {{ isSavingContext ? 'Changing...' : 'Change Organization' }}
+                  </button>
+                </div>
+              }
+            </section>
           }
         </div>
       }

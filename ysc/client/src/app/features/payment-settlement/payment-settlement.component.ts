@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { forkJoin } from 'rxjs';
+import { Subscription, forkJoin } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 
@@ -52,7 +54,12 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly authService = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
   private resizeHandler: (() => void) | null = null;
+  private readonly subscriptions = new Subscription();
+  private currentBranchId: number | null = null;
+  private branchRequestVersion = 0;
 
   searchText = '';
   users: SettlementUser[] = [];
@@ -77,6 +84,7 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.updateViewportState();
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
+    this.subscribeToBranchChanges();
   }
 
   ngOnDestroy(): void {
@@ -84,10 +92,12 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
     }
+    this.subscriptions.unsubscribe();
   }
 
   searchUsers(): void {
     const query = this.searchText.trim();
+    const requestVersion = this.branchRequestVersion;
 
     if (query.length < 3) {
       this.users = [];
@@ -107,11 +117,17 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     this.isLoadingUsers = true;
     this.http.get<SettlementUser[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
       next: (users) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.users = users;
         this.isLoadingUsers = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         console.error('Failed to search users', err);
         this.users = [];
         this.isLoadingUsers = false;
@@ -142,8 +158,13 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingFrames = true;
-    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchRequestVersion;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary/current-branch?userId=${this.selectedUser.id}`, { headers }).subscribe({
       next: (summary) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.frameDue = this.toNumber(summary?.frameDue);
         this.consumableDue = this.toNumber(summary?.consumableDue);
         this.kidsDue = this.toNumber(summary?.kidsDue);
@@ -151,6 +172,9 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         console.error('Failed to load payment summary', err);
         this.frameDue = 0;
         this.consumableDue = 0;
@@ -161,16 +185,22 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     });
 
     forkJoin({
-      frames: this.http.get<DueFrame[]>(`/api/frame/user-due?userId=${this.selectedUser.id}`),
-      consumables: this.http.get<ConsumableDueRow[]>(`/api/consumables/orders/due?userId=${this.selectedUser.id}`),
+      frames: this.http.get<DueFrame[]>(`/api/frame/user-due/current-branch?userId=${this.selectedUser.id}`, { headers }),
+      consumables: this.http.get<ConsumableDueRow[]>(`/api/consumables/orders/due/current-branch?userId=${this.selectedUser.id}`, { headers }),
     }).subscribe({
       next: ({ frames, consumables }) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.frames = frames;
         this.consumables = consumables;
         this.isLoadingFrames = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         console.error('Failed to load due details', err);
         this.frames = [];
         this.consumables = [];
@@ -186,8 +216,13 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingTotalDue = true;
-    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchRequestVersion;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary/current-branch?userId=${this.selectedUser.id}`, { headers }).subscribe({
       next: (summary) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.frameDue = this.toNumber(summary?.frameDue);
         this.consumableDue = this.toNumber(summary?.consumableDue);
         this.kidsDue = this.toNumber(summary?.kidsDue);
@@ -200,6 +235,9 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         console.error('Failed to load total due', err);
         this.isLoadingTotalDue = false;
         this.cdr.markForCheck();
@@ -227,12 +265,13 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
     }
 
     this.isSavingSettlement = true;
+    const headers = this.buildActorHeaders();
     this.http.post('/api/payment/settle', {
       userId: this.selectedUser.id,
       amount: this.settleAmount,
       discount: this.discountAmount ?? 0,
       mode: this.paymentMode,
-    }, { responseType: 'text' }).subscribe({
+    }, { headers, responseType: 'text' }).subscribe({
       next: (res) => {
         console.log('Settlement response:', res);
         alert('Payment Settled Successfully');
@@ -291,8 +330,13 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.http.get<PaymentSummary>(`/api/user/payment-summary?userId=${this.selectedUser.id}`).subscribe({
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchRequestVersion;
+    this.http.get<PaymentSummary>(`/api/user/payment-summary/current-branch?userId=${this.selectedUser.id}`, { headers }).subscribe({
       next: (summary) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.frameDue = this.toNumber(summary?.frameDue);
         this.consumableDue = this.toNumber(summary?.consumableDue);
         this.kidsDue = this.toNumber(summary?.kidsDue);
@@ -300,9 +344,48 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         console.error('Failed to refresh total due', err);
       },
     });
+  }
+
+  private subscribeToBranchChanges(): void {
+    this.currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+    this.subscriptions.add(
+      this.organizationContextService.currentBranchId$.subscribe((branchId) => {
+        if (this.currentBranchId === branchId) {
+          return;
+        }
+
+        this.currentBranchId = branchId;
+        this.resetBranchScopedState();
+      }),
+    );
+  }
+
+  private resetBranchScopedState(): void {
+    this.branchRequestVersion++;
+    this.searchText = '';
+    this.users = [];
+    this.selectedUser = null;
+    this.frames = [];
+    this.consumables = [];
+    this.isLoadingFrames = false;
+    this.isLoadingUsers = false;
+    this.isLoadingTotalDue = false;
+    this.isSavingSettlement = false;
+    this.frameDue = 0;
+    this.consumableDue = 0;
+    this.kidsDue = 0;
+    this.totalDue = 0;
+    this.showSettlementPopup = false;
+    this.settleAmount = null;
+    this.discountAmount = null;
+    this.paymentMode = '';
+    this.cdr.markForCheck();
   }
 
   private toNumber(value: number | string | null | undefined): number {
@@ -315,5 +398,28 @@ export class PaymentSettlementComponent implements OnInit, OnDestroy {
 
   private toCurrencyNumber(value: number): number {
     return Number(value.toFixed(2));
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private getStoredUserEmail(): string {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      const rawUser = window.localStorage.getItem('user');
+      if (!rawUser) {
+        return '';
+      }
+      const parsed = JSON.parse(rawUser) as { email?: string | null };
+      return parsed?.email?.trim() ?? '';
+    } catch {
+      return '';
+    }
   }
 }

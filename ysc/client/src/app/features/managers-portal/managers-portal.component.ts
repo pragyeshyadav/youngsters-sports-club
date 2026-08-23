@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { Subscription } from 'rxjs';
+import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 
@@ -86,10 +89,26 @@ interface SettledPayment {
   paidAmount: number | string | null;
   discount: number | string | null;
   date: string;
+  paymentMethod?: string | null;
 }
 
 interface MessageResponse {
   message: string;
+}
+
+interface AddCustomerResponse extends MessageResponse {
+  userId?: number;
+  customerName?: string;
+  phone?: string;
+  organizationId?: number;
+  organizationName?: string;
+  organizationUserId?: number;
+  membershipCreated?: boolean;
+  membershipReactivated?: boolean;
+  baseBranchId?: number | null;
+  baseBranchName?: string | null;
+  branchAccessCreated?: boolean;
+  branchAccessReactivated?: boolean;
 }
 
 interface CustomerSearchResult {
@@ -109,6 +128,89 @@ interface ChildProfile {
   school?: string | null;
 }
 
+interface BranchExpense {
+  id: number;
+  expenseName: string;
+  amount: number | string | null;
+  expenseType: 'COUNTER_CASH' | 'POCKET_CASH';
+  expenseDate: string;
+  notes?: string | null;
+  paidByUserId: number;
+  paidByName: string;
+  createdByUserId: number;
+  createdByName: string;
+  branchId: number;
+  branchName: string;
+  createdAt: string;
+}
+
+interface ExpensePayerOption {
+  userId: number;
+  name: string;
+  role: string | null;
+}
+
+interface ExpenseMonthOption {
+  value: string;
+  label: string;
+  year: number;
+  month: number;
+}
+
+interface OnboardingBranchOption {
+  id: number;
+  name: string;
+}
+
+interface OnboardingOrganizationOption {
+  id: number;
+  name: string;
+}
+
+interface CustomerMembershipSummary {
+  organizationId: number | null;
+  organizationName: string | null;
+  role: string | null;
+  active: boolean;
+  baseBranchId: number | null;
+  baseBranchName: string | null;
+  accessibleBranches: OnboardingBranchOption[];
+}
+
+interface CustomerOnboardingCandidate {
+  userId: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  memberships: CustomerMembershipSummary[];
+}
+
+interface CustomerOnboardingContext {
+  actorRole: string | null;
+  organizationSelectable: boolean;
+  multipleBranchSelectionAllowed: boolean;
+  currentOrganizationId: number | null;
+  currentOrganizationName: string | null;
+  currentBranchId: number | null;
+  currentBranchName: string | null;
+  organizations: OnboardingOrganizationOption[];
+  branches: OnboardingBranchOption[];
+}
+
+interface CustomerOnboardingResponse {
+  userId: number;
+  customerName: string;
+  organizationId: number;
+  organizationName: string;
+  organizationUserId: number;
+  membershipCreated: boolean;
+  membershipReactivated: boolean;
+  baseBranchId: number | null;
+  baseBranchName: string | null;
+  branchesAdded: OnboardingBranchOption[];
+  alreadyAccessibleBranches: OnboardingBranchOption[];
+}
+
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
@@ -119,8 +221,17 @@ interface ChildProfile {
 export class ManagersPortalComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
+  private readonly authService = inject(AuthService);
+  private readonly organizationContextService = inject(OrganizationContextService);
   private resizeHandler: (() => void) | null = null;
   private readonly today = new Date();
+  private onboardingSearchTimeoutId: number | null = null;
+  private readonly subscriptions = new Subscription();
+  private currentBranchId: number | null = null;
+  private playersRequestVersion = 0;
+  private branchStateVersion = 0;
+  private expensesRequestVersion = 0;
+  private expensePayersRequestVersion = 0;
 
   isOngoingExpanded = false;
   ongoingFrames: OngoingFrame[] = [];
@@ -152,6 +263,8 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     email: '',
     mobileNumber: '',
   };
+  addCustomerOrganizationName = '';
+  addCustomerBranchName = '';
   isAddChildExpanded = false;
   isSearchingChildParent = false;
   isSavingChild = false;
@@ -175,6 +288,36 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     name: '',
     email: '',
     phone: '',
+  };
+  isOnboardExistingExpanded = false;
+  isLoadingOnboardingContext = false;
+  isSearchingOnboardingCustomers = false;
+  isLoadingOnboardingCustomer = false;
+  isSavingOnboardingCustomer = false;
+  onboardingSearch = '';
+  onboardingSearchResults: CustomerSearchResult[] = [];
+  selectedOnboardingCandidate: CustomerOnboardingCandidate | null = null;
+  onboardingContext: CustomerOnboardingContext | null = null;
+  selectedOnboardingOrganizationId: number | null = null;
+  selectedOnboardingBranchIds: number[] = [];
+  selectedOnboardingBaseBranchId: number | null = null;
+  isMonthlyExpensesExpanded = false;
+  isLoadingMonthlyExpenses = false;
+  hasLoadedMonthlyExpenses = false;
+  monthlyExpenses: BranchExpense[] = [];
+  expenseMonthOptions: ExpenseMonthOption[] = [];
+  selectedExpenseMonthValue = '';
+  isAddExpenseExpanded = false;
+  isLoadingExpensePayers = false;
+  expensePayers: ExpensePayerOption[] = [];
+  isSavingExpense = false;
+  expenseForm = {
+    expenseName: '',
+    amount: null as number | null,
+    expenseType: '',
+    paidByUserId: null as number | null,
+    expenseDate: '',
+    notes: '',
   };
 
   isPlayersExpanded = false;
@@ -218,8 +361,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.maxEarningsDate = this.maxCompletedDate;
     this.selectedEarningsDate = this.maxEarningsDate;
     this.minEarningsDate = this.minCompletedDate;
+    this.initializeExpenseMonthOptions();
+    this.resetExpenseForm();
     this.resizeHandler = () => this.updateViewportState();
     window.addEventListener('resize', this.resizeHandler);
+    this.bindOrganizationContext();
     this.loadViewerAccess();
   }
 
@@ -228,6 +374,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       window.removeEventListener('resize', this.resizeHandler);
       this.resizeHandler = null;
     }
+    if (this.onboardingSearchTimeoutId !== null) {
+      window.clearTimeout(this.onboardingSearchTimeoutId);
+      this.onboardingSearchTimeoutId = null;
+    }
+    this.subscriptions.unsubscribe();
   }
 
   toggleOngoing(): void {
@@ -252,9 +403,14 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   loadTodayEarnings(): void {
     this.isLoadingEarnings = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
-    this.http.get<TodayEarnings>('/api/analytics/today-earnings').subscribe({
+    this.http.get<TodayEarnings>('/api/analytics/today-earnings', { headers }).subscribe({
       next: (earnings) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.todayEarnings = {
           totalEarnings: earnings?.totalEarnings ?? 0,
           totalDue: earnings?.totalDue ?? 0,
@@ -265,6 +421,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.isLoadingEarnings = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load today earnings', err);
         this.todayEarnings = {
           totalEarnings: 0,
@@ -285,9 +444,14 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
 
     this.isLoadingEarnings = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
-    this.http.get<TodayEarnings>(`/api/manager/earnings?date=${this.selectedEarningsDate}`).subscribe({
+    this.http.get<TodayEarnings>(`/api/manager/earnings?date=${this.selectedEarningsDate}`, { headers }).subscribe({
       next: (earnings) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.todayEarnings = {
           totalEarnings: earnings?.totalEarnings ?? 0,
           totalDue: earnings?.totalDue ?? 0,
@@ -298,6 +462,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         this.isLoadingEarnings = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load earnings', err);
         this.todayEarnings = {
           totalEarnings: 0,
@@ -332,13 +499,21 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   loadOngoingFrames(): void {
     this.isLoadingOngoing = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
-    this.http.get<OngoingFrame[]>('/api/frame/ongoing/today').subscribe({
+    this.http.get<OngoingFrame[]>('/api/frame/ongoing/today', { headers }).subscribe({
       next: (frames) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.ongoingFrames = frames;
         this.isLoadingOngoing = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load ongoing frames', err);
         this.ongoingFrames = [];
         this.isLoadingOngoing = false;
@@ -356,17 +531,25 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   loadCompletedFrames(useTodayApi: boolean = false): void {
     this.isLoadingCompleted = true;
+    const headers = this.buildActorHeaders();
+    const requestVersion = this.branchStateVersion;
 
     const request$ = useTodayApi
-      ? this.http.get<CompletedFrame[]>('/api/frame/completed/today')
-      : this.http.get<CompletedFrame[]>(`/api/frame/completed?date=${this.selectedCompletedDate}`);
+      ? this.http.get<CompletedFrame[]>('/api/frame/completed/today', { headers })
+      : this.http.get<CompletedFrame[]>(`/api/frame/completed?date=${this.selectedCompletedDate}`, { headers });
 
     request$.subscribe({
       next: (frames) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         this.completedFrames = frames;
         this.isLoadingCompleted = false;
       },
       error: (err) => {
+        if (requestVersion !== this.branchStateVersion) {
+          return;
+        }
         console.error('Failed to load completed frames', err);
         this.completedFrames = [];
         this.isLoadingCompleted = false;
@@ -399,6 +582,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   toggleAddCustomer(): void {
     this.isAddCustomerExpanded = !this.isAddCustomerExpanded;
+    if (this.isAddCustomerExpanded && (!this.addCustomerOrganizationName || !this.addCustomerBranchName)) {
+      this.refreshAddCustomerContext();
+    }
   }
 
   toggleAddChild(): void {
@@ -407,6 +593,35 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
 
   toggleUpdateCustomer(): void {
     this.isUpdateCustomerExpanded = !this.isUpdateCustomerExpanded;
+  }
+
+  toggleMonthlyExpenses(): void {
+    this.isMonthlyExpensesExpanded = !this.isMonthlyExpensesExpanded;
+
+    if (this.isMonthlyExpensesExpanded) {
+      if (!this.hasLoadedMonthlyExpenses && !this.isLoadingMonthlyExpenses) {
+        this.loadMonthlyExpenses();
+      }
+      if (this.expensePayers.length === 0 && !this.isLoadingExpensePayers) {
+        this.loadExpensePayers();
+      }
+    }
+  }
+
+  toggleAddExpensePanel(): void {
+    this.isAddExpenseExpanded = !this.isAddExpenseExpanded;
+
+    if (this.isAddExpenseExpanded && this.expensePayers.length === 0 && !this.isLoadingExpensePayers) {
+      this.loadExpensePayers();
+    }
+  }
+
+  toggleOnboardExistingUser(): void {
+    this.isOnboardExistingExpanded = !this.isOnboardExistingExpanded;
+
+    if (this.isOnboardExistingExpanded && !this.isLoadingOnboardingContext && !this.onboardingContext) {
+      this.loadOnboardingContext();
+    }
   }
 
   onCustomerMobileInput(event: Event): void {
@@ -542,6 +757,194 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.updateCustomerForm.phone = sanitized;
   }
 
+  onOnboardingSearchInput(): void {
+    const query = this.onboardingSearch.trim();
+
+    if (this.onboardingSearchTimeoutId !== null) {
+      window.clearTimeout(this.onboardingSearchTimeoutId);
+      this.onboardingSearchTimeoutId = null;
+    }
+
+    if (query.length < 3) {
+      this.isSearchingOnboardingCustomers = false;
+      this.onboardingSearchResults = [];
+      if (!query) {
+        this.clearSelectedOnboardingCandidate();
+      }
+      return;
+    }
+
+    this.isSearchingOnboardingCustomers = true;
+    this.onboardingSearchTimeoutId = window.setTimeout(() => {
+      this.http.get<CustomerSearchResult[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+        next: (users) => {
+          this.onboardingSearchResults = this.mapSearchResults(users, query, true);
+          this.isSearchingOnboardingCustomers = false;
+        },
+        error: (err) => {
+          console.error('Failed to search onboarding customers', err);
+          this.onboardingSearchResults = [];
+          this.isSearchingOnboardingCustomers = false;
+        },
+      });
+      this.onboardingSearchTimeoutId = null;
+    }, 250);
+  }
+
+  selectOnboardingCandidate(user: CustomerSearchResult): void {
+    this.isLoadingOnboardingCustomer = true;
+    this.selectedOnboardingCandidate = null;
+    this.onboardingSearch = this.buildOnboardingSearchLabel(user);
+    this.onboardingSearchResults = [];
+
+    this.http.get<CustomerOnboardingCandidate>(`/api/manager/customer-onboarding/customer?userId=${user.id}`).subscribe({
+      next: (candidate) => {
+        this.selectedOnboardingCandidate = candidate;
+        this.isLoadingOnboardingCustomer = false;
+        this.syncOnboardingSelectionWithMembership();
+      },
+      error: (err) => {
+        console.error('Failed to load onboarding candidate', err);
+        this.isLoadingOnboardingCustomer = false;
+        this.selectedOnboardingCandidate = null;
+        alert(err?.error?.message || 'Unable to load customer membership details right now');
+      },
+    });
+  }
+
+  clearSelectedOnboardingCandidate(): void {
+    this.selectedOnboardingCandidate = null;
+    this.onboardingSearch = '';
+    this.onboardingSearchResults = [];
+    this.selectedOnboardingBranchIds = [];
+    this.selectedOnboardingBaseBranchId = null;
+  }
+
+  onOnboardingOrganizationChange(): void {
+    if (!this.selectedOnboardingOrganizationId) {
+      this.selectedOnboardingBranchIds = [];
+      this.selectedOnboardingBaseBranchId = null;
+      return;
+    }
+    this.loadOnboardingContext(this.selectedOnboardingOrganizationId);
+  }
+
+  toggleOnboardingBranch(branchId: number): void {
+    if (!this.onboardingContext) {
+      return;
+    }
+
+    if (this.isExistingMembershipBranch(branchId)) {
+      return;
+    }
+
+    if (!this.onboardingContext.multipleBranchSelectionAllowed) {
+      this.selectedOnboardingBranchIds = [branchId];
+      this.syncOnboardingBaseBranchSelection();
+      return;
+    }
+
+    if (this.selectedOnboardingBranchIds.includes(branchId)) {
+      this.selectedOnboardingBranchIds = this.selectedOnboardingBranchIds.filter((id) => id !== branchId);
+    } else {
+      this.selectedOnboardingBranchIds = [...this.selectedOnboardingBranchIds, branchId];
+    }
+
+    this.syncOnboardingBaseBranchSelection();
+  }
+
+  removeOnboardingBranch(branchId: number): void {
+    if (this.isExistingMembershipBranch(branchId)) {
+      return;
+    }
+    this.selectedOnboardingBranchIds = this.selectedOnboardingBranchIds.filter((id) => id !== branchId);
+    this.syncOnboardingBaseBranchSelection();
+  }
+
+  onOnboardingBaseBranchChange(): void {
+    if (
+      this.selectedOnboardingBaseBranchId !== null
+      && !this.selectedOnboardingBranchIds.includes(this.selectedOnboardingBaseBranchId)
+    ) {
+      this.selectedOnboardingBaseBranchId = null;
+    }
+  }
+
+  canSubmitOnboarding(): boolean {
+    if (this.isSavingOnboardingCustomer || this.isLoadingOnboardingContext || this.isLoadingOnboardingCustomer) {
+      return false;
+    }
+
+    if (!this.selectedOnboardingCandidate || !this.selectedOnboardingOrganizationId) {
+      return false;
+    }
+
+    if (this.selectedOnboardingBranchIds.length === 0) {
+      return false;
+    }
+
+    if (!this.hasExistingMembershipForSelectedOrganization() && !this.selectedOnboardingBaseBranchId) {
+      return false;
+    }
+
+    return true;
+  }
+
+  onboardExistingCustomer(): void {
+    if (!this.canSubmitOnboarding() || !this.selectedOnboardingCandidate || !this.selectedOnboardingOrganizationId) {
+      return;
+    }
+
+    const organizationName = this.getSelectedOnboardingOrganizationName();
+    const branchNames = this.getSelectedOnboardingBranches().map((branch) => branch.name);
+    const baseBranchName = this.getSelectedOnboardingBaseBranchName();
+    const confirmationMessage = [
+      `Onboard ${this.selectedOnboardingCandidate.name} to ${organizationName || 'the selected organization'}?`,
+      '',
+      'Branches:',
+      ...branchNames.map((name) => `- ${name}`),
+      '',
+      `Base Branch: ${baseBranchName || 'Not selected'}`,
+    ].join('\n');
+
+    if (!confirm(confirmationMessage)) {
+      return;
+    }
+
+    const actorEmail = this.getStoredUserEmail();
+    if (!actorEmail) {
+      alert('Unable to determine the logged-in user');
+      return;
+    }
+
+    this.isSavingOnboardingCustomer = true;
+    this.http.post<CustomerOnboardingResponse>('/api/manager/customer-onboarding', {
+      actorEmail,
+      userId: this.selectedOnboardingCandidate.userId,
+      organizationId: this.selectedOnboardingOrganizationId,
+      branchIds: this.selectedOnboardingBranchIds,
+      baseBranchId: this.hasExistingMembershipForSelectedOrganization() ? null : this.selectedOnboardingBaseBranchId,
+    }).subscribe({
+      next: (response) => {
+        this.isSavingOnboardingCustomer = false;
+        const addedBranchNames = [
+          ...response.branchesAdded.map((branch) => branch.name),
+          ...response.alreadyAccessibleBranches.map((branch) => branch.name),
+        ];
+        alert(
+          `${response.customerName} has been onboarded successfully.\n\nOrganization:\n${response.organizationName}\n\nBranches:\n${addedBranchNames.join(', ') || 'None'}\n\nBase Branch:\n${response.baseBranchName || '-'}`,
+        );
+        this.clearSelectedOnboardingCandidate();
+        this.loadOnboardingContext(this.selectedOnboardingOrganizationId ?? undefined);
+      },
+      error: (err) => {
+        console.error('Failed to onboard customer', err);
+        this.isSavingOnboardingCustomer = false;
+        alert(err?.error?.message || 'Unable to onboard customer right now');
+      },
+    });
+  }
+
   isCustomerFormValid(): boolean {
     return this.customerForm.name.trim().length > 0
       && (!this.customerForm.email.trim() || this.isValidEmail(this.customerForm.email))
@@ -618,14 +1021,27 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
 
     this.isSavingCustomer = true;
-    this.http.post<MessageResponse>('/api/users/create-customer', {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    if (!actorEmail) {
+      this.isSavingCustomer = false;
+      alert('Unable to determine the logged-in user');
+      return;
+    }
+
+    this.http.post<AddCustomerResponse>('/api/users/create-customer', {
       name: this.customerForm.name.trim(),
       email: this.customerForm.email.trim().toLowerCase(),
       mobileNumber: this.customerForm.mobileNumber.trim(),
+    }, {
+      headers: new HttpHeaders({
+        'X-User-Email': actorEmail,
+      }),
     }).subscribe({
       next: (response) => {
         this.isSavingCustomer = false;
-        alert(response?.message || 'Customer added successfully');
+        const organizationName = response?.organizationName || this.addCustomerOrganizationName || '-';
+        const branchName = response?.baseBranchName || this.addCustomerBranchName || '-';
+        alert(`${response?.message || 'Customer added successfully'}\n\nOrganization:\n${organizationName}\n\nBase Branch:\n${branchName}`);
         this.resetCustomerForm();
         this.isAddCustomerExpanded = false;
       },
@@ -677,12 +1093,89 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     }
   }
 
+  onExpenseMonthChange(): void {
+    if (!this.isMonthlyExpensesExpanded || !this.selectedExpenseMonthValue) {
+      return;
+    }
+    this.loadMonthlyExpenses();
+  }
+
+  isExpenseFormValid(): boolean {
+    return this.expenseForm.expenseName.trim().length > 0
+      && this.expenseForm.expenseName.trim().length <= 200
+      && this.expenseForm.amount !== null
+      && Number(this.expenseForm.amount) > 0
+      && !!this.expenseForm.expenseType
+      && this.expenseForm.paidByUserId !== null
+      && !!this.expenseForm.expenseDate
+      && this.expenseForm.expenseDate <= this.maxCompletedDate
+      && !this.isSavingExpense;
+  }
+
+  saveExpense(): void {
+    if (!this.isExpenseFormValid()) {
+      return;
+    }
+
+    this.isSavingExpense = true;
+    this.http.post<BranchExpense>('/api/manager/expenses', {
+      expenseName: this.expenseForm.expenseName.trim(),
+      amount: this.expenseForm.amount,
+      expenseType: this.expenseForm.expenseType,
+      paidByUserId: this.expenseForm.paidByUserId,
+      expenseDate: this.expenseForm.expenseDate,
+      notes: this.expenseForm.notes.trim(),
+    }, { headers: this.buildActorHeaders() }).subscribe({
+      next: (expense) => {
+        this.isSavingExpense = false;
+        const savedMonthValue = (expense?.expenseDate ?? '').slice(0, 7);
+        const savedMonthLabel = this.getExpenseMonthLabel(savedMonthValue);
+        this.resetExpenseForm();
+
+        if (savedMonthValue && savedMonthValue === this.selectedExpenseMonthValue) {
+          this.loadMonthlyExpenses();
+          alert('Expense added successfully');
+          return;
+        }
+
+        if (savedMonthValue && this.expenseMonthOptions.some((option) => option.value === savedMonthValue)) {
+          this.selectedExpenseMonthValue = savedMonthValue;
+          this.loadMonthlyExpenses();
+          alert(`Expense added successfully for ${savedMonthLabel}.`);
+          return;
+        }
+
+        alert(`Expense added successfully${savedMonthLabel ? ` for ${savedMonthLabel}` : ''}.`);
+      },
+      error: (err) => {
+        console.error('Failed to save expense', err);
+        this.isSavingExpense = false;
+        alert(err?.error?.message || 'Unable to save expense right now');
+      },
+    });
+  }
+
   loadPlayers(): void {
     if (this.isLoadingPlayers || !this.hasMorePlayers) return;
-    this.isLoadingPlayers = true;
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    if (!actorEmail || !this.currentBranchId) {
+      this.players = [];
+      this.hasMorePlayers = false;
+      this.isLoadingPlayers = false;
+      return;
+    }
 
-    this.http.get<any>(`/api/users/player-summary?page=${this.playersPage}&size=20`).subscribe({
+    this.isLoadingPlayers = true;
+    const requestVersion = this.playersRequestVersion;
+    const headers = new HttpHeaders({
+      'X-User-Email': actorEmail.trim(),
+    });
+
+    this.http.get<any>(`/api/users/player-summary?page=${this.playersPage}&size=20`, { headers }).subscribe({
       next: (response) => {
+        if (requestVersion !== this.playersRequestVersion) {
+          return;
+        }
         const content = response.content || [];
         this.players = [...this.players, ...content];
         this.isLoadingPlayers = false;
@@ -694,6 +1187,9 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
         }
       },
       error: (err) => {
+        if (requestVersion !== this.playersRequestVersion) {
+          return;
+        }
         console.error('Failed to load players', err);
         this.isLoadingPlayers = false;
       },
@@ -748,32 +1244,21 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
   }
 
   private loadViewerAccess(): void {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) {
+    const email = this.getStoredUserEmail();
+    if (!email) {
       this.canViewTodayEarnings = false;
       return;
     }
 
-    try {
-      const authUser = JSON.parse(storedUser) as { email?: string };
-      if (!authUser.email) {
+    this.http.get<{ role?: string }>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
+      next: (user) => {
+        this.canViewTodayEarnings = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role ?? '');
+      },
+      error: (err) => {
+        console.error('Failed to load viewer role', err);
         this.canViewTodayEarnings = false;
-        return;
-      }
-
-      this.http.get<{ role?: string }>(`/api/user?email=${encodeURIComponent(authUser.email)}`).subscribe({
-        next: (user) => {
-          this.canViewTodayEarnings = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user?.role ?? '');
-        },
-        error: (err) => {
-          console.error('Failed to load viewer role', err);
-          this.canViewTodayEarnings = false;
-        },
-      });
-    } catch (error) {
-      console.error('Failed to parse stored user', error);
-      this.canViewTodayEarnings = false;
-    }
+      },
+    });
   }
 
   private toNumber(value: number | string | null): number {
@@ -804,6 +1289,266 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     };
   }
 
+  private bindOrganizationContext(): void {
+    this.currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+
+    this.subscriptions.add(
+      this.organizationContextService.context$.subscribe((context) => {
+        this.addCustomerOrganizationName = context?.currentOrganization?.name ?? '';
+        this.addCustomerBranchName = context?.currentBranch?.name ?? '';
+
+        const nextBranchId = context?.currentBranch?.id ?? null;
+        if (this.currentBranchId === nextBranchId) {
+          return;
+        }
+
+        this.currentBranchId = nextBranchId;
+        this.branchStateVersion++;
+        this.resetFrameListsForBranchChange();
+        this.resetEarningsForBranchChange();
+        this.resetPlayersForBranchChange();
+        this.resetMonthlyExpensesForBranchChange();
+        if (nextBranchId) {
+          if (this.isOngoingExpanded) {
+            this.loadOngoingFrames();
+          }
+          if (this.isCompletedExpanded) {
+            this.loadCompletedFrames(this.selectedCompletedDate === this.maxCompletedDate);
+          }
+          if (this.isEarningsExpanded) {
+            this.loadEarningsForSelectedDate();
+          }
+          if (this.isPlayersExpanded) {
+            this.loadPlayers();
+          }
+          if (this.isMonthlyExpensesExpanded) {
+            this.loadMonthlyExpenses();
+            this.loadExpensePayers();
+          }
+        }
+      }),
+    );
+
+    const snapshot = this.organizationContextService.getSnapshot();
+    if (snapshot?.currentOrganization?.name || snapshot?.currentBranch?.name) {
+      this.addCustomerOrganizationName = snapshot?.currentOrganization?.name ?? '';
+      this.addCustomerBranchName = snapshot?.currentBranch?.name ?? '';
+      return;
+    }
+
+    this.refreshAddCustomerContext();
+  }
+
+  private refreshAddCustomerContext(): void {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    if (!actorEmail) {
+      return;
+    }
+
+    this.subscriptions.add(
+      this.organizationContextService.loadContext(actorEmail).subscribe({
+        error: (err) => {
+          console.error('Failed to load add customer context', err);
+        },
+      }),
+    );
+  }
+
+  private resetPlayersForBranchChange(): void {
+    this.playersRequestVersion++;
+    this.players = [];
+    this.playersPage = 0;
+    this.hasMorePlayers = true;
+    this.isLoadingPlayers = false;
+    this.showSettlementPopup = false;
+    this.settlementPlayer = null;
+    this.settlementTotalDue = 0;
+    this.settlementFrameDue = 0;
+    this.settlementConsumableDue = 0;
+    this.settlementKidsDue = 0;
+    this.settleAmount = null;
+    this.discountAmount = null;
+    this.paymentMode = '';
+    this.showItemsPopup = false;
+    this.itemsPlayer = null;
+    this.isLoadingItemsBreakdown = false;
+    this.dueBreakdown = {
+      frames: [],
+      consumables: [],
+      kidsPlay: [],
+      frameDue: 0,
+      consumableDue: 0,
+      kidsDue: 0,
+      totalDue: 0,
+    };
+  }
+
+  private initializeExpenseMonthOptions(): void {
+    const monthFormatter = new Intl.DateTimeFormat('en-IN', {
+      month: 'long',
+      year: 'numeric',
+    });
+    const options: ExpenseMonthOption[] = [];
+    const baseDate = new Date();
+
+    for (let offset = 0; offset < 6; offset++) {
+      const optionDate = new Date(baseDate.getFullYear(), baseDate.getMonth() - offset, 1);
+      const year = optionDate.getFullYear();
+      const month = optionDate.getMonth() + 1;
+      options.push({
+        value: `${year}-${`${month}`.padStart(2, '0')}`,
+        label: monthFormatter.format(optionDate),
+        year,
+        month,
+      });
+    }
+
+    this.expenseMonthOptions = options;
+    this.selectedExpenseMonthValue = options[0]?.value ?? '';
+  }
+
+  private loadMonthlyExpenses(): void {
+    const selectedMonth = this.expenseMonthOptions.find((option) => option.value === this.selectedExpenseMonthValue);
+    if (!selectedMonth) {
+      this.monthlyExpenses = [];
+      this.hasLoadedMonthlyExpenses = false;
+      this.isLoadingMonthlyExpenses = false;
+      return;
+    }
+
+    this.isLoadingMonthlyExpenses = true;
+    this.monthlyExpenses = [];
+    const requestVersion = ++this.expensesRequestVersion;
+    const branchVersion = this.branchStateVersion;
+
+    this.http.get<BranchExpense[]>(
+      '/api/manager/expenses',
+      { headers: this.buildActorHeaders(), params: { year: selectedMonth.year, month: selectedMonth.month } as any },
+    ).subscribe({
+      next: (expenses) => {
+        if (requestVersion !== this.expensesRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        this.monthlyExpenses = expenses ?? [];
+        this.hasLoadedMonthlyExpenses = true;
+        this.isLoadingMonthlyExpenses = false;
+      },
+      error: (err) => {
+        if (requestVersion !== this.expensesRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        console.error('Failed to load monthly expenses', err);
+        this.monthlyExpenses = [];
+        this.hasLoadedMonthlyExpenses = false;
+        this.isLoadingMonthlyExpenses = false;
+        alert(err?.error?.message || 'Unable to load monthly expenses right now');
+      },
+    });
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.authService.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private resetFrameListsForBranchChange(): void {
+    this.ongoingFrames = [];
+    this.completedFrames = [];
+    this.isLoadingOngoing = false;
+    this.isLoadingCompleted = false;
+  }
+
+  private resetEarningsForBranchChange(): void {
+    this.isLoadingEarnings = false;
+    this.hasLoadedEarnings = false;
+    this.todayEarnings = {
+      totalEarnings: 0,
+      totalDue: 0,
+      duePlayers: [],
+      settledPayments: [],
+    };
+  }
+
+  private loadExpensePayers(): void {
+    this.isLoadingExpensePayers = true;
+    this.expensePayers = [];
+    const requestVersion = ++this.expensePayersRequestVersion;
+    const branchVersion = this.branchStateVersion;
+
+    this.http.get<ExpensePayerOption[]>(
+      '/api/manager/expenses/eligible-payers',
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
+      next: (payers) => {
+        if (requestVersion !== this.expensePayersRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        this.expensePayers = payers ?? [];
+        this.isLoadingExpensePayers = false;
+      },
+      error: (err) => {
+        if (requestVersion !== this.expensePayersRequestVersion || branchVersion !== this.branchStateVersion) {
+          return;
+        }
+        console.error('Failed to load expense payers', err);
+        this.expensePayers = [];
+        this.isLoadingExpensePayers = false;
+        alert(err?.error?.message || 'Unable to load eligible payers right now');
+      },
+    });
+  }
+
+  private resetMonthlyExpensesForBranchChange(): void {
+    this.expensesRequestVersion++;
+    this.expensePayersRequestVersion++;
+    this.isLoadingMonthlyExpenses = false;
+    this.hasLoadedMonthlyExpenses = false;
+    this.monthlyExpenses = [];
+    this.isAddExpenseExpanded = false;
+    this.isLoadingExpensePayers = false;
+    this.expensePayers = [];
+    this.isSavingExpense = false;
+    this.initializeExpenseMonthOptions();
+    this.resetExpenseForm();
+  }
+
+  private resetExpenseForm(): void {
+    this.expenseForm = {
+      expenseName: '',
+      amount: null,
+      expenseType: '',
+      paidByUserId: null,
+      expenseDate: this.maxCompletedDate || this.formatDate(new Date()),
+      notes: '',
+    };
+  }
+
+  private getExpenseMonthLabel(value: string): string {
+    return this.expenseMonthOptions.find((option) => option.value === value)?.label ?? '';
+  }
+
+  getSelectedExpenseMonthLabel(): string {
+    return this.getExpenseMonthLabel(this.selectedExpenseMonthValue);
+  }
+
+  getMonthlyExpenseTotal(): number {
+    return this.monthlyExpenses.reduce((total, expense) => total + this.toNumber(expense.amount), 0);
+  }
+
+  formatExpenseTypeLabel(expenseType: string | null | undefined): string {
+    if (!expenseType) {
+      return '-';
+    }
+
+    return expenseType
+      .toLowerCase()
+      .split('_')
+      .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+      .join(' ');
+  }
+
   private loadParentChildren(parentId: number): void {
     this.isLoadingParentChildren = true;
     this.http.get<ChildProfile[]>(`/api/children/by-parent?parentUserId=${parentId}`).subscribe({
@@ -826,11 +1571,26 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     };
   }
 
-  private mapSearchResults(users: CustomerSearchResult[] | null | undefined, query: string): CustomerSearchResult[] {
+  private mapSearchResults(
+    users: CustomerSearchResult[] | null | undefined,
+    query: string,
+    includePhoneAndEmail = false,
+  ): CustomerSearchResult[] {
     const normalizedQuery = query.trim().toLowerCase();
     return (users ?? []).filter((user) => {
       const name = (user?.name ?? '').trim().toLowerCase();
-      return !!name && (!normalizedQuery || name.includes(normalizedQuery));
+      const email = (user?.email ?? '').trim().toLowerCase();
+      const phone = (user?.phone ?? '').trim().toLowerCase();
+      if (!normalizedQuery) {
+        return !!name;
+      }
+      if (name.includes(normalizedQuery)) {
+        return true;
+      }
+      if (!includePhoneAndEmail) {
+        return false;
+      }
+      return email.includes(normalizedQuery) || phone.includes(normalizedQuery);
     });
   }
 
@@ -842,6 +1602,155 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       email: '',
       phone: '',
     };
+  }
+
+  private loadOnboardingContext(requestedOrganizationId?: number): void {
+    const actorEmail = this.getStoredUserEmail();
+    if (!actorEmail) {
+      return;
+    }
+
+    this.isLoadingOnboardingContext = true;
+    const querySuffix = requestedOrganizationId ? `&organizationId=${requestedOrganizationId}` : '';
+    this.http.get<CustomerOnboardingContext>(
+      `/api/manager/customer-onboarding/context?email=${encodeURIComponent(actorEmail)}${querySuffix}`,
+    ).subscribe({
+      next: (context) => {
+        this.onboardingContext = context;
+        this.selectedOnboardingOrganizationId =
+          requestedOrganizationId
+          ?? context.currentOrganizationId
+          ?? context.organizations[0]?.id
+          ?? null;
+        this.isLoadingOnboardingContext = false;
+        this.syncOnboardingSelectionWithMembership();
+      },
+      error: (err) => {
+        console.error('Failed to load onboarding context', err);
+        this.onboardingContext = null;
+        this.isLoadingOnboardingContext = false;
+        alert(err?.error?.message || 'Unable to load onboarding options right now');
+      },
+    });
+  }
+
+  private syncOnboardingSelectionWithMembership(): void {
+    const existingMembership = this.getSelectedOrganizationMembership();
+    if (existingMembership) {
+      this.selectedOnboardingBranchIds = (existingMembership.accessibleBranches ?? []).map((branch) => branch.id);
+      this.selectedOnboardingBaseBranchId = existingMembership.baseBranchId ?? null;
+      return;
+    }
+
+    this.selectedOnboardingBranchIds = this.selectedOnboardingBranchIds.filter((branchId) =>
+      this.getAvailableOnboardingBranches().some((branch) => branch.id === branchId),
+    );
+    this.syncOnboardingBaseBranchSelection();
+  }
+
+  private syncOnboardingBaseBranchSelection(): void {
+    const existingMembership = this.getSelectedOrganizationMembership();
+    if (existingMembership) {
+      this.selectedOnboardingBaseBranchId = existingMembership.baseBranchId ?? null;
+      return;
+    }
+
+    if (this.selectedOnboardingBranchIds.length === 1) {
+      this.selectedOnboardingBaseBranchId = this.selectedOnboardingBranchIds[0];
+      return;
+    }
+
+    if (
+      this.selectedOnboardingBaseBranchId !== null
+      && !this.selectedOnboardingBranchIds.includes(this.selectedOnboardingBaseBranchId)
+    ) {
+      this.selectedOnboardingBaseBranchId = null;
+    }
+  }
+
+  private getStoredUserEmail(): string | null {
+    const storedUser = localStorage.getItem('user');
+    if (!storedUser) {
+      return null;
+    }
+
+    try {
+      const authUser = JSON.parse(storedUser) as { email?: string };
+      return authUser.email?.trim().toLowerCase() || null;
+    } catch (error) {
+      console.error('Failed to parse stored user', error);
+      return null;
+    }
+  }
+
+  private buildOnboardingSearchLabel(user: CustomerSearchResult): string {
+    const phone = user.phone?.trim();
+    return phone ? `${user.name} (${phone})` : user.name;
+  }
+
+  getAvailableOnboardingBranches(): OnboardingBranchOption[] {
+    return this.onboardingContext?.branches ?? [];
+  }
+
+  getSelectedOnboardingBranches(): OnboardingBranchOption[] {
+    const selectedBranchIds = new Set(this.selectedOnboardingBranchIds);
+    const mergedOptions = new Map<number, OnboardingBranchOption>();
+
+    for (const branch of this.getSelectedOrganizationMembership()?.accessibleBranches ?? []) {
+      mergedOptions.set(branch.id, branch);
+    }
+
+    for (const branch of this.getAvailableOnboardingBranches()) {
+      mergedOptions.set(branch.id, branch);
+    }
+
+    return Array.from(mergedOptions.values()).filter((branch) => selectedBranchIds.has(branch.id));
+  }
+
+  isOnboardingBranchSelected(branchId: number): boolean {
+    return this.selectedOnboardingBranchIds.includes(branchId);
+  }
+
+  getSelectedOrganizationMembership(): CustomerMembershipSummary | null {
+    if (!this.selectedOnboardingCandidate || !this.selectedOnboardingOrganizationId) {
+      return null;
+    }
+
+    return this.selectedOnboardingCandidate.memberships.find(
+      (membership) => membership.organizationId === this.selectedOnboardingOrganizationId,
+    ) ?? null;
+  }
+
+  hasExistingMembershipForSelectedOrganization(): boolean {
+    return !!this.getSelectedOrganizationMembership();
+  }
+
+  isExistingMembershipBranch(branchId: number): boolean {
+    return (this.getSelectedOrganizationMembership()?.accessibleBranches ?? []).some((branch) => branch.id === branchId);
+  }
+
+  shouldShowOnboardingBaseBranchSelector(): boolean {
+    return !this.hasExistingMembershipForSelectedOrganization() && this.selectedOnboardingBranchIds.length > 0;
+  }
+
+  getSelectedOnboardingOrganizationName(): string {
+    const organizationId = this.selectedOnboardingOrganizationId;
+    if (!organizationId) {
+      return '';
+    }
+
+    return this.onboardingContext?.organizations.find((organization) => organization.id === organizationId)?.name
+      ?? this.onboardingContext?.currentOrganizationName
+      ?? '';
+  }
+
+  getSelectedOnboardingBaseBranchName(): string {
+    if (!this.selectedOnboardingBaseBranchId) {
+      return this.getSelectedOrganizationMembership()?.baseBranchName ?? '';
+    }
+    return this.getAvailableOnboardingBranches().find((branch) => branch.id === this.selectedOnboardingBaseBranchId)?.name
+      ?? this.getSelectedOrganizationMembership()?.baseBranchName
+      ?? '';
   }
 
   openSettlementPopup(player: DuePlayer): void {
@@ -860,7 +1769,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     this.discountAmount = null;
     this.paymentMode = '';
 
-    this.http.get<any>(`/api/user/payment-summary-by-date?userId=${player.userId}&date=${this.selectedEarningsDate}`).subscribe({
+    const headers = this.buildActorHeaders();
+    this.http.get<any>(
+      `/api/user/payment-summary-by-date/current-branch?userId=${player.userId}&date=${this.selectedEarningsDate}`,
+      { headers },
+    ).subscribe({
       next: (summary) => {
         this.settlementFrameDue = summary?.frameDue ?? 0;
         this.settlementConsumableDue = summary?.consumableDue ?? 0;
@@ -895,7 +1808,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       totalDue: 0,
     };
 
-    this.http.get<PendingDueBreakdown>(`/api/user/payment-breakdown-by-date?userId=${player.userId}&date=${this.selectedEarningsDate}`).subscribe({
+    const headers = this.buildActorHeaders();
+    this.http.get<PendingDueBreakdown>(
+      `/api/user/payment-breakdown-by-date/current-branch?userId=${player.userId}&date=${this.selectedEarningsDate}`,
+      { headers },
+    ).subscribe({
       next: (breakdown) => {
         this.dueBreakdown = {
           frames: breakdown?.frames ?? [],
@@ -961,7 +1878,10 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
       paymentMode: this.paymentMode
     };
 
-    this.http.post('/api/payment/settle-by-date', request, { responseType: 'text' }).subscribe({
+    this.http.post('/api/payment/settle-by-date', request, {
+      headers: this.buildActorHeaders(),
+      responseType: 'text',
+    }).subscribe({
       next: () => {
         this.isSavingSettlement = false;
         alert('Payment settled successfully for selected date');

@@ -1,5 +1,6 @@
 package com.youngstersclub.app.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.youngstersclub.app.util.TimeUtil;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -29,6 +30,11 @@ public class KidsPlaySession {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_user_id", nullable = false)
     private User parentUser;
+
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
 
     @Column(name = "start_time")
     private LocalDateTime startTime;
@@ -83,6 +89,14 @@ public class KidsPlaySession {
 
     public void setParentUser(User parentUser) {
         this.parentUser = parentUser;
+    }
+
+    public Branch getBranch() {
+        return branch;
+    }
+
+    public void setBranch(Branch branch) {
+        this.branch = branch;
     }
 
     public LocalDateTime getStartTime() {

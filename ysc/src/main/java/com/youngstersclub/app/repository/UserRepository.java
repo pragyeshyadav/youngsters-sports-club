@@ -5,19 +5,14 @@ import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
 import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface UserRepository extends JpaRepository<User, Integer> {
-    interface DailyVisitedCustomerProjection {
-        Integer getUserId();
-        String getName();
-        String getPhone();
-    }
+public interface UserRepository extends JpaRepository<User, Integer>, UserRepositoryCustom {
 
     Optional<User> findByEmail(String email);
     Optional<User> findByGoogleId(String googleId);
@@ -28,65 +23,89 @@ public interface UserRepository extends JpaRepository<User, Integer> {
     List<User> findTop10ByNameContainingIgnoreCaseOrderByNameAsc(String name);
 
     @Query("""
-           SELECT DISTINCT u
-           FROM User u
-           WHERE u.role = :role
-             AND COALESCE(u.isActive, true) = true
-             AND EXISTS (
-                 SELECT fp.id
-                 FROM FramePlayer fp
-                 WHERE fp.user.id = u.id
-             )
-           ORDER BY u.name ASC
-           """)
-    List<User> findDistinctUsersWithFrameParticipation(@Param("role") UserRole role);
+            select ou.user
+            from OrganizationUser ou
+            where ou.organization.id = :organizationId
+              and ou.role = :role
+              and coalesce(ou.isActive, true) = true
+              and ou.user is not null
+              and coalesce(ou.user.isActive, true) = true
+              and (
+                    :branchId is null
+                    or (ou.baseBranch is not null and ou.baseBranch.id = :branchId)
+                    or exists (
+                        select 1
+                        from UserBranchAccess uba
+                        where uba.organizationUser = ou
+                          and uba.branch.id = :branchId
+                          and coalesce(uba.isActive, true) = true
+                    )
+              )
+            order by ou.user.name asc, ou.user.id asc
+            """)
+    List<User> findActiveUsersByRoleAndOrganizationAndOptionalBranch(
+            @Param("role") UserRole role,
+            @Param("organizationId") Long organizationId,
+            @Param("branchId") Long branchId);
 
-    @Query(value = """
-           SELECT
-               u.id AS userId,
-               u.name AS name,
-               u.email AS email,
-               COUNT(fp.id) AS framesPlayed
-           FROM users u
-           LEFT JOIN frame_players fp ON fp.user_id = u.id
-           GROUP BY u.id, u.name, u.email
-           """, nativeQuery = true)
-    List<PlayerSummaryBaseProjection> getAllPlayerSummaryBases();
+    @Query("""
+            select ou.user
+            from OrganizationUser ou
+            where ou.organization.id = :organizationId
+              and ou.role = :role
+              and ou.user.id in :userIds
+              and coalesce(ou.isActive, true) = true
+              and ou.user is not null
+              and coalesce(ou.user.isActive, true) = true
+              and (
+                    :branchId is null
+                    or (ou.baseBranch is not null and ou.baseBranch.id = :branchId)
+                    or exists (
+                        select 1
+                        from UserBranchAccess uba
+                        where uba.organizationUser = ou
+                          and uba.branch.id = :branchId
+                          and coalesce(uba.isActive, true) = true
+                    )
+              )
+            order by ou.user.name asc, ou.user.id asc
+            """)
+    List<User> findActiveUsersByIdsAndRoleAndOrganizationAndOptionalBranch(
+            @Param("userIds") List<Integer> userIds,
+            @Param("role") UserRole role,
+            @Param("organizationId") Long organizationId,
+            @Param("branchId") Long branchId);
 
-    @Query(value = """
-           SELECT DISTINCT visited.user_id AS userId, visited.name AS name, visited.phone AS phone
-           FROM (
-               SELECT u.id AS user_id, u.name, u.phone
-               FROM frames f
-               JOIN frame_players fp ON fp.frame_id = f.id
-               JOIN users u ON u.id = fp.user_id
-               WHERE DATE(f.start_time) = :selectedDate
-                 AND u.role = 'CUSTOMER'
-
-               UNION
-
-               SELECT u.id AS user_id, u.name, u.phone
-               FROM consumable_orders co
-               JOIN users u ON u.id = co.user_id
-               WHERE DATE(co.created_at) = :selectedDate
-                 AND u.role = 'CUSTOMER'
-
-               UNION
-
-               SELECT u.id AS user_id, u.name, u.phone
-               FROM kids_play_sessions kps
-               JOIN users u ON u.id = kps.parent_user_id
-               WHERE DATE(kps.start_time) = :selectedDate
-                 AND u.role = 'CUSTOMER'
-
-               UNION
-
-               SELECT u.id AS user_id, u.name, u.phone
-               FROM users u
-               WHERE DATE(u.created_at) = :selectedDate
-                 AND u.role = 'CUSTOMER'
-           ) visited
-           ORDER BY visited.name ASC
-           """, nativeQuery = true)
-    List<DailyVisitedCustomerProjection> findDailyVisitedCustomers(@Param("selectedDate") java.time.LocalDate selectedDate);
+    @Query("""
+            select ou.user
+            from OrganizationUser ou
+            where ou.organization.id = :organizationId
+              and ou.role = :role
+              and coalesce(ou.isActive, true) = true
+              and ou.user is not null
+              and coalesce(ou.user.isActive, true) = true
+              and exists (
+                    select 1
+                    from FramePlayer fp
+                    join fp.frame f
+                    where fp.user.id = ou.user.id
+                      and (:branchId is null or f.branch.id = :branchId)
+              )
+              and (
+                    :branchId is null
+                    or (ou.baseBranch is not null and ou.baseBranch.id = :branchId)
+                    or exists (
+                        select 1
+                        from UserBranchAccess uba
+                        where uba.organizationUser = ou
+                          and uba.branch.id = :branchId
+                          and coalesce(uba.isActive, true) = true
+                    )
+              )
+            order by ou.user.name asc, ou.user.id asc
+            """)
+    List<User> findDistinctUsersWithFrameParticipationByRoleAndOrganizationAndOptionalBranch(
+            @Param("role") UserRole role,
+            @Param("organizationId") Long organizationId,
+            @Param("branchId") Long branchId);
 }

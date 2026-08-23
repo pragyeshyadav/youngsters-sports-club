@@ -59,6 +59,18 @@
           rows="5"
           placeholder="Type your notification message here..."></textarea>
 
+        <label class="notification-label" for="notification-branch-scope">Select Branch</label>
+        <select
+          id="notification-branch-scope"
+          class="notification-search-input"
+          [(ngModel)]="selectedBranchId"
+          (ngModelChange)="onBranchScopeChange()"
+          [disabled]="isSendingNotification">
+          @for (branch of branchScopeOptions; track branch.label) {
+            <option [ngValue]="branch.id">{{ branch.label }}</option>
+          }
+        </select>
+
         <div class="recipient-options">
           <label class="recipient-option">
             <input

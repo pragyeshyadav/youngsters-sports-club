@@ -17,6 +17,11 @@ public interface ConsumableItemRepository extends JpaRepository<ConsumableItem, 
         Long getAvailableStock();
     }
 
+    List<ConsumableItem> findByBranch_IdAndIsActiveTrueOrderByNameAsc(Long branchId);
+    List<ConsumableItem> findTop10ByBranch_IdAndIsActiveTrueAndNameContainingIgnoreCaseOrderByNameAsc(Long branchId, String name);
+    List<ConsumableItem> findByIdInAndBranch_IdAndIsActiveTrue(List<Long> ids, Long branchId);
+    java.util.Optional<ConsumableItem> findByIdAndBranch_Id(Long id, Long branchId);
+
     List<ConsumableItem> findByIsActiveTrue();
     List<ConsumableItem> findTop10ByIsActiveTrueAndNameContainingIgnoreCaseOrderByNameAsc(String name);
     List<ConsumableItem> findByIdInAndIsActiveTrue(List<Long> ids);
@@ -34,7 +39,8 @@ public interface ConsumableItemRepository extends JpaRepository<ConsumableItem, 
                 cis.item_id,
                 SUM(cis.quantity_added) AS stock_added
             FROM consumable_item_stock cis
-            WHERE EXTRACT(MONTH FROM cis.created_at) = :month
+            WHERE cis.branch_id = :branchId
+              AND EXTRACT(MONTH FROM cis.created_at) = :month
               AND EXTRACT(YEAR FROM cis.created_at) = :year
             GROUP BY cis.item_id
         ) stock_totals ON stock_totals.item_id = ci.id
@@ -44,13 +50,16 @@ public interface ConsumableItemRepository extends JpaRepository<ConsumableItem, 
                 SUM(coi.quantity) AS sold_quantity
             FROM consumable_order_items coi
             JOIN consumable_orders co ON co.id = coi.order_id
-            WHERE EXTRACT(MONTH FROM co.created_at) = :month
+            WHERE co.branch_id = :branchId
+              AND EXTRACT(MONTH FROM co.created_at) = :month
               AND EXTRACT(YEAR FROM co.created_at) = :year
             GROUP BY coi.item_id
         ) sold_totals ON sold_totals.item_id = ci.id
+        WHERE ci.branch_id = :branchId
         ORDER BY ci.name ASC
     """, nativeQuery = true)
     List<ConsumableStockReportProjection> getConsumableStockReport(
+            @Param("branchId") Long branchId,
             @Param("month") int month,
             @Param("year") int year);
 }

@@ -6,6 +6,7 @@ import com.youngstersclub.app.dto.ConsumableStockCreateResponseDto;
 import com.youngstersclub.app.dto.ConsumableStockReportRowDto;
 import com.youngstersclub.app.dto.MessageResponseDto;
 import com.youngstersclub.app.dto.NotificationBroadcastRequest;
+import com.youngstersclub.app.dto.UserSearchResultDto;
 import com.youngstersclub.app.dto.TriggerWhatsappRequest;
 import com.youngstersclub.app.service.ConsumableService;
 import com.youngstersclub.app.service.AdminAnalyticsService;
@@ -19,6 +20,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -53,15 +55,17 @@ public class AdminController {
 
     @PostMapping("/consumables/stock")
     public ResponseEntity<ConsumableStockCreateResponseDto> addConsumableStock(
-            @RequestBody ConsumableStockCreateRequest request) {
-        return ResponseEntity.ok(consumableService.addStock(request));
+            @RequestBody ConsumableStockCreateRequest request,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(consumableService.addStock(request, actorEmail));
     }
 
     @GetMapping("/consumables/stock-report")
     public ResponseEntity<List<ConsumableStockReportRowDto>> getConsumableStockReport(
             @RequestParam int month,
-            @RequestParam int year) {
-        return ResponseEntity.ok(consumableService.getStockReport(month, year));
+            @RequestParam int year,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(consumableService.getStockReport(month, year, actorEmail));
     }
 
     @PostMapping("/trigger-whatsapp")
@@ -87,16 +91,27 @@ public class AdminController {
 
     @PostMapping("/send-notification-message")
     public ResponseEntity<MessageResponseDto> sendNotificationMessage(
-            @RequestBody(required = false) NotificationBroadcastRequest request) {
+            @RequestBody(required = false) NotificationBroadcastRequest request,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         try {
             adminNotificationBroadcastService.triggerNotificationBroadcast(
                     request == null ? null : request.getMessage(),
                     request == null ? null : request.getRecipientType(),
-                    request == null ? null : request.getCustomerIds());
+                    request == null ? null : request.getCustomerIds(),
+                    actorEmail,
+                    request == null ? null : request.getBranchId());
         } catch (Exception ex) {
             log.error("Failed to queue notification broadcast. Reason: {}", ex.getMessage(), ex);
         }
 
         return ResponseEntity.ok(new MessageResponseDto("Notification process triggered successfully"));
+    }
+
+    @GetMapping("/notification-customers/search")
+    public ResponseEntity<List<UserSearchResultDto>> searchNotificationCustomers(
+            @RequestParam String query,
+            @RequestParam(name = "branchId", required = false) Long branchId,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(adminNotificationBroadcastService.searchCustomers(query, actorEmail, branchId));
     }
 }

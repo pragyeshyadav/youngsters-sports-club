@@ -1,9 +1,11 @@
 # agents.md: Youngsters Sports Club - AI Source of Truth
 
 **Overview:**
-Youngsters Sports Club (YSC) is a full-stack Angular + Spring Boot + PostgreSQL platform designed for managing a snooker club, cafe consumables, kids play sessions, and tournament registrations. 
+Youngsters Sports Club (YSC) is a full-stack Angular + Spring Boot + PostgreSQL platform designed for managing a snooker club, cafe consumables, kids play sessions, and tournament registrations. The platform is **evolving into multi-tenant SaaS** (multiple organizations, multiple branches per organization).
 
-This file is the **ultimate single source of truth** for any AI agent (Codex, Antigravity, Claude, GPT) or developer working in this repository. Read this deeply to understand system behavior before modifying code.
+This file is the **operational source of truth** for current system behavior. For **multi-tenant vision, migration phases, and future architecture decisions**, also read **`PROJECT_MASTER_CONTEXT.md`** in full before implementing org/branch features.
+
+Read both documents deeply before modifying code.
 
 ---
 
@@ -21,10 +23,23 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 2. Authentication & User System
+## 2. Multi-Tenant Architecture (In Progress)
+
+* **Master context:** See `PROJECT_MASTER_CONTEXT.md` for vision, business rules, and migration phases.
+* **Phase 1 (DONE — DB only):** Master tables `organizations`, `branches`, `organization_users`, `user_branch_access` exist in production PostgreSQL. **No JPA entities or API changes yet** — legacy single-org behavior is unchanged.
+* **Organization:** Top-level tenant. Data is isolated per organization; customers never cross organizations.
+* **Branch:** Physical location under an organization (e.g. Satna, Rewa). Operational data will eventually be scoped by `branch_id`.
+* **organization_users:** Links a global `users` row to an organization with an org-level `role`. Includes `base_branch_id` (FK → `branches`) — every org user has a home branch.
+* **user_branch_access:** Many-to-many mapping for managers/staff who may operate at multiple branches within one organization.
+* **Customer rules (target):** One customer per organization; one `base_branch_id`; may visit any branch in that org; same phone in another org = different customer.
+* **Next phases:** Seed default org/branches → add nullable `organization_id` / `branch_id` to transactional tables → backfill → update APIs/UI incrementally.
+
+---
+
+## 3. Authentication & User System
 
 * **Google Login:** Primary entry point. Angular posts the Google payload to `POST /api/auth/google-login`.
-* **User Entity:** Defines identity via `googleId` and tracks permissions via `UserRole` (`CUSTOMER`, `MANAGER`, `ADMIN`, `SUPER_ADMIN`).
+* **User Entity:** Defines identity via `googleId` and tracks permissions via `UserRole` (`CUSTOMER`, `MANAGER`, `ADMIN`, `SUPER_ADMIN`). **Legacy:** role lives on `users.role` today; org-scoped roles will move to `organization_users.role` over time.
 * **Manual Users & Merging Flow (`UserService.mergeUserAccounts`):**
   * Managers can create "Manual Customers" via the portal (`MANUAL_USER_...`).
   * When a new Google login attempts to register a phone number that already belongs to a Manual Customer, a **Merge Operation** occurs.
@@ -34,7 +49,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 3. Snooker Module
+## 4. Snooker Module
 
 * **Table Locking:** Handled by `SnookerTable`'s `is_available` flag. This acts as the physical concurrency lock.
 * **Match Modes:**
@@ -45,7 +60,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 4. Payment Settlement System
+## 5. Payment Settlement System
 
 * **Orchestrator:** `PaymentService.java` (`POST /api/payment/settle` or `POST /api/payment/settle-by-date`).
 * **Oldest-First Partial Settlement:** A single lump-sum payment (and optional discount) is allocated across all due modules in this exact order:
@@ -57,7 +72,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 5. Kids Play Module
+## 6. Kids Play Module
 
 * **Independence:** Operationally separate from Snooker but relies on a special `SnookerTable` row named exactly `Kids Ocean Dream Land` to determine pricing (`rate_per_minute`).
 * **Child Management:** Customers can add max 10 children.
@@ -66,7 +81,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 6. Consumable / Cafe Module
+## 7. Consumable / Cafe Module
 
 * **Pricing Source of Truth:** `ConsumableItem` (DB driven). Frontend sends a cart of `itemId` + `quantity`. Backend recalculates line totals (`ConsumableService.createOrder`) to prevent tampering.
 * **Structure:** One `ConsumableOrder` contains many `ConsumableOrderItem`s.
@@ -75,7 +90,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 7. WhatsApp Integration
+## 8. WhatsApp Integration
 
 * **Service:** `WhatsAppService.java` using Meta Cloud API.
 * **Capabilities:**
@@ -85,7 +100,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 8. Brevo Email Integration
+## 9. Brevo Email Integration
 
 * **Service:** `BrevoEmailService.java`.
 * **Purpose:** Sends the daily summary of WhatsApp messages sent. 
@@ -94,14 +109,14 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 9. Reports & Dashboard
+## 10. Reports & Dashboard
 
 * **Earnings Analytics:** `AnalyticsService.java` handles `GET /api/analytics/today-earnings`. Queries aggregated frame costs, partial settlements, and breaks down who owes what. Allows historical queries up to 60 days back.
 * **Aggregated Summary:** `UserPaymentSummaryService.java` merges Frame dues, Consumable dues, and Kids Play dues into a single `UserPaymentSummaryDto` to display on the Customer Dashboard and Payment Settlement UI.
 
 ---
 
-## 10. Manager Portal
+## 11. Manager Portal
 
 * **Angular Implementation:** `client/src/app/features/managers-portal/`
 * **Features (Collapsible Panels):**
@@ -113,7 +128,9 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 11. Database Documentation (JPA Entities)
+## 12. Database Documentation
+
+### Legacy JPA Entities (operational — single-org today)
 
 * `User`: Core identity, roles, Google ID, Phone.
 * `SnookerTable`: Physical tables & Kids Ocean Dreamland pricing config.
@@ -125,10 +142,20 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 * `ConsumableItem`, `ConsumableOrder`, `ConsumableOrderItem`: Cafe operations.
 * `Tournament`, `TournamentRegistration`, `TournamentMatch`, `TournamentUpdate`: Summer Olympics event management.
 * `CustomerFeedback`: Star ratings and reviews.
+* `Game`, `GameActivityOrder`: Play zone / Soft Play Zone activities.
+
+### Multi-Tenant Master Tables (Phase 1 — SQL applied, no JPA yet)
+
+* `organizations`: Tenant root (`name` unique via `idx_organization_name`).
+* `branches`: Locations under an org (`organization_id` → `organizations`, indexed by `idx_branch_org`).
+* `organization_users`: User membership in an org (`organization_id`, `user_id`, `role`, `base_branch_id` → `branches`). Indexed by `idx_org_user`, `idx_org_user_base_branch`.
+* `user_branch_access`: Extra branch permissions for staff (`organization_user_id`, `branch_id`). Unique pair via `idx_user_branch`.
+
+**Note:** Master tables use `BIGSERIAL` PKs; legacy `users.id` is `INTEGER`. FK from `organization_users.user_id` → `users(id)` is intentional. Full DDL is in `PROJECT_MASTER_CONTEXT.md`.
 
 ---
 
-## 12. Scheduled Jobs / Cron Tasks
+## 13. Scheduled Jobs / Cron Tasks
 
 * **Location:** `DailyCustomerEngagementService.java`
 * **Cron:** `@Scheduled(cron = "0 30 21 * * *", zone = "Asia/Kolkata")` (9:30 PM IST every day).
@@ -137,7 +164,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 13. Known Bugs / Sensitive Areas
+## 14. Known Bugs / Sensitive Areas
 
 1. **Snooker Concurrency Locks:** Table locking relies on JPA updates. Concurrent requests can cause race conditions. Frontend utilizes button-loading states (`isStartingFrame`, `isEndingFrame`) to aggressively mitigate this.
 2. **Team Mode State Issue (FIXED):** Previously, `maxLosersAllowed` in `start-frame.component.ts` incorrectly fell through to `1` for 4-player team matches. It now strictly enforces `2`, resolving a bug where the `Confirm` button wouldn't enable.
@@ -147,7 +174,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 14. API Documentation (Key Endpoints)
+## 15. API Documentation (Key Endpoints)
 
 * `GET /api/user?email={email}` : Retrieve User (used heavily by Angular for role checking).
 * `POST /api/frame/start` : Initiate frame (requires `tableId`, `players[]`).
@@ -160,7 +187,7 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 15. UI/UX Conventions
+## 16. UI/UX Conventions
 
 * **Theme:** Premium, dark-mode focused, glassmorphism aesthetics.
 * **Component Design:** Standalone angular components (`@Component({ standalone: true })`).
@@ -171,26 +198,186 @@ This file is the **ultimate single source of truth** for any AI agent (Codex, An
 
 ---
 
-## 16. Developer Guidelines
+## 17. Developer Guidelines
 
-1. **Avoid Lombok on Entities.** Stick to generating standard getters and setters.
-2. **Schema Migrations:** The project relies on `spring.jpa.hibernate.ddl-auto=update`. Avoid writing native SQL files for migrations at this stage. Modify entities directly and let Hibernate update the schema.
-3. **Build Testing:** Validate changes using `./mvnw -Dfrontend.skip=true test` and Angular compilation using `npx tsc -p tsconfig.app.json --noEmit`.
-4. **Role Checks:** Guard features primarily on the frontend via `['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)`, but ensure backend APIs inherently reject actions for unprivileged users.
+1. **Read `PROJECT_MASTER_CONTEXT.md`** before any org/branch work; follow migration phases — do not skip to destructive schema changes.
+2. **Avoid Lombok on Entities.** Stick to generating standard getters and setters.
+3. **Schema Migrations:** Legacy tables use `spring.jpa.hibernate.ddl-auto=update`. New multi-tenant master tables were applied via **manual SQL** in production; prefer the same additive approach for Phase 2+ until Flyway/Liquibase is introduced.
+4. **Build Testing:** Validate changes using `./mvnw -Dfrontend.skip=true test` and Angular compilation using `npx tsc -p tsconfig.app.json --noEmit`.
+5. **Role Checks:** Guard features primarily on the frontend via `['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)`, but ensure backend APIs inherently reject actions for unprivileged users. Org-scoped roles via `organization_users` will supersede this over time.
 
 ---
 
-## 17. Feature Dependency Mapping
+## 18. Feature Dependency Mapping
 
 * **Payment Settlement** -> Depends on (Snooker Frames, Consumables, Kids Play). A schema change to any of these three modules will break settlement logic.
-* **User Merge** -> Depends on Google OAuth payload vs User Entity lookup by Phone. Changing phone number uniqueness will break merging.
-* **Manager Earnings** -> Depends on `Payment` table for settled cash and `Frame` table for gross earnings.
+* **User Merge** -> Depends on Google OAuth payload vs User Entity lookup by Phone. Changing phone number uniqueness will break merging. **Future:** merge scope becomes per-organization.
+* **Manager Earnings** -> Depends on `Payment` table for settled cash and `Frame` table for gross earnings. **Future:** filter by `branch_id`.
+* **Multi-Tenant Rollout** -> Master tables (`organizations`, `branches`, `organization_users`, `user_branch_access`) must be seeded before transactional tables receive `organization_id` / `branch_id`.
 
 ---
 
-## 18. Recommended Future Improvements
+## 19. Recommended Future Improvements
 
 1. **Pessimistic Locking / Optimistic Locking (JPA):** Add `@Version` on `SnookerTable` to prevent race conditions during heavy concurrent bookings.
 2. **Database Migration Tool:** Introduce Flyway or Liquibase to stop relying on `hibernate.ddl-auto=update`, making schema changes predictable in production.
 3. **Immutable Ledgers:** Modify Consumables and Frames to store `grossAmount` alongside `remainingDue` so partial payments do not destroy the original transaction cost.
 4. **Redis Caching:** Introduce caching for `/api/snooker/tables` and `/api/leaderboard/top-players` to reduce DB hits on dashboard loads.
+
+---
+
+## 20. Planned Next Migration Phase (Do Not Implement All At Once)
+
+This phase is **planned and approved for future phased implementation**, but should be executed incrementally module by module. The database migration is already complete and `branch_id` is now mandatory on key operational tables, so **write paths must be updated before read/reporting paths**.
+
+### Current Migration State
+
+The following operational tables are now branch-aware at the database level and require application-level enforcement:
+
+* `snooker_tables`
+* `frames`
+* `payments`
+* `user_dues`
+* `kids_play_sessions`
+* `games`
+* `game_activity_orders`
+* `consumable_items`
+* `consumable_item_stock`
+* `consumable_orders`
+* `customer_feedback`
+* `tournaments`
+
+Historical records have already been backfilled.
+
+### Core Rule
+
+Every request must operate through this validated chain:
+
+`Authenticated User -> Current Organization -> Current Branch -> Role/Branch Authorization`
+
+Never trust arbitrary `organizationId` or `branchId` from the frontend without backend verification through:
+
+* `organization_users`
+* `user_branch_access`
+* active organization
+* active branch
+* branch ownership by organization
+
+### Shared Backend Requirement
+
+All branch-aware modules should reuse one central backend context resolver, such as `OrganizationBranchContextService` or the existing org context service extended for this purpose.
+
+Suggested reusable model:
+
+```java
+public record ActiveContext(
+    Long userId,
+    Long organizationUserId,
+    Long organizationId,
+    Long branchId,
+    String role
+) {}
+```
+
+Do not duplicate branch validation logic in individual controllers.
+
+### Required Rollout Order
+
+Implement in this order:
+
+1. Shared context and entity mappings
+2. Snooker tables
+3. Frame lifecycle
+4. Ongoing/completed frame reporting
+5. Leaderboard
+6. Payment due calculation
+7. Payment settlement
+8. Manager earnings
+9. Consumables and inventory
+10. Kids play
+11. Game activities
+12. Tournaments
+13. Customer feedback
+14. Schedulers, WhatsApp and Brevo summaries
+15. Frontend context refresh and cache cleanup
+
+### Mandatory First Priority Because `branch_id` Is `NOT NULL`
+
+Before any report migration, update these write paths first:
+
+1. Manual customer-related branch mappings, if affected
+2. Start frame
+3. Payments
+4. Consumable orders
+5. Kids play sessions
+6. Game activity orders
+7. Tournaments
+8. Feedback
+
+Any insert path that does not assign `branch_id` can fail immediately.
+
+### Branch Awareness Rules by Module
+
+The following must become branch-scoped in future implementation:
+
+* Snooker tables shown and updated only for current branch
+* Start frame must save current branch
+* End frame must load frame by `frameId + branchId`
+* Ongoing/completed frame panels must filter by current branch
+* Monthly Top 10 leaderboard must be branch-specific
+* Show All Players must use branch-specific due and frame counts
+* `user_dues` must be treated as `user_id + branch_id`
+* Payment settlement must settle only the current branch’s dues
+* Payment history and settled payments must filter by branch
+* Today’s Total Earnings must be recalculated for branch only
+* Consumable items, stock, orders and reports must be branch-aware
+* Kids play sessions must be created, ended and reported by branch
+* Games and activity orders must be branch-aware
+* Tournaments and feedback must be branch-aware
+* Schedulers must be reviewed to distinguish branch-scoped vs organization-scoped behavior
+
+### Frontend Requirement
+
+All branch-dependent Angular components must respond to current context changes. On branch switch they must:
+
+* clear stale state
+* reload branch APIs
+* clear stale selections
+* refresh tables, frames, earnings, leaderboard, players, inventory, kids play, games, tournaments, and related dialogs
+
+Avoid reading branch context from local storage directly in isolated components where a shared context service already exists.
+
+### Security and Leakage Prevention
+
+Future implementation must explicitly prevent:
+
+* cross-branch frame access
+* cross-branch settlement
+* cross-branch earnings leakage
+* cross-branch inventory mutation
+* direct URL/API manipulation bypassing branch rules
+
+### Delivery Strategy
+
+Do not attempt one giant refactor. Ship in batches:
+
+* Batch 1: shared context, entity mappings, repository methods, snooker tables, start frame
+* Batch 2: end frame, ongoing/completed frames, leaderboard
+* Batch 3: due calculator, `user_dues`, settlement, payment history, earnings
+* Batch 4: consumables and inventory
+* Batch 5: kids play, games, activities
+* Batch 6: tournaments, feedback, schedulers, WhatsApp/Brevo summaries
+* Batch 7: frontend refresh behavior, security regression tests, end-to-end verification
+
+### Implementation Reminder
+
+When future prompts ask for this migration, implement **phase by phase only**, preserving:
+
+* Google OAuth
+* organization switching
+* branch switching
+* manual customer creation
+* existing onboarding
+* payment calculations
+* WhatsApp and Brevo integrations
+* mobile responsiveness

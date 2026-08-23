@@ -1,9 +1,11 @@
 import { CommonModule } from '@angular/common';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
+import { Subscription } from 'rxjs';
 
 interface SettlementUser {
   id: number;
@@ -48,6 +50,10 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly router = inject(Router);
+  private readonly organizationContextService = inject(OrganizationContextService);
+  private readonly subscriptions = new Subscription();
+  private currentBranchId: number | null = null;
+  private branchRequestVersion = 0;
 
   currentUserId: number | null = null;
   isManagerOrAdmin = false;
@@ -92,6 +98,7 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
           this.loadChildren();
           this.loadParentActiveSessions(this.currentUserId!);
         }
+        this.subscribeToBranchChanges();
         this.startGlobalTimer();
         this.cdr.markForCheck();
       },
@@ -105,6 +112,7 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
     if (this.timerInterval) {
       clearInterval(this.timerInterval);
     }
+    this.subscriptions.unsubscribe();
   }
 
   startGlobalTimer() {
@@ -227,13 +235,20 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
     if (!parentId) return;
 
     this.isLoadingChildren = true;
+    const requestVersion = this.branchRequestVersion;
     this.http.get<ChildProfile[]>(`/api/children/by-parent?parentUserId=${parentId}`).subscribe({
       next: (children) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.children = children ?? [];
         this.isLoadingChildren = false;
         this.cdr.markForCheck();
       },
       error: (err) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         console.error('Failed to load children', err);
         this.children = [];
         this.isLoadingChildren = false;
@@ -243,8 +258,15 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
   }
 
   private loadParentActiveSessions(parentId: number): void {
-    this.http.get<KidsSession[]>(`/api/kids-session/active?parentUserId=${parentId}`).subscribe({
+    const requestVersion = this.branchRequestVersion;
+    this.http.get<KidsSession[]>(
+      `/api/kids-session/active?parentUserId=${parentId}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (sessions) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.parentActiveSessions = sessions || [];
         this.cdr.markForCheck();
       },
@@ -253,8 +275,15 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
   }
 
   private loadAllActiveSessions(): void {
-    this.http.get<KidsSession[]>(`/api/kids-session/active`).subscribe({
+    const requestVersion = this.branchRequestVersion;
+    this.http.get<KidsSession[]>(
+      `/api/kids-session/active`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (sessions) => {
+        if (requestVersion !== this.branchRequestVersion) {
+          return;
+        }
         this.allActiveSessions = sessions || [];
         this.cdr.markForCheck();
       },
@@ -270,10 +299,14 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
     const parentId = this.isManagerOrAdmin ? this.selectedParent?.id : this.currentUserId;
     if (!parentId || !childId) return;
 
-    this.http.post<KidsSession>('/api/kids-session/start', {
-      parentUserId: parentId,
-      childId: childId,
-    }).subscribe({
+    this.http.post<KidsSession>(
+      '/api/kids-session/start',
+      {
+        parentUserId: parentId,
+        childId: childId,
+      },
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (session) => {
         this.parentActiveSessions = [session, ...this.parentActiveSessions];
         if (this.isManagerOrAdmin) {
@@ -291,10 +324,14 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
     const session = this.parentActiveSessions.find(s => s.sessionId === sessionId) || this.allActiveSessions.find(s => s.sessionId === sessionId);
     if (!session) return;
 
-    this.http.post<KidsSession>('/api/kids-session/end', {
-      parentUserId: session.parentUserId,
-      sessionId: sessionId,
-    }).subscribe({
+    this.http.post<KidsSession>(
+      '/api/kids-session/end',
+      {
+        parentUserId: session.parentUserId,
+        sessionId: sessionId,
+      },
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (resultSession) => {
         this.parentActiveSessions = this.parentActiveSessions.filter(s => s.sessionId !== sessionId);
         if (this.isManagerOrAdmin) {
@@ -312,9 +349,13 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
   rejectPlayTime(sessionId: number): void {
     if (!confirm('Are you sure you want to reject and cancel this session? This will not incur any charges.')) return;
     
-    this.http.post<KidsSession>('/api/kids-session/reject', {
-      sessionId: sessionId,
-    }).subscribe({
+    this.http.post<KidsSession>(
+      '/api/kids-session/reject',
+      {
+        sessionId: sessionId,
+      },
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: () => {
         this.parentActiveSessions = this.parentActiveSessions.filter(s => s.sessionId !== sessionId);
         if (this.isManagerOrAdmin) {
@@ -339,5 +380,73 @@ export class KidsPlayComponent implements OnInit, OnDestroy {
       address: '',
       school: '',
     };
+  }
+
+  private subscribeToBranchChanges(): void {
+    this.currentBranchId = this.organizationContextService.getSnapshot()?.currentBranch?.id ?? null;
+    this.subscriptions.add(
+      this.organizationContextService.currentBranchId$.subscribe((branchId) => {
+        if (this.currentBranchId === branchId) {
+          return;
+        }
+
+        this.currentBranchId = branchId;
+        this.resetBranchScopedState();
+        if (!branchId) {
+          return;
+        }
+
+        if (this.isManagerOrAdmin) {
+          if (this.isGlobalPanelExpanded) {
+            this.loadAllActiveSessions();
+          }
+          return;
+        }
+
+        if (this.currentUserId) {
+          this.loadChildren();
+          this.loadParentActiveSessions(this.currentUserId);
+        }
+      }),
+    );
+  }
+
+  private resetBranchScopedState(): void {
+    this.branchRequestVersion++;
+    this.parentSearchText = '';
+    this.searchedParents = [];
+    this.selectedParent = null;
+    this.children = [];
+    this.isLoadingChildren = false;
+    this.allActiveSessions = [];
+    this.parentActiveSessions = [];
+    this.isLoadingParents = false;
+    this.showAddChildForm = false;
+    this.isSubmittingChild = false;
+    this.resetChildForm();
+    this.cdr.markForCheck();
+  }
+
+  private buildActorHeaders(): HttpHeaders {
+    const actorEmail = this.auth.getSnapshot()?.user.email ?? this.getStoredUserEmail();
+    return actorEmail
+      ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
+      : new HttpHeaders();
+  }
+
+  private getStoredUserEmail(): string {
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    try {
+      const rawUser = window.localStorage.getItem('user');
+      if (!rawUser) {
+        return '';
+      }
+      const parsed = JSON.parse(rawUser) as { email?: string | null };
+      return parsed?.email?.trim() ?? '';
+    } catch {
+      return '';
+    }
   }
 }

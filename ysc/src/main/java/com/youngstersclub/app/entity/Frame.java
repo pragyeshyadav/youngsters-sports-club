@@ -41,6 +41,11 @@ public class Frame {
     @JoinColumn(name = "looser")
     private User looser;
 
+    @JsonIgnore
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "branch_id", nullable = false)
+    private Branch branch;
+
     @Enumerated(EnumType.STRING)
     private FrameStatus status;
 
@@ -95,6 +100,8 @@ public class Frame {
     public void setWinner(User winner) { this.winner = winner; }
     public User getLooser() { return looser; }
     public void setLooser(User looser) { this.looser = looser; }
+    public Branch getBranch() { return branch; }
+    public void setBranch(Branch branch) { this.branch = branch; }
     public FrameStatus getStatus() { return status; }
     public void setStatus(FrameStatus status) { this.status = status; }
     public PaymentStatus getPaymentStatus() { return paymentStatus; }

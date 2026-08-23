@@ -1,9 +1,11 @@
 package com.youngstersclub.app.service;
 
+import com.youngstersclub.app.dto.DailyVisitedOrganizationDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
+import com.youngstersclub.app.repository.DailyCustomerVisitRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
@@ -23,14 +25,17 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
     private static final Logger log = LoggerFactory.getLogger(DailyCustomerEngagementService.class);
     private static final String TEMPLATE_NAME = "daily_visit_thanks_message";
 
+    private final DailyCustomerVisitRepository dailyCustomerVisitRepository;
     private final UserRepository userRepository;
     private final WhatsAppService whatsAppService;
     private final BrevoEmailService brevoEmailService;
 
     public DailyCustomerEngagementService(
+            DailyCustomerVisitRepository dailyCustomerVisitRepository,
             UserRepository userRepository,
             WhatsAppService whatsAppService,
             BrevoEmailService brevoEmailService) {
+        this.dailyCustomerVisitRepository = dailyCustomerVisitRepository;
         this.userRepository = userRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
@@ -63,51 +68,57 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
     public WhatsappTemplateExecutionResultDto processDailyWhatsappNotifications(boolean isDryRun) {
         LocalDate today = TimeUtil.nowIST().toLocalDate();
         LocalDateTime executionTime = TimeUtil.nowIST();
-        List<UserRepository.DailyVisitedCustomerProjection> visitedCustomers = userRepository.findDailyVisitedCustomers(today);
-
+        List<DailyVisitedOrganizationDto> visitedCustomers =
+                dailyCustomerVisitRepository.findDailyVisitedCustomersByOrganization(today);
         int totalUsers = visitedCustomers.size();
         int sentCount = 0;
         int failedCount = 0;
-        List<UserRepository.DailyVisitedCustomerProjection> processedCustomers = new ArrayList<>();
         List<WhatsappTemplateExecutionRecipientDto> recipientSummaries = new ArrayList<>();
         String mode = isDryRun ? "DRY RUN" : "ACTUAL RUN";
 
         log.info("Daily visit thank-you job started for date: {}. Mode: {}. Total users identified: {}", today, mode, totalUsers);
 
-        for (UserRepository.DailyVisitedCustomerProjection customer : visitedCustomers) {
+        for (DailyVisitedOrganizationDto customer : visitedCustomers) {
             if (customer.getPhone() == null || customer.getPhone().isBlank()) {
-                log.warn("Daily visit thank-you skipped for userId: {} because phone number is missing", customer.getUserId());
+                log.warn(
+                        "Daily visit thank-you skipped for userId: {}, organizationId: {} because phone number is missing",
+                        customer.getUserId(),
+                        customer.getOrganizationId());
                 failedCount++;
                 continue;
             }
 
             if (isDryRun) {
-                processedCustomers.add(customer);
                 sentCount++;
-                recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
-                        customer.getUserId(),
-                        customer.getName(),
-                        customer.getPhone(),
-                        null));
+                recipientSummaries.add(buildRecipientSummary(customer));
                 continue;
             }
 
             boolean sent = whatsAppService.sendDailyVisitThankYouMessage(customer.getPhone(), customer.getName());
             if (sent) {
                 sentCount++;
-                processedCustomers.add(customer);
-                recipientSummaries.add(new WhatsappTemplateExecutionRecipientDto(
-                        customer.getUserId(),
-                        customer.getName(),
-                        customer.getPhone(),
-                        null));
+                recipientSummaries.add(buildRecipientSummary(customer));
             } else {
                 failedCount++;
-                log.warn("Daily visit thank-you message failed or skipped for userId: {}", customer.getUserId());
+                log.warn(
+                        "Daily visit thank-you message failed or skipped for userId: {}, organizationId: {}",
+                        customer.getUserId(),
+                        customer.getOrganizationId());
             }
         }
 
-        sendDailySummaryEmail(processedCustomers, isDryRun);
+        WhatsappTemplateExecutionResultDto result = new WhatsappTemplateExecutionResultDto(
+                TEMPLATE_NAME,
+                isDryRun,
+                executionTime,
+                totalUsers,
+                recipientSummaries.size(),
+                Math.max(totalUsers - recipientSummaries.size(), 0),
+                sentCount,
+                failedCount,
+                recipientSummaries);
+
+        sendDailySummaryEmail(result);
 
         log.info(
                 "Daily visit thank-you job completed for date: {}. Mode: {}. Total users processed: {}, messages sent successfully: {}, failures: {}",
@@ -117,19 +128,22 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
                 sentCount,
                 failedCount);
 
-        return new WhatsappTemplateExecutionResultDto(
-                TEMPLATE_NAME,
-                isDryRun,
-                executionTime,
-                totalUsers,
-                processedCustomers.size(),
-                Math.max(totalUsers - processedCustomers.size(), 0),
-                sentCount,
-                failedCount,
-                recipientSummaries);
+        return result;
     }
 
-    private void sendDailySummaryEmail(List<UserRepository.DailyVisitedCustomerProjection> processedCustomers, boolean isDryRun) {
+    protected WhatsappTemplateExecutionRecipientDto buildRecipientSummary(DailyVisitedOrganizationDto customer) {
+        return new WhatsappTemplateExecutionRecipientDto(
+                customer.getUserId(),
+                customer.getName(),
+                customer.getPhone(),
+                null,
+                null,
+                customer.getOrganizationName(),
+                customer.getBranchName(),
+                "VISITED TODAY");
+    }
+
+    private void sendDailySummaryEmail(WhatsappTemplateExecutionResultDto result) {
         try {
             List<String> adminEmails = userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN))
                     .stream()
@@ -137,11 +151,11 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
                     .filter(email -> email != null && !email.isBlank())
                     .collect(Collectors.toList());
 
-            int emailSentCount = brevoEmailService.sendSummaryEmail(processedCustomers, adminEmails, isDryRun);
+            int emailSentCount = brevoEmailService.sendDailyVisitSummaryEmail(result, adminEmails);
             log.info(
                     "Daily WhatsApp summary email completed. Mode: {}. Successful customer messages: {}, admin recipients emailed: {}",
-                    isDryRun ? "DRY RUN" : "ACTUAL RUN",
-                    processedCustomers.size(),
+                    result.isDryRun() ? "DRY RUN" : "ACTUAL RUN",
+                    result.getSuccessfulMessages(),
                     emailSentCount);
         } catch (Exception ex) {
             log.error("Daily WhatsApp summary email failed. Reason: {}", ex.getMessage(), ex);
