@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
-import { CLUB_LOGO_URL } from '../../constants/branding.constants';
 
 export type ClubLogoSize = 'sm' | 'md' | 'lg';
 
@@ -12,7 +11,24 @@ export type ClubLogoSize = 'sm' | 'md' | 'lg';
 })
 export class ClubLogoComponent {
   @Input() size: ClubLogoSize = 'md';
+  @Input() organizationName: string = 'Youngsters Sports Club & Cafe';
+  @Input() logoUrl: string | null = null;
+  @Input() authenticated: boolean = false;
 
-  readonly src = CLUB_LOGO_URL;
-  readonly alt = 'Youngsters Sports Club, Satna';
+  readonly alt = this.getAltText();
+  readonly src = this.getLogoSrc();
+
+  private getAltText(): string {
+    if (this.logoUrl) {
+      return ` ${this.organizationName}`;
+    }
+    return 'Youngsters Sports Club, Satna';
+  }
+
+  private getLogoSrc(): string {
+    if (this.logoUrl) {
+      return this.logoUrl;
+    }
+    return '/images/logo.png';
+  }
 }

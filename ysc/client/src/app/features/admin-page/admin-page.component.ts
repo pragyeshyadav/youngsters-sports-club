@@ -6,6 +6,7 @@ import { Router } from '@angular/router';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { TriggerWhatsappPanelComponent } from '../../shared/components/trigger-whatsapp-panel/trigger-whatsapp-panel.component';
 
 interface AdminMonthlyEarnings {
@@ -54,9 +55,11 @@ export class AdminPageComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly organizationContext = inject(OrganizationContextService);
 
   canViewAdminReport = false;
   currentUserId: number | null = null;
+  currentOrganizationName: string = '';
   isAddStockExpanded = false;
   isConsumableReportExpanded = false;
   isMonthlyReportExpanded = false;
@@ -117,6 +120,11 @@ export class AdminPageComponent implements OnInit {
       return;
     }
 
+    this.organizationContext.context$.subscribe((context) => {
+      this.currentOrganizationName = context?.currentOrganization?.name ?? '';
+      this.cdr.markForCheck();
+    });
+
     this.http.get<AdminUserAccess>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
         this.currentUserId = user?.id ?? null;
@@ -134,6 +142,10 @@ export class AdminPageComponent implements OnInit {
 
   goBack(): void {
     void this.router.navigate(['/dashboard']);
+  }
+
+  goToClubSetupPortal(): void {
+    void this.router.navigate(['/club-setup-portal']);
   }
 
   toggleMonthlyReport(): void {

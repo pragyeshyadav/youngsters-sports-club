@@ -46,6 +46,12 @@ export const routes: Routes = [
       import('./features/admin-page/admin-page.component').then((m) => m.AdminPageComponent),
   },
   {
+    path: 'club-setup-portal',
+    canActivate: [authGuard],
+    loadComponent: () =>
+      import('./features/club-setup-portal/club-setup-portal.component').then((m) => m.ClubSetupPortalComponent),
+  },
+  {
     path: 'managers-portal',
     canActivate: [authGuard],
     loadComponent: () =>

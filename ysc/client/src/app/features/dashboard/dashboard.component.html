@@ -1,10 +1,10 @@
 <div class="dashboard">
-  <div class="club-brand">
-    <app-club-logo size="lg" />
-    <div class="club-brand__title">
-      <app-brand-title size="medium" />
-    </div>
+<div class="club-brand">
+  <app-club-logo size="lg" />
+  <div class="club-brand__title">
+    <app-brand-title [organizationName]="currentOrganizationName" size="medium" />
   </div>
+</div>
 
   @if (user$ | async; as user) {
     <section class="welcome">

@@ -11,4 +11,5 @@ export type BrandTitleSize = 'small' | 'medium' | 'large';
 })
 export class BrandTitleComponent {
   @Input() size: BrandTitleSize = 'medium';
+  @Input() organizationName: string = 'Youngsters Sports Club & Cafe';
 }

@@ -1,6 +1,7 @@
 export interface OrganizationOption {
   id: number;
   name: string;
+  logoUrl?: string;
 }
 
 export interface BranchOption {

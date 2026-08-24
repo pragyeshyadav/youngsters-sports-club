@@ -18,6 +18,8 @@ public interface ConsumableItemRepository extends JpaRepository<ConsumableItem, 
     }
 
     List<ConsumableItem> findByBranch_IdAndIsActiveTrueOrderByNameAsc(Long branchId);
+    List<ConsumableItem> findByBranch_IdOrderByNameAsc(Long branchId);
+    java.util.Optional<ConsumableItem> findFirstByBranch_IdAndNameIgnoreCase(Long branchId, String name);
     List<ConsumableItem> findTop10ByBranch_IdAndIsActiveTrueAndNameContainingIgnoreCaseOrderByNameAsc(Long branchId, String name);
     List<ConsumableItem> findByIdInAndBranch_IdAndIsActiveTrue(List<Long> ids, Long branchId);
     java.util.Optional<ConsumableItem> findByIdAndBranch_Id(Long id, Long branchId);

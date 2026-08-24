@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -190,7 +191,7 @@ interface CustomerOnboardingContext {
   organizationSelectable: boolean;
   multipleBranchSelectionAllowed: boolean;
   currentOrganizationId: number | null;
-  currentOrganizationName: string | null;
+  currentOrganizationName: string;
   currentBranchId: number | null;
   currentBranchName: string | null;
   organizations: OnboardingOrganizationOption[];
@@ -219,12 +220,14 @@ interface CustomerOnboardingResponse {
   styleUrl: './managers-portal.component.scss',
 })
 export class ManagersPortalComponent implements OnInit, OnDestroy {
-  private readonly http = inject(HttpClient);
+private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly authService = inject(AuthService);
   private readonly organizationContextService = inject(OrganizationContextService);
-  private resizeHandler: (() => void) | null = null;
+  private readonly changeDetectorRef = inject(ChangeDetectorRef);
   private readonly today = new Date();
+  currentOrganizationName: string = '';
+  private resizeHandler: (() => void) | null = null;
   private onboardingSearchTimeoutId: number | null = null;
   private readonly subscriptions = new Subscription();
   private currentBranchId: number | null = null;
@@ -367,6 +370,11 @@ export class ManagersPortalComponent implements OnInit, OnDestroy {
     window.addEventListener('resize', this.resizeHandler);
     this.bindOrganizationContext();
     this.loadViewerAccess();
+
+    this.organizationContextService.context$.subscribe((context) => {
+      this.currentOrganizationName = context?.currentOrganization?.name ?? '';
+      this.changeDetectorRef.markForCheck();
+    });
   }
 
   ngOnDestroy(): void {

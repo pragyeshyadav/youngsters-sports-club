@@ -140,6 +140,161 @@ public class SnookerTableService {
     return table;
   }
 
+  @Transactional(readOnly = true)
+  public List<SnookerTableResponseDto> getCurrentBranchTablesForAdmin(String actorEmail) {
+    ActiveTableContext context = resolveActiveContext(actorEmail);
+    requireClubSetupAdminRole(context, "view snooker tables");
+
+    List<SnookerTable> tables = snookerTableRepository.findByBranch_IdOrderByIdAsc(context.branch().getId());
+    log.info(
+        "action=LIST_SNOOKER_TABLES_FOR_ADMIN organizationId={} branchId={} actorUserId={} tableCount={}",
+        context.organizationId(),
+        context.branch().getId(),
+        context.actor().getId(),
+        tables.size());
+    return tables.stream().map(this::toTableResponseDto).toList();
+  }
+
+  @Transactional
+  public SnookerTableResponseDto createTable(com.youngstersclub.app.dto.SnookerTableAdminRequest request, String actorEmail) {
+    ActiveTableContext context = resolveActiveContext(actorEmail);
+    requireClubSetupAdminRole(context, "add snooker tables");
+
+    String tableName = validateTableName(request);
+    java.math.BigDecimal ratePerMinute = validateRatePerMinute(request);
+
+    snookerTableRepository.findByBranch_IdAndTableNameIgnoreCase(context.branch().getId(), tableName)
+        .ifPresent(existing -> {
+          throw new IllegalArgumentException("A snooker table with this name already exists");
+        });
+
+    SnookerTable table = new SnookerTable();
+    table.setTableName(tableName);
+    table.setRatePerMinute(ratePerMinute);
+    table.setIsActive(true);
+    table.setIsAvailable(true);
+    table.setBranch(context.branch());
+    SnookerTable savedTable = snookerTableRepository.save(table);
+
+    log.info(
+        "action=CREATE_SNOOKER_TABLE organizationId={} branchId={} tableId={} actorUserId={}",
+        context.organizationId(),
+        context.branch().getId(),
+        savedTable.getId(),
+        context.actor().getId());
+    return toTableResponseDto(savedTable);
+  }
+
+  @Transactional
+  public SnookerTableResponseDto updateTable(
+      Long tableId, com.youngstersclub.app.dto.SnookerTableAdminRequest request, String actorEmail) {
+    ActiveTableContext context = resolveActiveContext(actorEmail);
+    requireClubSetupAdminRole(context, "update snooker tables");
+    SnookerTable table = requireCurrentBranchTable(tableId, context);
+
+    String tableName = validateTableName(request);
+    java.math.BigDecimal ratePerMinute = validateRatePerMinute(request);
+
+    snookerTableRepository.findByBranch_IdAndTableNameIgnoreCase(context.branch().getId(), tableName)
+        .filter(existing -> !existing.getId().equals(table.getId()))
+        .ifPresent(existing -> {
+          throw new IllegalArgumentException("A snooker table with this name already exists");
+        });
+
+    table.setTableName(tableName);
+    table.setRatePerMinute(ratePerMinute);
+    SnookerTable savedTable = snookerTableRepository.save(table);
+
+    log.info(
+        "action=UPDATE_SNOOKER_TABLE organizationId={} branchId={} tableId={} actorUserId={}",
+        context.organizationId(),
+        context.branch().getId(),
+        savedTable.getId(),
+        context.actor().getId());
+    return toTableResponseDto(savedTable);
+  }
+
+  @Transactional
+  public SnookerTableResponseDto setTableActive(Long tableId, boolean isActive, String actorEmail) {
+    ActiveTableContext context = resolveActiveContext(actorEmail);
+    requireClubSetupAdminRole(context, isActive ? "activate snooker tables" : "deactivate snooker tables");
+    SnookerTable table = requireCurrentBranchTable(tableId, context);
+
+    if (!isActive && !Boolean.TRUE.equals(table.getIsAvailable())) {
+      throw new IllegalArgumentException("Table is currently in use and cannot be deactivated");
+    }
+
+    table.setIsActive(isActive);
+    SnookerTable savedTable = snookerTableRepository.save(table);
+
+    log.info(
+        "action=SET_SNOOKER_TABLE_ACTIVE organizationId={} branchId={} tableId={} isActive={} actorUserId={}",
+        context.organizationId(),
+        context.branch().getId(),
+        savedTable.getId(),
+        isActive,
+        context.actor().getId());
+    return toTableResponseDto(savedTable);
+  }
+
+  @Transactional
+  public SnookerTableResponseDto releaseTable(Long tableId, String actorEmail) {
+    ActiveTableContext context = resolveActiveContext(actorEmail);
+    requireClubSetupAdminRole(context, "release snooker tables");
+    SnookerTable table = requireCurrentBranchTable(tableId, context);
+
+    if (Boolean.TRUE.equals(table.getIsAvailable())) {
+      throw new IllegalArgumentException("Table is already available");
+    }
+
+    table.setIsAvailable(true);
+    SnookerTable savedTable = snookerTableRepository.save(table);
+
+    log.warn(
+        "action=FORCE_RELEASE_SNOOKER_TABLE organizationId={} branchId={} tableId={} actorUserId={}",
+        context.organizationId(),
+        context.branch().getId(),
+        savedTable.getId(),
+        context.actor().getId());
+    return toTableResponseDto(savedTable);
+  }
+
+  private SnookerTable requireCurrentBranchTable(Long tableId, ActiveTableContext context) {
+    return snookerTableRepository
+        .findByIdAndBranch_Id(tableId, context.branch().getId())
+        .orElseThrow(() -> {
+          log.warn(
+              "action=DENY_CROSS_BRANCH_TABLE_ACCESS organizationId={} branchId={} requestedTableId={} actorUserId={}",
+              context.organizationId(),
+              context.branch().getId(),
+              tableId,
+              context.actor().getId());
+          return new java.util.NoSuchElementException("Snooker table not found");
+        });
+  }
+
+  private void requireClubSetupAdminRole(ActiveTableContext context, String action) {
+    if (context.role() != UserRole.ADMIN && context.role() != UserRole.SUPER_ADMIN) {
+      throw new SecurityException("Only admins can " + action);
+    }
+  }
+
+  private String validateTableName(com.youngstersclub.app.dto.SnookerTableAdminRequest request) {
+    String tableName = request == null || request.getTableName() == null ? "" : request.getTableName().trim();
+    if (tableName.isEmpty()) {
+      throw new IllegalArgumentException("Table name is required");
+    }
+    return tableName;
+  }
+
+  private java.math.BigDecimal validateRatePerMinute(com.youngstersclub.app.dto.SnookerTableAdminRequest request) {
+    java.math.BigDecimal ratePerMinute = request == null ? null : request.getRatePerMinute();
+    if (ratePerMinute == null || ratePerMinute.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+      throw new IllegalArgumentException("Rate per minute must be greater than zero");
+    }
+    return ratePerMinute;
+  }
+
   private SnookerTableResponseDto toTableResponseDto(SnookerTable table) {
     Long branchId = table.getBranch() == null ? null : table.getBranch().getId();
     String branchName = table.getBranch() == null ? null : table.getBranch().getName();

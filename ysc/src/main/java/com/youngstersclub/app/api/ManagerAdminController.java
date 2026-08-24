@@ -1,11 +1,11 @@
 package com.youngstersclub.app.api;
 
-import com.youngstersclub.app.dto.ActiveStateRequest;
+import com.youngstersclub.app.dto.BranchAccessUpdateRequest;
+import com.youngstersclub.app.dto.ManagerAdminDto;
+import com.youngstersclub.app.dto.ManagerBranchAccessDto;
 import com.youngstersclub.app.dto.MessageResponseDto;
-import com.youngstersclub.app.dto.SnookerTableAdminRequest;
-import com.youngstersclub.app.dto.SnookerTableResponseDto;
-import com.youngstersclub.app.dto.SnookerTableStatusDto;
-import com.youngstersclub.app.service.SnookerTableService;
+import com.youngstersclub.app.dto.PromoteManagerRequest;
+import com.youngstersclub.app.service.ManagerAdminService;
 import java.util.List;
 import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
@@ -20,32 +20,21 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/snooker")
-public class SnookerTableController {
+@RequestMapping("/api/managers")
+public class ManagerAdminController {
 
-    private final SnookerTableService snookerTableService;
+    private final ManagerAdminService managerAdminService;
 
-    public SnookerTableController(SnookerTableService snookerTableService) {
-        this.snookerTableService = snookerTableService;
+    public ManagerAdminController(ManagerAdminService managerAdminService) {
+        this.managerAdminService = managerAdminService;
     }
 
-    @GetMapping("/tables")
-    public ResponseEntity<List<SnookerTableResponseDto>> getAvailableTables(
-            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
-        return ResponseEntity.ok(snookerTableService.getCurrentBranchAvailableTables(actorEmail));
-    }
-
-    @GetMapping("/tables/status")
-    public ResponseEntity<List<SnookerTableStatusDto>> getTableStatuses(
-            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
-        return ResponseEntity.ok(snookerTableService.getCurrentBranchTableStatuses(actorEmail));
-    }
-
-    @GetMapping("/tables/manage")
-    public ResponseEntity<?> getTablesForAdmin(
+    @GetMapping("/current-branch")
+    public ResponseEntity<?> getCurrentBranchManagers(
             @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         try {
-            return ResponseEntity.ok(snookerTableService.getCurrentBranchTablesForAdmin(actorEmail));
+            List<ManagerAdminDto> managers = managerAdminService.getCurrentBranchManagers(actorEmail);
+            return ResponseEntity.ok(managers);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
         } catch (SecurityException ex) {
@@ -55,12 +44,12 @@ public class SnookerTableController {
         }
     }
 
-    @PostMapping("/tables")
-    public ResponseEntity<?> createTable(
-            @RequestBody SnookerTableAdminRequest request,
+    @PostMapping("/promote")
+    public ResponseEntity<?> promoteManager(
+            @RequestBody PromoteManagerRequest request,
             @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         try {
-            return ResponseEntity.ok(snookerTableService.createTable(request, actorEmail));
+            return ResponseEntity.ok(managerAdminService.promoteManager(request, actorEmail));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
         } catch (SecurityException ex) {
@@ -70,13 +59,12 @@ public class SnookerTableController {
         }
     }
 
-    @PutMapping("/tables/{tableId}")
-    public ResponseEntity<?> updateTable(
-            @PathVariable Long tableId,
-            @RequestBody SnookerTableAdminRequest request,
+    @PostMapping("/{organizationUserId}/demote")
+    public ResponseEntity<?> demoteManager(
+            @PathVariable Long organizationUserId,
             @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         try {
-            return ResponseEntity.ok(snookerTableService.updateTable(tableId, request, actorEmail));
+            return ResponseEntity.ok(managerAdminService.demoteManager(organizationUserId, actorEmail));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
         } catch (SecurityException ex) {
@@ -86,14 +74,13 @@ public class SnookerTableController {
         }
     }
 
-    @PutMapping("/tables/{tableId}/active")
-    public ResponseEntity<?> setTableActive(
-            @PathVariable Long tableId,
-            @RequestBody ActiveStateRequest request,
+    @PostMapping("/{organizationUserId}/deactivate")
+    public ResponseEntity<?> deactivateManager(
+            @PathVariable Long organizationUserId,
             @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         try {
-            boolean isActive = request != null && Boolean.TRUE.equals(request.getIsActive());
-            return ResponseEntity.ok(snookerTableService.setTableActive(tableId, isActive, actorEmail));
+            managerAdminService.deactivateManager(organizationUserId, actorEmail);
+            return ResponseEntity.ok(new MessageResponseDto("Manager deactivated successfully"));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
         } catch (SecurityException ex) {
@@ -103,12 +90,15 @@ public class SnookerTableController {
         }
     }
 
-    @PostMapping("/tables/{tableId}/release")
-    public ResponseEntity<?> releaseTable(
-            @PathVariable Long tableId,
+    @PutMapping("/{organizationUserId}/branch-access")
+    public ResponseEntity<?> setStaffBranchAccess(
+            @PathVariable Long organizationUserId,
+            @RequestBody BranchAccessUpdateRequest request,
             @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         try {
-            return ResponseEntity.ok(snookerTableService.releaseTable(tableId, actorEmail));
+            ManagerBranchAccessDto access =
+                managerAdminService.setStaffBranchAccess(organizationUserId, request, actorEmail);
+            return ResponseEntity.ok(access);
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
         } catch (SecurityException ex) {

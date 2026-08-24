@@ -4,7 +4,11 @@
       <div class="brand-container">
         <img src="/images/logo.png" alt="Youngsters Sports Club, Satna" class="logo-circle logo-sm" />
         <div class="brand-name">
-          <span class="white">Youngsters</span><span class="yellow"> Sports Club</span><span class="grey"> &amp; Cafe</span>
+          @if (organizationName$ | async; as orgName) {
+            <span class="white">{{ orgName }}</span>
+          } @else {
+            <span class="white">Youngsters Sports Club & Cafe</span>
+          }
         </div>
       </div>
     </a>
