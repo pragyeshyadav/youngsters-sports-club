@@ -12,6 +12,7 @@ import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
 import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
+import com.youngstersclub.app.repository.SnookerTableRepository;
 import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
 import java.time.LocalDateTime;
@@ -26,24 +27,28 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OrganizationContextService {
+  static final String KIDS_PLAY_TABLE_NAME = "Kids Ocean Dream Land";
 
   private final UserRepository userRepository;
   private final OrganizationRepository organizationRepository;
   private final BranchRepository branchRepository;
   private final OrganizationUserRepository organizationUserRepository;
   private final UserBranchAccessRepository userBranchAccessRepository;
+  private final SnookerTableRepository snookerTableRepository;
 
   public OrganizationContextService(
       UserRepository userRepository,
       OrganizationRepository organizationRepository,
       BranchRepository branchRepository,
       OrganizationUserRepository organizationUserRepository,
-      UserBranchAccessRepository userBranchAccessRepository) {
+      UserBranchAccessRepository userBranchAccessRepository,
+      SnookerTableRepository snookerTableRepository) {
     this.userRepository = userRepository;
     this.organizationRepository = organizationRepository;
     this.branchRepository = branchRepository;
     this.organizationUserRepository = organizationUserRepository;
     this.userBranchAccessRepository = userBranchAccessRepository;
+    this.snookerTableRepository = snookerTableRepository;
   }
 
   @Transactional(readOnly = true)
@@ -128,9 +133,20 @@ public class OrganizationContextService {
     dto.setCurrentRole(currentMembership.getRole() == null ? null : currentMembership.getRole().name());
     dto.setCurrentOrganization(toOrganizationOption(currentMembership.getOrganization()));
     dto.setCurrentBranch(currentBranch);
+    dto.setKidsPlayEnabled(currentBranch != null && isKidsPlayEnabledForBranch(currentBranch.getId()));
     dto.setAvailableOrganizations(resolveOrganizations(user));
     dto.setAccessibleBranches(accessibleBranches);
     return dto;
+  }
+
+  protected boolean isKidsPlayEnabledForBranch(Long branchId) {
+    if (branchId == null) {
+      return false;
+    }
+
+    return snookerTableRepository.existsByBranch_IdAndTableNameIgnoreCaseAndIsActiveTrue(
+        branchId,
+        KIDS_PLAY_TABLE_NAME);
   }
 
   private OrganizationUser resolveCurrentMembership(
@@ -304,7 +320,10 @@ public class OrganizationContextService {
   }
 
   private OrganizationOptionDto toOrganizationOption(Organization organization) {
-    return new OrganizationOptionDto(organization.getId(), organization.getName());
+    return new OrganizationOptionDto(
+        organization.getId(),
+        organization.getName(),
+        organization.getLogoUrl());
   }
 
   private BranchOptionDto toBranchOption(Branch branch) {

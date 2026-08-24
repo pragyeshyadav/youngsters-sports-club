@@ -37,6 +37,22 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
   @EntityGraph(attributePaths = {"organization", "baseBranch", "user"})
   Optional<OrganizationUser> findByUserIdAndOrganizationId(Integer userId, Long organizationId);
 
+  @EntityGraph(attributePaths = {"baseBranch", "user"})
+  List<OrganizationUser> findByOrganization_IdAndRoleAndIsActiveTrue(Long organizationId, UserRole role);
+
+  @Query("""
+      SELECT COUNT(ou)
+      FROM OrganizationUser ou
+      WHERE ou.user.id = :userId
+        AND ou.id <> :excludeMembershipId
+        AND ou.isActive = true
+        AND ou.role IN :roles
+  """)
+  long countOtherActiveMembershipsByRoles(
+          @Param("userId") Integer userId,
+          @Param("excludeMembershipId") Long excludeMembershipId,
+          @Param("roles") List<UserRole> roles);
+
   @EntityGraph(attributePaths = {"organization", "baseBranch", "user"})
   List<OrganizationUser> findByRoleAndIsActiveTrue(UserRole role);
 

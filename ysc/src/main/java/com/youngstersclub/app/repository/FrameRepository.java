@@ -605,6 +605,20 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
             @Param("startDateTime") java.time.LocalDateTime startDateTime,
             @Param("endDateTime") java.time.LocalDateTime endDateTime);
 
+    @Query("""
+        SELECT COALESCE(SUM(f.totalAmount), 0)
+        FROM Frame f
+        WHERE f.branch.id = :branchId
+        AND f.status = com.youngstersclub.app.enums.FrameStatus.ENDED
+        AND f.endTime IS NOT NULL
+        AND f.endTime >= :startDateTime
+        AND f.endTime < :endDateTime
+    """)
+    BigDecimal getCompletedEarningsBetweenAndBranchId(
+            @Param("branchId") Long branchId,
+            @Param("startDateTime") java.time.LocalDateTime startDateTime,
+            @Param("endDateTime") java.time.LocalDateTime endDateTime);
+
     interface SnookerTableEarningsProjection {
         String getTableName();
         BigDecimal getTotal();
@@ -624,6 +638,25 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
         ORDER BY total DESC, st.table_name ASC
     """, nativeQuery = true)
     List<SnookerTableEarningsProjection> getCompletedEarningsByTableBetween(
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime);
+
+    @Query(value = """
+        SELECT
+            st.table_name AS tableName,
+            COALESCE(SUM(f.total_amount), 0) AS total
+        FROM frames f
+        JOIN snooker_tables st ON st.id = f.table_id
+        WHERE f.branch_id = :branchId
+          AND f.status = 'ENDED'
+          AND f.end_time IS NOT NULL
+          AND f.end_time >= :startDateTime
+          AND f.end_time < :endDateTime
+        GROUP BY st.table_name
+        ORDER BY total DESC, st.table_name ASC
+    """, nativeQuery = true)
+    List<SnookerTableEarningsProjection> getCompletedEarningsByTableBetweenAndBranchId(
+            @Param("branchId") Long branchId,
             @Param("startDateTime") LocalDateTime startDateTime,
             @Param("endDateTime") LocalDateTime endDateTime);
 

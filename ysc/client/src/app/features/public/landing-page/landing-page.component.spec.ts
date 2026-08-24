@@ -1,7 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { AuthService } from '../../../core/services/auth.service';
+import { OrganizationContextService } from '../../../core/services/organization-context.service';
 import { LandingPageComponent } from './landing-page.component';
+import { OrganizationContext } from '../../../core/models/organization-context.models';
 
 class AuthServiceStub {
   readonly isAuthenticatedSubject = new BehaviorSubject<boolean>(false);
@@ -14,10 +17,34 @@ describe('LandingPageComponent', () => {
 
   beforeEach(async () => {
     authService = new AuthServiceStub();
+    const contextSubject = new BehaviorSubject<OrganizationContext | null>({
+      hasPersistedContext: true,
+      requiresSelection: false,
+      userId: 1,
+      currentRole: 'ADMIN',
+      currentOrganization: {
+        id: 99,
+        name: 'Headquartor City Center Snooker Club',
+        logoUrl: 'https://example.com/logo.png',
+      },
+      currentBranch: { id: 8, name: 'Rewa' },
+      availableOrganizations: [],
+      accessibleBranches: [],
+    });
 
     await TestBed.configureTestingModule({
       imports: [LandingPageComponent],
-      providers: [{ provide: AuthService, useValue: authService }],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: authService },
+        {
+          provide: OrganizationContextService,
+          useValue: {
+            context$: contextSubject.asObservable(),
+            getSnapshot: () => contextSubject.value,
+          },
+        },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(LandingPageComponent);
@@ -28,6 +55,8 @@ describe('LandingPageComponent', () => {
     const text = fixture.nativeElement.textContent;
     expect(text).toContain('Login');
     expect(text).not.toContain('Open Dashboard');
+    expect(text).toContain('Youngsters Sports Club & Cafe');
+    expect(text).not.toContain('Headquartor City Center Snooker Club');
   });
 
   it('switches the primary call to action for authenticated users', () => {
@@ -40,15 +69,15 @@ describe('LandingPageComponent', () => {
 
   it('renders the verified branch direction links', () => {
     const host = fixture.nativeElement as HTMLElement;
-    const links = Array.from(host.querySelectorAll('.branch-card a')).map(
+    const links = Array.from(host.querySelectorAll('.branch-card .branch-card__actions a')).map(
       (link) => (link as HTMLAnchorElement).href,
     );
 
     expect(links).toEqual([
       'https://maps.app.goo.gl/BcYn3kgfs1yXTf1LA',
+      'tel:+919765657902',
       'https://maps.app.goo.gl/keJGzz3mPN86GoQG6',
       'https://maps.app.goo.gl/M7PgqUnT8s8gr2X29',
-      'tel:+919765657902',
     ]);
   });
 

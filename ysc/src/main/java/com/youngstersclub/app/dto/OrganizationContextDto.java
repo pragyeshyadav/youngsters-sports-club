@@ -6,6 +6,7 @@ import java.util.List;
 public class OrganizationContextDto {
   private boolean hasPersistedContext;
   private boolean requiresSelection;
+  private boolean kidsPlayEnabled;
   private Integer userId;
   private String currentRole;
   private OrganizationOptionDto currentOrganization;
@@ -27,6 +28,14 @@ public class OrganizationContextDto {
 
   public void setRequiresSelection(boolean requiresSelection) {
     this.requiresSelection = requiresSelection;
+  }
+
+  public boolean isKidsPlayEnabled() {
+    return kidsPlayEnabled;
+  }
+
+  public void setKidsPlayEnabled(boolean kidsPlayEnabled) {
+    this.kidsPlayEnabled = kidsPlayEnabled;
   }
 
   public Integer getUserId() {

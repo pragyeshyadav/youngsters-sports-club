@@ -1,7 +1,9 @@
 <div class="admin-page">
   <div class="admin-header">
     <app-club-logo size="md" />
-    <app-brand-title size="small" />
+    <div class="authenticated-brand-frame">
+      <app-brand-title size="small" />
+    </div>
   </div>
 
   <div class="admin-card">
@@ -267,6 +269,10 @@
       </div>
 
       <app-trigger-whatsapp-panel></app-trigger-whatsapp-panel>
+
+      <button type="button" class="submit-btn club-setup-nav-btn" (click)="goToClubSetupPortal()">
+        <span>🏛 Club Setup Portal</span>
+      </button>
     } @else {
       <p class="access-message">This report is available only for admin users.</p>
     }

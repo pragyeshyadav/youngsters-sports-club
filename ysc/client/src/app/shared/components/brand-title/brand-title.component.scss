@@ -6,14 +6,15 @@
   font-family: 'Anton', sans-serif;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.6);
-  -webkit-text-stroke: 1px #000;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.32);
+  -webkit-text-stroke: 0.6px rgba(0, 0, 0, 0.45);
   paint-order: stroke fill;
   margin: 0;
   line-height: 1.12;
   text-align: center;
   word-break: break-word;
   hyphens: manual;
+  color: #ffffff;
 }
 
 .brand-title--small {

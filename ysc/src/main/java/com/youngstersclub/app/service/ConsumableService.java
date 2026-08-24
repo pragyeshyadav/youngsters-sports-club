@@ -2,6 +2,8 @@ package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.ConsumableDueRowDto;
 import com.youngstersclub.app.dto.ConsumableHistoryRowDto;
+import com.youngstersclub.app.dto.ConsumableItemAdminDto;
+import com.youngstersclub.app.dto.ConsumableItemAdminRequest;
 import com.youngstersclub.app.dto.ConsumableItemOptionDto;
 import com.youngstersclub.app.dto.ConsumableOrderCreateRequest;
 import com.youngstersclub.app.dto.ConsumableOrderResponseDto;
@@ -182,6 +184,132 @@ public class ConsumableService {
                         row.getAvailableStock() == null ? 0L : row.getAvailableStock()))
                 .toList();
     }
+
+    @jakarta.transaction.Transactional
+    public List<ConsumableItemAdminDto> getItemsForAdmin(String actorEmail) {
+        ItemAdminContext context = resolveItemAdminContext(actorEmail);
+        List<ConsumableItem> items = consumableItemRepository.findByBranch_IdOrderByNameAsc(context.branch().getId());
+        return items.stream()
+                .map(item -> new ConsumableItemAdminDto(item.getId(), item.getName(), item.getPrice(), item.getIsActive()))
+                .toList();
+    }
+
+    @jakarta.transaction.Transactional
+    public ConsumableItemAdminDto createItem(ConsumableItemAdminRequest request, String actorEmail) {
+        ItemAdminContext context = resolveItemAdminContext(actorEmail);
+
+        String name = validateItemName(request);
+        BigDecimal price = validateItemPrice(request);
+
+        consumableItemRepository.findFirstByBranch_IdAndNameIgnoreCase(context.branch().getId(), name)
+                .ifPresent(existing -> {
+                    throw new IllegalArgumentException("A consumable item with this name already exists");
+                });
+
+        ConsumableItem item = new ConsumableItem();
+        item.setName(name);
+        item.setPrice(price);
+        item.setBranch(context.branch());
+        item.setIsActive(true);
+        ConsumableItem savedItem = consumableItemRepository.save(item);
+        return toItemAdminDto(savedItem);
+    }
+
+    @jakarta.transaction.Transactional
+    public ConsumableItemAdminDto updateItem(Long itemId, ConsumableItemAdminRequest request, String actorEmail) {
+        ItemAdminContext context = resolveItemAdminContext(actorEmail);
+
+        String name = validateItemName(request);
+        BigDecimal price = validateItemPrice(request);
+
+        ConsumableItem item = consumableItemRepository.findByIdAndBranch_Id(itemId, context.branch().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Consumable item not found"));
+
+        consumableItemRepository.findFirstByBranch_IdAndNameIgnoreCase(context.branch().getId(), name)
+                .filter(existing -> !existing.getId().equals(item.getId()))
+                .ifPresent(existing -> {
+                    throw new IllegalArgumentException("A consumable item with this name already exists");
+                });
+
+        item.setName(name);
+        item.setPrice(price);
+        ConsumableItem savedItem = consumableItemRepository.save(item);
+        return toItemAdminDto(savedItem);
+    }
+
+    @jakarta.transaction.Transactional
+    public ConsumableItemAdminDto setItemActive(Long itemId, boolean isActive, String actorEmail) {
+        ItemAdminContext context = resolveItemAdminContext(actorEmail);
+
+        ConsumableItem item = consumableItemRepository.findByIdAndBranch_Id(itemId, context.branch().getId())
+                .orElseThrow(() -> new IllegalArgumentException("Consumable item not found"));
+
+        item.setIsActive(isActive);
+        ConsumableItem savedItem = consumableItemRepository.save(item);
+        return toItemAdminDto(savedItem);
+    }
+
+    private ConsumableItemAdminDto toItemAdminDto(ConsumableItem item) {
+        return new ConsumableItemAdminDto(item.getId(), item.getName(), item.getPrice(), item.getIsActive());
+    }
+
+    private String validateItemName(ConsumableItemAdminRequest request) {
+        String name = request == null || request.getName() == null ? "" : request.getName().trim();
+        if (name.isEmpty()) {
+            throw new IllegalArgumentException("Consumable item name is required");
+        }
+        return name;
+    }
+
+    private BigDecimal validateItemPrice(ConsumableItemAdminRequest request) {
+        BigDecimal price = request == null ? null : request.getPrice();
+        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Price must be greater than zero");
+        }
+        return price;
+    }
+
+    private ItemAdminContext resolveItemAdminContext(String actorEmail) {
+        String normalizedEmail = actorEmail == null ? "" : actorEmail.trim().toLowerCase();
+        if (normalizedEmail.isEmpty()) {
+            throw new SecurityException("Authenticated user email is required");
+        }
+
+        User actor = userRepository.findByEmail(normalizedEmail)
+                .orElseThrow(() -> new SecurityException("Authenticated user not found"));
+        OrganizationContextDto context = organizationContextService.resolveContext(normalizedEmail);
+        if (context.getCurrentOrganization() == null || context.getCurrentBranch() == null) {
+            throw new SecurityException("Active organization and branch context are required");
+        }
+        if (!"ADMIN".equals(context.getCurrentRole()) && !"SUPER_ADMIN".equals(context.getCurrentRole())) {
+            throw new SecurityException("Only admins can manage consumable items");
+        }
+
+        Long organizationId = context.getCurrentOrganization().getId();
+        Long branchId = context.getCurrentBranch().getId();
+
+        OrganizationUser membership = organizationUserRepository
+                .findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organizationId)
+                .orElseThrow(() -> new SecurityException("Active organization membership not found"));
+        Branch branch = branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(branchId, organizationId)
+                .orElseThrow(() -> new SecurityException("Current branch is unavailable"));
+
+        boolean hasAccess = membership.getBaseBranch() != null
+                && branchId.equals(membership.getBaseBranch().getId());
+        if (!hasAccess) {
+            hasAccess = userBranchAccessRepository.existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(
+                    membership.getId(),
+                    branchId);
+        }
+
+        if (!hasAccess) {
+            throw new SecurityException("You do not have access to the current branch");
+        }
+
+        return new ItemAdminContext(actor, branch);
+    }
+
+    private record ItemAdminContext(User actor, Branch branch) {}
 
     public BigDecimal getConsumableDue(Integer userId) {
         if (userId == null) {

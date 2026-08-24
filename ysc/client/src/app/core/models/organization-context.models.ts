@@ -1,6 +1,7 @@
 export interface OrganizationOption {
   id: number;
   name: string;
+  logoUrl?: string;
 }
 
 export interface BranchOption {
@@ -11,6 +12,7 @@ export interface BranchOption {
 export interface OrganizationContext {
   hasPersistedContext: boolean;
   requiresSelection: boolean;
+  kidsPlayEnabled?: boolean;
   userId: number | null;
   currentRole: string | null;
   currentOrganization: OrganizationOption | null;

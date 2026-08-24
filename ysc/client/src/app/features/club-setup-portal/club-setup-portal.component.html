@@ -1,0 +1,402 @@
+<div class="club-setup-page">
+  <div class="setup-header">
+    <app-club-logo size="md" />
+    <div class="authenticated-brand-frame">
+      <app-brand-title [organizationName]="currentOrganizationName" size="small" />
+    </div>
+  </div>
+
+  <div class="setup-card">
+    <button type="button" class="back-link" (click)="goBack()">← Back to Admin Page</button>
+    <h2>🏛 Club Setup Portal</h2>
+    <p>Central place for club-level configuration.</p>
+
+    @if (canManageClub) {
+      <div class="admin-panel">
+        <button type="button" class="panel-header tables-header" (click)="toggleTablesPanel()">
+          <span>🎱 Update Snooker Table</span>
+          <span class="panel-chevron">{{ isTablesPanelExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isTablesPanelExpanded) {
+          <div class="panel-body">
+            <div class="add-form-grid">
+              <div class="form-card">
+                <label class="search-label" for="new-table-name">Table Name</label>
+                <input
+                  id="new-table-name"
+                  type="text"
+                  [(ngModel)]="newTableName"
+                  placeholder="e.g. Sharma S3"
+                  autocomplete="off"
+                  class="search-input"
+                />
+              </div>
+              <div class="form-card">
+                <label class="search-label" for="new-table-rate">Rate / Minute (₹)</label>
+                <input
+                  id="new-table-rate"
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  [(ngModel)]="newTableRate"
+                  placeholder="e.g. 4"
+                  class="search-input"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="submit-btn tables-submit-btn"
+              [disabled]="!canSaveNewTable()"
+              (click)="createTable()">
+              @if (isSavingTable) {
+                <span class="button-spinner" aria-hidden="true"></span>
+                <span>Adding Table...</span>
+              } @else {
+                <span>Add Table</span>
+              }
+            </button>
+
+            @if (isLoadingTables) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading snooker tables"></div>
+              </div>
+            } @else if (tables.length === 0) {
+              <p class="panel-message">No snooker tables found for this branch yet.</p>
+            } @else {
+              <div class="entity-list">
+                @for (table of tables; track trackTable($index, table)) {
+                  <div class="entity-card">
+                    <div class="entity-main">
+                      <strong class="entity-name">{{ table.tableName }}</strong>
+                      <span class="entity-meta">₹{{ table.ratePerMinute ?? 0 }} / min</span>
+                      <span class="status-pill" [ngClass]="table.active ? 'pill-active' : 'pill-inactive'">
+                        {{ table.active ? 'Active' : 'Inactive' }}
+                      </span>
+                      <span class="status-pill" [ngClass]="table.available ? 'pill-free' : 'pill-busy'">
+                        {{ table.available ? 'Available' : 'In Use' }}
+                      </span>
+                    </div>
+
+                    @if (editingTableId === table.id) {
+                      <div class="inline-edit-grid">
+                        <input
+                          type="text"
+                          [(ngModel)]="editTableName"
+                          placeholder="Table name"
+                          autocomplete="off"
+                          aria-label="Edit table name"
+                          class="search-input"
+                        />
+                        <input
+                          type="number"
+                          min="1"
+                          step="0.5"
+                          [(ngModel)]="editTableRate"
+                          placeholder="Rate / minute"
+                          aria-label="Edit table rate"
+                          class="search-input"
+                        />
+                        <div class="inline-actions">
+                          <button
+                            type="button"
+                            class="action-btn save-btn"
+                            [disabled]="!editTableName.trim() || (editTableRate ?? 0) <= 0 || busyTableId === table.id"
+                            (click)="saveTableEdit(table)">
+                            Save
+                          </button>
+                          <button type="button" class="action-btn cancel-btn" (click)="cancelEditTable()">Cancel</button>
+                        </div>
+                      </div>
+                    } @else {
+                      <div class="entity-actions">
+                        <button type="button" class="action-btn edit-btn" (click)="startEditTable(table)">Edit</button>
+                        <button
+                          type="button"
+                          class="action-btn toggle-btn"
+                          [disabled]="busyTableId === table.id"
+                          (click)="toggleTableActive(table)">
+                          {{ table.active ? 'Deactivate' : 'Activate' }}
+                        </button>
+                        @if (!table.available) {
+                          <button
+                            type="button"
+                            class="action-btn release-btn"
+                            [disabled]="busyTableId === table.id"
+                            (click)="releaseTable(table)">
+                            Release
+                          </button>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            @if (tablesError) {
+              <p class="panel-message error-message">{{ tablesError }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="admin-panel">
+        <button type="button" class="panel-header items-header" (click)="toggleItemsPanel()">
+          <span>🍔 Update Consumable Items</span>
+          <span class="panel-chevron">{{ isItemsPanelExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isItemsPanelExpanded) {
+          <div class="panel-body">
+            <div class="add-form-grid">
+              <div class="form-card">
+                <label class="search-label" for="new-item-name">Item Name</label>
+                <input
+                  id="new-item-name"
+                  type="text"
+                  [(ngModel)]="newItemName"
+                  placeholder="e.g. Cold Coffee"
+                  autocomplete="off"
+                  class="search-input"
+                />
+              </div>
+              <div class="form-card">
+                <label class="search-label" for="new-item-price">Price (₹)</label>
+                <input
+                  id="new-item-price"
+                  type="number"
+                  min="1"
+                  step="0.5"
+                  [(ngModel)]="newItemPrice"
+                  placeholder="e.g. 25"
+                  class="search-input"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              class="submit-btn items-submit-btn"
+              [disabled]="!canSaveNewItem()"
+              (click)="createItem()">
+              @if (isSavingItem) {
+                <span class="button-spinner" aria-hidden="true"></span>
+                <span>Adding Item...</span>
+              } @else {
+                <span>Add Item</span>
+              }
+            </button>
+
+            @if (isLoadingItems) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading consumable items"></div>
+              </div>
+            } @else if (items.length === 0) {
+              <p class="panel-message">No consumable items found for this branch yet.</p>
+            } @else {
+              <div class="entity-list">
+                @for (item of items; track trackItem($index, item)) {
+                  <div class="entity-card">
+                    <div class="entity-main">
+                      <strong class="entity-name">{{ item.name }}</strong>
+                      <span class="entity-meta">₹{{ item.price ?? 0 }}</span>
+                      <span class="status-pill" [ngClass]="item.active ? 'pill-active' : 'pill-inactive'">
+                        {{ item.active ? 'Active' : 'Inactive' }}
+                      </span>
+                    </div>
+
+                    @if (editingItemId === item.id) {
+                      <div class="inline-edit-grid">
+                        <input
+                          type="text"
+                          [(ngModel)]="editItemName"
+                          placeholder="Item name"
+                          autocomplete="off"
+                          aria-label="Edit item name"
+                          class="search-input"
+                        />
+                        <input
+                          type="number"
+                          min="1"
+                          step="0.5"
+                          [(ngModel)]="editItemPrice"
+                          placeholder="Price"
+                          aria-label="Edit item price"
+                          class="search-input"
+                        />
+                        <div class="inline-actions">
+                          <button
+                            type="button"
+                            class="action-btn save-btn"
+                            [disabled]="!editItemName.trim() || (editItemPrice ?? 0) <= 0 || busyItemId === item.id"
+                            (click)="saveItemEdit(item)">
+                            Save
+                          </button>
+                          <button type="button" class="action-btn cancel-btn" (click)="cancelEditItem()">Cancel</button>
+                        </div>
+                      </div>
+                    } @else {
+                      <div class="entity-actions">
+                        <button type="button" class="action-btn edit-btn" (click)="startEditItem(item)">Edit</button>
+                        <button
+                          type="button"
+                          class="action-btn toggle-btn"
+                          [disabled]="busyItemId === item.id"
+                          (click)="toggleItemActive(item)">
+                          {{ item.active ? 'Deactivate' : 'Reactivate' }}
+                        </button>
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            @if (itemsError) {
+              <p class="panel-message error-message">{{ itemsError }}</p>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="admin-panel">
+        <button type="button" class="panel-header managers-header" (click)="toggleManagersPanel()">
+          <span>👨‍💼 Update Manager</span>
+          <span class="panel-chevron">{{ isManagersPanelExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isManagersPanelExpanded) {
+          <div class="panel-body">
+            <div class="promote-card">
+              <label class="search-label" for="manager-promote-search">Promote Customer to Manager</label>
+              <input
+                id="manager-promote-search"
+                type="text"
+                [(ngModel)]="managerSearchText"
+                (input)="searchPromoteCandidates()"
+                placeholder="Search customer by name (min 3 characters)"
+                autocomplete="off"
+                class="search-input"
+              />
+
+              @if (isSearchingManagers) {
+                <div class="compact-inline-spinner">
+                  <div class="spinner spinner-sm" aria-label="Searching customers"></div>
+                </div>
+              } @else if (managerSearchResults.length > 0) {
+                <div class="dropdown">
+                  @for (user of managerSearchResults; track user.id) {
+                    <button type="button" class="dropdown-item" (click)="selectPromoteCandidate(user)">
+                      <span class="dropdown-title">{{ user.name }}</span>
+                      <span class="dropdown-subtitle">{{ user.phone || user.email || '' }}</span>
+                    </button>
+                  }
+                </div>
+              }
+
+              @if (selectedPromoteUser) {
+                <div class="selected-item-chip">
+                  <strong>{{ selectedPromoteUser.name }}</strong>
+                  <button
+                    type="button"
+                    class="action-btn promote-confirm-btn"
+                    [disabled]="isPromoting"
+                    (click)="promoteSelectedUser()">
+                    @if (isPromoting) {
+                      <span class="button-spinner button-spinner-dark" aria-hidden="true"></span>
+                    }
+                    Promote to Manager
+                  </button>
+                </div>
+              }
+            </div>
+
+            @if (isLoadingManagers) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading managers"></div>
+              </div>
+            } @else if (managers.length === 0) {
+              <p class="panel-message">No managers found for this branch yet.</p>
+            } @else {
+              <div class="entity-list">
+                @for (manager of managers; track trackManager($index, manager)) {
+                  <div class="entity-card">
+                    <div class="entity-main entity-main-column">
+                      <strong class="entity-name">{{ manager.name }}</strong>
+                      @if (manager.email || manager.phone) {
+                        <span class="entity-meta">{{ manager.phone || manager.email }}</span>
+                      }
+                      <div class="branch-chips">
+                        @for (access of manager.branchAccesses; track access.branchId) {
+                          <span class="branch-chip" [class.chip-base]="access.baseBranch">
+                            {{ access.baseBranch ? '★ ' : '' }}{{ access.branchName }}
+                          </span>
+                        }
+                      </div>
+                    </div>
+
+                    <div class="entity-actions">
+                      <button
+                        type="button"
+                        class="action-btn edit-btn"
+                        [disabled]="busyAccessKey === 'demote-' + manager.organizationUserId"
+                        (click)="toggleAccessEditor(manager)">
+                        Branch Access
+                      </button>
+                      <button
+                        type="button"
+                        class="action-btn toggle-btn"
+                        [disabled]="busyAccessKey === 'demote-' + manager.organizationUserId"
+                        (click)="demoteManager(manager)">
+                        Demote
+                      </button>
+                      <button
+                        type="button"
+                        class="action-btn release-btn"
+                        [disabled]="busyAccessKey === 'deactivate-' + manager.organizationUserId"
+                        (click)="deactivateManager(manager)">
+                        Deactivate
+                      </button>
+                    </div>
+
+                    @if (accessEditorOrgUserId === manager.organizationUserId) {
+                      <div class="access-editor">
+                        <span class="search-label">Branches of {{ manager.name }}</span>
+                        @for (branch of actorBranches; track branch.id) {
+                          <div class="access-row">
+                            <span class="access-branch-name">{{ branch.name }}</span>
+                            @if (isBaseBranch(manager, branch.id)) {
+                              <span class="status-pill pill-base">Base</span>
+                            } @else {
+                              <button
+                                type="button"
+                                class="action-btn access-toggle-btn"
+                                [class.access-granted]="isBranchGranted(manager, branch.id)"
+                                [disabled]="busyAccessKey === manager.organizationUserId + '-' + branch.id"
+                                (click)="setBranchAccess(manager, branch.id, !isBranchGranted(manager, branch.id))">
+                                {{ isBranchGranted(manager, branch.id) ? 'Revoke' : 'Grant' }}
+                              </button>
+                            }
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
+              </div>
+            }
+
+            @if (managersError) {
+              <p class="panel-message error-message">{{ managersError }}</p>
+            }
+          </div>
+        }
+      </div>
+    } @else {
+      <p class="access-message">This portal is available only for admin users.</p>
+    }
+  </div>
+</div>

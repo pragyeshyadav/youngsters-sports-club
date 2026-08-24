@@ -1,383 +1,263 @@
-# agents.md: Youngsters Sports Club - AI Source of Truth
+# AGENTS.md: Youngsters Sports Club SaaS Engineering Guide
 
-**Overview:**
-Youngsters Sports Club (YSC) is a full-stack Angular + Spring Boot + PostgreSQL platform designed for managing a snooker club, cafe consumables, kids play sessions, and tournament registrations. The platform is **evolving into multi-tenant SaaS** (multiple organizations, multiple branches per organization).
+## Purpose
 
-This file is the **operational source of truth** for current system behavior. For **multi-tenant vision, migration phases, and future architecture decisions**, also read **`PROJECT_MASTER_CONTEXT.md`** in full before implementing org/branch features.
+Youngsters Sports Club (YSC) is a multi-organization, multi-branch club-operations SaaS. It combines public marketing pages with authenticated club operations for snooker, cafe consumables, kids play, games, tournaments, payments, communications, and reporting.
 
-Read both documents deeply before modifying code.
+This document records the **current implementation**, its safety contracts, and the remaining SaaS hardening work. Read this file and `PROJECT_MASTER_CONTEXT.md` before changing organization, branch, payments, due calculation, reporting, or communications behavior.
 
----
+Do not treat historic phase notes as current behavior when the code contradicts them. The codebase has implemented many branch-aware phases already.
 
-## 1. Project Architecture
+## Repository Map
 
-* **Frontend Framework:** Angular 19 (Standalone components, `app.routes.ts` lazy loading, TypeScript 5.7). Features are grouped in `client/src/app/features/`, core logic in `core/`, and primitives in `shared/`.
-* **Backend Framework:** Spring Boot 3.4.2 (Java 17). Standard multi-layer MVC architecture (`api`, `service`, `repository`, `entity`, `dto`).
-* **Database:** PostgreSQL (hosted on Supabase) utilizing Hibernate/JPA. HikariCP connection pooling is tuned (max-pool-size: 10).
-* **Deployment Platform:** Render (using environment variables for configuration overriding).
-* **Dependency & Build:** Maven (`pom.xml`) uses `frontend-maven-plugin` to build Angular and package it within the Spring Boot `static/` folder for a unified fat-JAR deployment.
-* **Environment Variables (Important):** 
-  * `MAIL_USERNAME` / `MAIL_PASSWORD` (Gmail SMTP App Password)
-  * `WHATSAPP_ACCESS_TOKEN` / `WHATSAPP_PHONE_NUMBER_ID`
-  * `BREVO_API_KEY` / `BREVO_SENDER_EMAIL`
+| Area | Location |
+| --- | --- |
+| Spring Boot source | `src/main/java/com/youngstersclub/app/` |
+| Entities | `src/main/java/com/youngstersclub/app/entity/` |
+| Controllers | `src/main/java/com/youngstersclub/app/api/` |
+| Services | `src/main/java/com/youngstersclub/app/service/` |
+| Repositories | `src/main/java/com/youngstersclub/app/repository/` |
+| DTOs | `src/main/java/com/youngstersclub/app/dto/` |
+| Backend tests | `src/test/java/com/youngstersclub/app/` |
+| Angular application | `client/src/app/` |
+| Angular features | `client/src/app/features/` |
+| Angular core and context | `client/src/app/core/` |
+| Shared Angular UI | `client/src/app/shared/` |
+| Public landing assets | `src/main/resources/static/images/landing/` |
+| Configuration | `src/main/resources/application.properties` |
+| Docker build | `Dockerfile` |
+| Lightsail deploy workflow | `.github/workflows/deploy-develop.yml` |
 
----
+## Runtime Architecture
 
-## 2. Multi-Tenant Architecture (In Progress)
+- **Frontend:** Angular 19 standalone components, TypeScript 5.7, Angular Router, reactive forms and existing `ngModel` flows.
+- **Backend:** Spring Boot 3.4.2 on Java 17, JPA/Hibernate, PostgreSQL, Maven.
+- **Build:** `frontend-maven-plugin` builds Angular and packages the distribution into Spring Boot static resources for a single deployable application.
+- **Persistence:** PostgreSQL with HikariCP. Use database-side filtering, aggregation, pagination, projections, and branch predicates instead of materializing large collections.
+- **Caching:** Spring Cache with Caffeine. The monthly leaderboard cache is bounded to 100 entries with a 10-minute expiry. Cache only final DTOs, never JPA entities.
+- **Background execution:** scheduling and async processing are enabled. External notifications must be best-effort and post-commit where they depend on a committed transaction.
 
-* **Master context:** See `PROJECT_MASTER_CONTEXT.md` for vision, business rules, and migration phases.
-* **Phase 1 (DONE — DB only):** Master tables `organizations`, `branches`, `organization_users`, `user_branch_access` exist in production PostgreSQL. **No JPA entities or API changes yet** — legacy single-org behavior is unchanged.
-* **Organization:** Top-level tenant. Data is isolated per organization; customers never cross organizations.
-* **Branch:** Physical location under an organization (e.g. Satna, Rewa). Operational data will eventually be scoped by `branch_id`.
-* **organization_users:** Links a global `users` row to an organization with an org-level `role`. Includes `base_branch_id` (FK → `branches`) — every org user has a home branch.
-* **user_branch_access:** Many-to-many mapping for managers/staff who may operate at multiple branches within one organization.
-* **Customer rules (target):** One customer per organization; one `base_branch_id`; may visit any branch in that org; same phone in another org = different customer.
-* **Next phases:** Seed default org/branches → add nullable `organization_id` / `branch_id` to transactional tables → backfill → update APIs/UI incrementally.
+## Public Site and Routing
 
----
+Angular routes are defined in `client/src/app/app.routes.ts`.
 
-## 3. Authentication & User System
+- `/` is the public `LandingPageComponent`; it must render for both authenticated and unauthenticated visitors.
+- `/login` renders the existing Google Login component for guests. `guestGuard` redirects an already authenticated browser session using the existing application destination behavior.
+- Protected application routes include `/dashboard`, `/snooker-frame`, `/start-frame`, `/my-game-history`, `/admin-page`, `/managers-portal`, `/payment-settlement`, `/kids-play`, and `/tournament-registration`.
+- Do not rewrite Google OAuth, session persistence, role routing, logout, or dashboard navigation when changing the landing page.
+- The public landing page is static Angular content. It includes real club, kids-play, cricket academy, founder, manager, tournament, and testimonial content. Keep public-page changes frontend-only unless a safe public API is explicitly required.
+- Landing images are local assets. Do not hotlink or scrape Google/Instagram content at runtime. Keep large images optimized and below-the-fold images lazy loaded.
 
-* **Google Login:** Primary entry point. Angular posts the Google payload to `POST /api/auth/google-login`.
-* **User Entity:** Defines identity via `googleId` and tracks permissions via `UserRole` (`CUSTOMER`, `MANAGER`, `ADMIN`, `SUPER_ADMIN`). **Legacy:** role lives on `users.role` today; org-scoped roles will move to `organization_users.role` over time.
-* **Manual Users & Merging Flow (`UserService.mergeUserAccounts`):**
-  * Managers can create "Manual Customers" via the portal (`MANUAL_USER_...`).
-  * When a new Google login attempts to register a phone number that already belongs to a Manual Customer, a **Merge Operation** occurs.
-  * The newly created Google user identity is "retired" (`merged_...` email, `MERGED_USER_...` googleId).
-  * The existing manual user assumes the active Google ID and Email, effectively taking ownership of the Google login while preserving their debt history.
-* **Phone Numbers:** Used heavily for WhatsApp notifications.
+## Identity and Security: Current Reality
 
----
+### Current implementation
 
-## 4. Snooker Module
+- Google Identity Services is initialized in Angular. The client posts Google credentials to `POST /api/auth/google-login`.
+- The browser stores authenticated user/token information and sends request metadata through the existing HTTP interceptor, including `Authorization` and `X-User-Email`.
+- Backend controllers/services commonly resolve the actor using the user email/header through the current application convention.
+- Roles are `CUSTOMER`, `MANAGER`, `ADMIN`, and `SUPER_ADMIN`.
+- Manual customer accounts can be merged into a Google identity while preserving operational history. Do not break the `UserService` merge/retirement flow.
 
-* **Table Locking:** Handled by `SnookerTable`'s `is_available` flag. This acts as the physical concurrency lock.
-* **Match Modes:**
-  * Singles (1v1, 3-player, 5-player, 6-player): Typically 1 loser is billed.
-  * Team (4-player / 2v2): Exactly 2 winners and 2 losers required. The total due is split evenly among losers.
-* **Dynamic Rates:** Base rate covers up to 2 players. Additional players add ₹0.5/minute before final calculation.
-* **Lifecycle:** `POST /api/frame/start` (locks table) -> `POST /api/frame/end/{frameId}` (calculates duration/dues and unlocks table) or `POST /api/frame/reject/{frameId}` (cancels frame).
+### SaaS hardening gap
 
----
+There is no central Spring Security filter chain or server-side bearer-token verification protecting every API. The current header-based identity flow must **not** be represented as complete SaaS-grade authentication/authorization.
 
-## 5. Payment Settlement System
+Before onboarding unrelated customer organizations in a production SaaS model, prioritize:
 
-* **Orchestrator:** `PaymentService.java` (`POST /api/payment/settle` or `POST /api/payment/settle-by-date`).
-* **Oldest-First Partial Settlement:** A single lump-sum payment (and optional discount) is allocated across all due modules in this exact order:
-  1. Unpaid Snooker Frames (chronological)
-  2. Unpaid Consumable Orders (chronological)
-  3. Unpaid Kids Play Sessions (chronological)
-* **Transactionality:** The ledger (`Payment` entity) tracks cash and discounts. Module dues (`Frame.paymentDue`, `ConsumableOrder.totalAmount`, `KidsPlaySession.totalAmount`) are directly decremented.
-* **Status Updates:** Dues reaching 0 update their respective status to `PAID`. Otherwise, they become `PARTIAL` or remain `UNPAID`.
+1. Server-side verification of Google/JWT credentials.
+2. A Spring Security filter chain with default-deny API rules.
+3. Removal of trust in caller-controlled identity headers.
+4. Controller-level authorization backed by the authenticated principal.
+5. Audit logging for context switches and sensitive write actions.
 
----
+Do not expose secret values in source code, documentation, logs, screenshots, or commits. Configuration has historically contained sensitive fallback values; move every credential to deployment secrets and rotate any credential that was committed.
 
-## 6. Kids Play Module
+## SaaS Tenancy and Context
 
-* **Independence:** Operationally separate from Snooker but relies on a special `SnookerTable` row named exactly `Kids Ocean Dream Land` to determine pricing (`rate_per_minute`).
-* **Child Management:** Customers can add max 10 children.
-* **Lifecycle:** Start session -> End session (computes cost = duration × rate) -> Reject session (zero duration/cost).
-* **Payment Integration:** Dues are pulled into the unified Payment Settlement system.
+### Core model
 
----
+- `Organization`: tenant root.
+- `Branch`: physical operating location belonging to one organization.
+- `OrganizationUser`: a user's membership/role in an organization, with a base branch.
+- `UserBranchAccess`: additional authorized staff branch access.
+- `OrganizationSettings`: organization-owned settings.
 
-## 7. Consumable / Cafe Module
+The source of truth is `OrganizationContextService` and the `ActiveContext` model. Relevant endpoints are under `/api/context`, `/api/organizations`, `/api/branches`, and `/api/context/change`. Angular consumes this through `client/src/app/core/.../organization-context.service.ts` and exposes context/branch observables.
 
-* **Pricing Source of Truth:** `ConsumableItem` (DB driven). Frontend sends a cart of `itemId` + `quantity`. Backend recalculates line totals (`ConsumableService.createOrder`) to prevent tampering.
-* **Structure:** One `ConsumableOrder` contains many `ConsumableOrderItem`s.
-* **Status:** Starts as `UNPAID`. Aggregated in the Dashboard/Manager Portal dues system.
-* **Stock Tracking:** Supported via `ConsumableItemStock`.
+### Mandatory branch rule
 
----
+Every operational request must follow:
 
-## 8. WhatsApp Integration
+`authenticated actor -> organization membership -> selected organization -> selected authorized branch -> operation`
 
-* **Service:** `WhatsAppService.java` using Meta Cloud API.
-* **Capabilities:**
-  * **Payment Settlement Notification:** Automatically sent upon successful partial or full settlement. Triggered post-DB-commit via Spring `TransactionSynchronizationManager`.
-  * **Daily Visit Thank You:** Scheduled job for daily engagement.
-* **Dry Run Mode:** Supports boolean toggles to log output without actually calling the external Meta API (useful for testing/staging).
+Never trust a frontend-provided branch or organization ID as an authorization decision. Derive the active context server-side and verify branch ownership/access.
 
----
+Use the historical branch persisted on the operational record. Do not infer historical ownership from a user's base branch, a table's current branch, or a current UI selection.
 
-## 9. Brevo Email Integration
+On Angular branch changes, clear stale state, cancel/ignore stale requests, clear selections/dialogs where applicable, then reload scoped data. Do not read branch state independently from local storage in feature components.
 
-* **Service:** `BrevoEmailService.java`.
-* **Purpose:** Sends the daily summary of WhatsApp messages sent. 
-* **Recipients:** Queries the DB for all active users with `ADMIN` or `SUPER_ADMIN` roles.
-* **Templates:** Built dynamically via JSON bodies in the Java service.
+## Branch-Scoped Domain Modules
 
----
+### Snooker tables and frames
 
-## 10. Reports & Dashboard
+- `SnookerTable` and `Frame` are branch-owned.
+- Start Frame resolves active context, validates table ownership/access, and persists `Frame.branch` as historical truth.
+- End/reject/load actions must scope IDs by branch where applicable; do not allow direct cross-branch frame access.
+- Table availability is the concurrency lock. Preserve loading states and avoid unrelated changes to lifecycle calculations.
+- Leaderboards count completed frames in the selected month using the persisted frame branch and existing winner semantics.
+- Monthly leaderboard output is Top 10 on the backend, deterministic, branch-specific, and cached by `branchId:year:month` for ten minutes.
 
-* **Earnings Analytics:** `AnalyticsService.java` handles `GET /api/analytics/today-earnings`. Queries aggregated frame costs, partial settlements, and breaks down who owes what. Allows historical queries up to 60 days back.
-* **Aggregated Summary:** `UserPaymentSummaryService.java` merges Frame dues, Consumable dues, and Kids Play dues into a single `UserPaymentSummaryDto` to display on the Customer Dashboard and Payment Settlement UI.
+### Customers and branch search
 
----
+- `GET /api/users/search?query` is a legacy global search and must not be casually reused for operational branch lookup.
+- `GET /api/users/search/current-branch` is the branch-aware search used by Start Frame and Play Zone parent selection.
+- Preserve the existing minimum search threshold, name/email/phone matching, result DTO, debounce, cancellation, and result limit.
+- Branch eligibility is organization membership plus base branch or active explicit branch access.
 
-## 11. Manager Portal
+### Due calculation and `user_dues`
 
-* **Angular Implementation:** `client/src/app/features/managers-portal/`
-* **Features (Collapsible Panels):**
-  * **Today's Earnings:** Revenue and dues snapshot (historical date picker supported).
-  * **Frames:** View Ongoing and Completed frames.
-  * **Customers:** Add manual customers or update existing customers. Only Manual users can have their Names/Emails updated; Google users are locked.
-  * **Child Management:** Search for a parent and manage their children globally.
-  * **Player Summary:** Paginated view of total frames and total dues per player.
+- `CustomerBranchDueCalculatorService` is the reusable branch due calculator and returns `CustomerBranchDue` using `BigDecimal`.
+- It calculates frame, consumable, kids-play, and game-activity due only from current-branch operational records.
+- `PendingDueService` is the shared retrieval/batch facade used by downstream screens.
+- `UserDueService` synchronizes `user_dues` by `(user_id, branch_id)`. Treat `user_dues` as a synchronized cache, not the sole financial truth where operational unpaid records are available.
+- Never use `double` or `float` for money.
 
----
+### Payments and earnings
 
-## 12. Database Documentation
+- `PaymentService` settles only unpaid records belonging to the active branch, creates branch-owned payments, and preserves transaction boundaries.
+- Payment history, selected-date views, discounts, payment mode, and earnings must be branch-filtered in the backend.
+- `AnalyticsService`, `UserPaymentSummaryService`, and related repositories were memory-hardened; preserve aggregation queries and avoid rebuilding full frame/order/session lists just to calculate totals.
+- Payment/settlement changes are high risk: do not refactor allocation behavior while making tenancy changes.
 
-### Legacy JPA Entities (operational — single-org today)
+### Consumables and inventory
 
-* `User`: Core identity, roles, Google ID, Phone.
-* `SnookerTable`: Physical tables & Kids Ocean Dreamland pricing config.
-* `Frame`: Match lifecycle, start/end times, winners, losers, total amount.
-* `FramePlayer`: Junction mapping players to a frame (holds partial split debts for team matches).
-* `Payment`: Global ledger tracking cash/discount applications.
-* `Child`: Child profiles linked to parents.
-* `KidsPlaySession`: Independent duration billing for children.
-* `ConsumableItem`, `ConsumableOrder`, `ConsumableOrderItem`: Cafe operations.
-* `Tournament`, `TournamentRegistration`, `TournamentMatch`, `TournamentUpdate`: Summer Olympics event management.
-* `CustomerFeedback`: Star ratings and reviews.
-* `Game`, `GameActivityOrder`: Play zone / Soft Play Zone activities.
+- `ConsumableItem`, `ConsumableItemStock`, and `ConsumableOrder` are branch aware.
+- Items shown/orderable must belong to the active branch; stock updates are scoped to item plus branch.
+- Order items derive their branch through the parent order. Reports must filter by branch.
 
-### Multi-Tenant Master Tables (Phase 1 — SQL applied, no JPA yet)
+### Kids play and games
 
-* `organizations`: Tenant root (`name` unique via `idx_organization_name`).
-* `branches`: Locations under an org (`organization_id` → `organizations`, indexed by `idx_branch_org`).
-* `organization_users`: User membership in an org (`organization_id`, `user_id`, `role`, `base_branch_id` → `branches`). Indexed by `idx_org_user`, `idx_org_user_base_branch`.
-* `user_branch_access`: Extra branch permissions for staff (`organization_user_id`, `branch_id`). Unique pair via `idx_user_branch`.
+- `KidsPlaySession` is branch-owned; parents/children remain organization-level reusable identities.
+- Start/end/list actions must derive context and scope session access by branch.
+- `Game` and `GameActivityOrder` are branch-owned. Price comes from the selected branch game record.
+- Current branch due/settlement logic includes kids play and game activity dues.
 
-**Note:** Master tables use `BIGSERIAL` PKs; legacy `users.id` is `INTEGER`. FK from `organization_users.user_id` → `users(id)` is intentional. Full DDL is in `PROJECT_MASTER_CONTEXT.md`.
+### Tournaments
 
----
+- `Tournament` is branch-owned; registrations/matches/updates inherit access from the parent tournament.
+- `GET /api/tournaments/active` returns active tournaments for the current branch; do not hardcode an event name such as “Summer Olympics 2K26.”
+- Registration preserves `successfullyRegistered` and `alreadyRegistered` results.
+- On at least one new registration, `TournamentService` schedules exactly one admin Brevo notification after transaction commit. The email is best effort and must never rollback registration or change the response.
+- Public landing-page tournaments are static marketing content; authenticated tournament registration uses the database-backed module.
 
-## 13. Scheduled Jobs / Cron Tasks
+### Feedback, expenses, and player summary
 
-* **Location:** `DailyCustomerEngagementService.java`
-* **Cron:** `@Scheduled(cron = "0 30 21 * * *", zone = "Asia/Kolkata")` (9:30 PM IST every day).
-* **Job:** `sendDailyVisitThankYouMessages`.
-* **Flow:** Finds all users who played a frame or bought consumables today -> Dispatches WhatsApp message -> Compiles results -> Dispatches Brevo Summary Email to Admins.
+- `CustomerFeedback` is branch-scoped.
+- `BranchExpense` stores organization, branch, amount (`BigDecimal`), payer, creator, active status, date, notes, and expense type.
+- `BranchExpenseService` derives org/branch/creator from context, validates eligible payer roles and branch access, and lists active expenses by start-inclusive/end-exclusive month range.
+- The Manager Portal Show All Players flow uses database pagination/sorting and shared due retrieval. Avoid reintroducing all-player in-memory sorting or N+1 due queries.
 
----
+## Communications and Scheduled Jobs
 
-## 14. Known Bugs / Sensitive Areas
+- `WhatsAppService` uses Meta Cloud API. Keep dry-run behavior available and do not log customer data unnecessarily.
+- `BrevoEmailService` is the single Brevo `/v3/smtp/email` implementation. Reuse it; do not create another HTTP email client.
+- Tournament registration notification recipient is configuration-driven through `TOURNAMENT_REGISTRATION_NOTIFICATION_EMAIL`; sender is separately configured by `BREVO_SENDER_EMAIL`.
+- Daily engagement, payment reminders, birthday messages, and Brevo summaries are scheduled in IST. Review organization/branch grouping and de-duplication before changing them.
+- Scheduled jobs can be memory-intensive. Prefer repository projections, bounded batching, and streaming/page processing. Never build unbounded cross-organization customer lists.
 
-1. **Snooker Concurrency Locks:** Table locking relies on JPA updates. Concurrent requests can cause race conditions. Frontend utilizes button-loading states (`isStartingFrame`, `isEndingFrame`) to aggressively mitigate this.
-2. **Team Mode State Issue (FIXED):** Previously, `maxLosersAllowed` in `start-frame.component.ts` incorrectly fell through to `1` for 4-player team matches. It now strictly enforces `2`, resolving a bug where the `Confirm` button wouldn't enable.
-3. **Account Merge Deletion:** Merging an account does NOT delete the Google user; it "retires" them (`merged_...`). This retains their DB relations to prevent constraint violations.
-4. **Oldest-First Subtraction:** Settlement directly reduces `total_amount` or `paymentDue`. The original gross invoice amount is overwritten on partial payments, which simplifies logic but obscures historical gross totals.
-5. **No Lombok on Entities:** Do not use Lombok (`@Data`, `@Getter`, `@Setter`) on new JPA entities. Java 24 toolchain updates caused `TypeTag :: UNKNOWN` compile errors in this repo.
+## Manager, Admin, and Customer Experience
 
----
+- **Dashboard:** branch-sensitive tables, current activity, leaderboard, Kids Ocean Dreamland, and active tournament entry points.
+- **Manager Portal:** earnings/date analysis, ongoing/completed frames, manual customer update, children, paginated player summary, branch expenses, inventory/consumables, and related operational panels.
+- **Admin:** administration, notification broadcast, and organization-aware controls. Any all-organization notification feature must explicitly validate the requested organization/branches.
+- **Customer:** Google login, game history, payment views, kids play, tournament registration, and feedback flows.
 
-## 15. API Documentation (Key Endpoints)
+Preserve mobile behavior, loading/error states, reactive request cancellation, and existing API shapes unless a deliberate versioned migration is approved.
 
-* `GET /api/user?email={email}` : Retrieve User (used heavily by Angular for role checking).
-* `POST /api/frame/start` : Initiate frame (requires `tableId`, `players[]`).
-* `POST /api/frame/end/{frameId}` : Stop frame, compute cost.
-* `POST /api/payment/settle` / `settle-by-date`: Resolves all debts oldest-first.
-* `POST /api/consumables/order`: Creates unpaid cafe order.
-* `GET /api/analytics/today-earnings`: Manager portal dashboard numbers.
-* `POST /api/kids-session/start`: Starts Kids Dreamland timer.
-* `GET /api/users/search?query={q}`: Global user search (requires min 3 chars).
+## Data Access and Performance Rules
 
----
+1. Filter by organization/branch in SQL before search, sorting, pagination, or aggregation.
+2. Prefer projections and aggregate queries for reports/due summaries.
+3. Do not use unbounded `findAll`, unbounded history, or fetch joins across several collections for dashboard endpoints.
+4. Avoid N+1 lookups; batch load branch dues and related values.
+5. Keep Top 10 and pagination limits enforced by the backend.
+6. Use start-inclusive/end-exclusive date/time ranges.
+7. Preserve configured business timezone behavior (IST where used) and never let browser timezone silently redefine reporting periods.
+8. Add indexes only after confirming a query/index need; do not add speculative duplicates.
 
-## 16. UI/UX Conventions
+## API and Error Conventions
 
-* **Theme:** Premium, dark-mode focused, glassmorphism aesthetics.
-* **Component Design:** Standalone angular components (`@Component({ standalone: true })`).
-* **Form Handling:** Reactive forms generally preferred, but `ngModel` is heavily used in older features (like Manager Portal).
-* **Validation:** Explicit disabling of submission buttons based on reactive getters (`isCustomerFormValid()`, `canEndFrame()`).
-* **Loading States:** Explicit spinners and disabled buttons while API calls are in flight.
-* **Mobile Responsiveness:** Relies heavily on flex-box and `@media (max-width: 768px)` in SCSS.
+- Resolve actor/context in the backend, not from UI state.
+- Authentication/context failures use the project-standard response; cross-branch operations must be rejected without leaking another branch's data.
+- Invalid month/year, IDs, and requests return consistent client errors.
+- Empty branch/month searches return `200` with `[]`, not a fallback to another branch or organization.
+- Return DTOs, not JPA entities or unrelated personal data.
+- Keep logs structured and avoid phone numbers, tokens, credentials, and full personal data in normal INFO logs.
 
----
+## Configuration and Deployment
 
-## 17. Developer Guidelines
+Required deployment configuration includes database credentials/URL, Google client ID, WhatsApp credentials, Brevo credentials/sender, notification recipient, and any CORS/public-host settings. Use deployment secret stores (`.env` on server or GitHub Actions secrets), never committed values.
 
-1. **Read `PROJECT_MASTER_CONTEXT.md`** before any org/branch work; follow migration phases — do not skip to destructive schema changes.
-2. **Avoid Lombok on Entities.** Stick to generating standard getters and setters.
-3. **Schema Migrations:** Legacy tables use `spring.jpa.hibernate.ddl-auto=update`. New multi-tenant master tables were applied via **manual SQL** in production; prefer the same additive approach for Phase 2+ until Flyway/Liquibase is introduced.
-4. **Build Testing:** Validate changes using `./mvnw -Dfrontend.skip=true test` and Angular compilation using `npx tsc -p tsconfig.app.json --noEmit`.
-5. **Role Checks:** Guard features primarily on the frontend via `['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(user.role)`, but ensure backend APIs inherently reject actions for unprivileged users. Org-scoped roles via `organization_users` will supersede this over time.
+Current Lightsail deployment automation:
 
----
+- `.github/workflows/deploy-develop.yml` deploys on a `develop` push or manual dispatch.
+- It connects through SSH using GitHub secrets and runs `/opt/ysc/deploy.sh`.
+- The server workflow pulls source, builds `ysc-app:develop`, replaces the `ysc-app` container, uses `/opt/ysc/config/.env`, and binds application port `127.0.0.1:8080` for the reverse proxy.
 
-## 18. Feature Dependency Mapping
+Validate the target environment after deploy: `/`, `/login`, authenticated dashboard, context switching, active tournament endpoint, and application health.
 
-* **Payment Settlement** -> Depends on (Snooker Frames, Consumables, Kids Play). A schema change to any of these three modules will break settlement logic.
-* **User Merge** -> Depends on Google OAuth payload vs User Entity lookup by Phone. Changing phone number uniqueness will break merging. **Future:** merge scope becomes per-organization.
-* **Manager Earnings** -> Depends on `Payment` table for settled cash and `Frame` table for gross earnings. **Future:** filter by `branch_id`.
-* **Multi-Tenant Rollout** -> Master tables (`organizations`, `branches`, `organization_users`, `user_branch_access`) must be seeded before transactional tables receive `organization_id` / `branch_id`.
+## Testing and Build Commands
 
----
+Run focused tests for touched modules, then the relevant regression set:
 
-## 19. Recommended Future Improvements
-
-1. **Pessimistic Locking / Optimistic Locking (JPA):** Add `@Version` on `SnookerTable` to prevent race conditions during heavy concurrent bookings.
-2. **Database Migration Tool:** Introduce Flyway or Liquibase to stop relying on `hibernate.ddl-auto=update`, making schema changes predictable in production.
-3. **Immutable Ledgers:** Modify Consumables and Frames to store `grossAmount` alongside `remainingDue` so partial payments do not destroy the original transaction cost.
-4. **Redis Caching:** Introduce caching for `/api/snooker/tables` and `/api/leaderboard/top-players` to reduce DB hits on dashboard loads.
-
----
-
-## 20. Planned Next Migration Phase (Do Not Implement All At Once)
-
-This phase is **planned and approved for future phased implementation**, but should be executed incrementally module by module. The database migration is already complete and `branch_id` is now mandatory on key operational tables, so **write paths must be updated before read/reporting paths**.
-
-### Current Migration State
-
-The following operational tables are now branch-aware at the database level and require application-level enforcement:
-
-* `snooker_tables`
-* `frames`
-* `payments`
-* `user_dues`
-* `kids_play_sessions`
-* `games`
-* `game_activity_orders`
-* `consumable_items`
-* `consumable_item_stock`
-* `consumable_orders`
-* `customer_feedback`
-* `tournaments`
-
-Historical records have already been backfilled.
-
-### Core Rule
-
-Every request must operate through this validated chain:
-
-`Authenticated User -> Current Organization -> Current Branch -> Role/Branch Authorization`
-
-Never trust arbitrary `organizationId` or `branchId` from the frontend without backend verification through:
-
-* `organization_users`
-* `user_branch_access`
-* active organization
-* active branch
-* branch ownership by organization
-
-### Shared Backend Requirement
-
-All branch-aware modules should reuse one central backend context resolver, such as `OrganizationBranchContextService` or the existing org context service extended for this purpose.
-
-Suggested reusable model:
-
-```java
-public record ActiveContext(
-    Long userId,
-    Long organizationUserId,
-    Long organizationId,
-    Long branchId,
-    String role
-) {}
+```bash
+./mvnw -Dfrontend.skip=true test
+npx tsc -p client/tsconfig.app.json --noEmit
+npm --prefix client run build
 ```
 
-Do not duplicate branch validation logic in individual controllers.
+The Maven frontend build is also part of `mvn clean install`. Keep Angular component tests focused on DOM/routing behavior and backend tests focused on context resolution, branch isolation, repository predicates, and transaction behavior.
 
-### Required Rollout Order
+Branch-scoped tests must prove at minimum:
 
-Implement in this order:
+- a manager with access to Satna and Rewa only receives the selected branch's records;
+- direct ID manipulation cannot read/write another branch;
+- branch changes clear stale UI state and stale responses cannot overwrite the new state;
+- same user can have separate branch totals/dues;
+- no organization-wide fallback is returned for an empty branch result.
 
-1. Shared context and entity mappings
-2. Snooker tables
-3. Frame lifecycle
-4. Ongoing/completed frame reporting
-5. Leaderboard
-6. Payment due calculation
-7. Payment settlement
-8. Manager earnings
-9. Consumables and inventory
-10. Kids play
-11. Game activities
-12. Tournaments
-13. Customer feedback
-14. Schedulers, WhatsApp and Brevo summaries
-15. Frontend context refresh and cache cleanup
+## Change Checklist for Agents
 
-### Mandatory First Priority Because `branch_id` Is `NOT NULL`
+Before coding:
 
-Before any report migration, update these write paths first:
+1. Read this file and `PROJECT_MASTER_CONTEXT.md`.
+2. Inspect every caller before changing an endpoint/service/repository method.
+3. Confirm whether the data is tenant-scoped, branch-scoped, organization-scoped, or global identity data.
+4. Reuse `OrganizationContextService`, `PendingDueService`, `CustomerBranchDueCalculatorService`, `BrevoEmailService`, and existing Angular context services where applicable.
+5. Identify date/timezone and financial precision requirements.
 
-1. Manual customer-related branch mappings, if affected
-2. Start frame
-3. Payments
-4. Consumable orders
-5. Kids play sessions
-6. Game activity orders
-7. Tournaments
-8. Feedback
+Before merging:
 
-Any insert path that does not assign `branch_id` can fail immediately.
+1. Confirm no frontend-supplied organization/branch ID became trusted.
+2. Confirm historical records use their persisted branch.
+3. Confirm transaction-critical writes still commit/rollback together.
+4. Keep external messaging post-commit and best effort.
+5. Confirm backend-side pagination/limits and database-side filtering.
+6. Test mobile layouts for new public/manager UI.
+7. Run the stated validation commands.
+8. Do not revert unrelated work in a dirty tree and do not amend commits unless asked.
 
-### Branch Awareness Rules by Module
+## Current Risks and SaaS Roadmap
 
-The following must become branch-scoped in future implementation:
+The product is materially branch-aware, but it is not yet fully hardened for untrusted multi-tenant internet access. Prioritize these before broad commercial onboarding:
 
-* Snooker tables shown and updated only for current branch
-* Start frame must save current branch
-* End frame must load frame by `frameId + branchId`
-* Ongoing/completed frame panels must filter by current branch
-* Monthly Top 10 leaderboard must be branch-specific
-* Show All Players must use branch-specific due and frame counts
-* `user_dues` must be treated as `user_id + branch_id`
-* Payment settlement must settle only the current branch’s dues
-* Payment history and settled payments must filter by branch
-* Today’s Total Earnings must be recalculated for branch only
-* Consumable items, stock, orders and reports must be branch-aware
-* Kids play sessions must be created, ended and reported by branch
-* Games and activity orders must be branch-aware
-* Tournaments and feedback must be branch-aware
-* Schedulers must be reviewed to distinguish branch-scoped vs organization-scoped behavior
+1. Central server-side authentication/authorization and removal of trusted identity headers.
+2. Secret rotation and removal of all configuration fallbacks containing live credentials.
+3. Formal database migrations with Flyway/Liquibase instead of relying only on `ddl-auto=update` or manual production SQL.
+4. Auditing, tenant provisioning/onboarding, tenant suspension, and support/admin impersonation controls.
+5. Stronger table concurrency control (`@Version` or a carefully designed lock strategy).
+6. Immutable financial ledger fields for original amount versus remaining due.
+7. Operational monitoring, backups/restores, rate limits, and privacy/retention policy.
+8. Explicit public versus internal API boundaries and CORS restrictions per production host.
 
-### Frontend Requirement
-
-All branch-dependent Angular components must respond to current context changes. On branch switch they must:
-
-* clear stale state
-* reload branch APIs
-* clear stale selections
-* refresh tables, frames, earnings, leaderboard, players, inventory, kids play, games, tournaments, and related dialogs
-
-Avoid reading branch context from local storage directly in isolated components where a shared context service already exists.
-
-### Security and Leakage Prevention
-
-Future implementation must explicitly prevent:
-
-* cross-branch frame access
-* cross-branch settlement
-* cross-branch earnings leakage
-* cross-branch inventory mutation
-* direct URL/API manipulation bypassing branch rules
-
-### Delivery Strategy
-
-Do not attempt one giant refactor. Ship in batches:
-
-* Batch 1: shared context, entity mappings, repository methods, snooker tables, start frame
-* Batch 2: end frame, ongoing/completed frames, leaderboard
-* Batch 3: due calculator, `user_dues`, settlement, payment history, earnings
-* Batch 4: consumables and inventory
-* Batch 5: kids play, games, activities
-* Batch 6: tournaments, feedback, schedulers, WhatsApp/Brevo summaries
-* Batch 7: frontend refresh behavior, security regression tests, end-to-end verification
-
-### Implementation Reminder
-
-When future prompts ask for this migration, implement **phase by phase only**, preserving:
-
-* Google OAuth
-* organization switching
-* branch switching
-* manual customer creation
-* existing onboarding
-* payment calculations
-* WhatsApp and Brevo integrations
-* mobile responsiveness
+Implement the roadmap incrementally. Do not collapse organization-wide reporting, branch operations, and global user identity into one query or one large migration.

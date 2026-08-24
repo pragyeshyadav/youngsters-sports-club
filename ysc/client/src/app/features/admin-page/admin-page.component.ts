@@ -6,6 +6,7 @@ import { Router } from '@angular/router';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 import { AuthService } from '../../core/services/auth.service';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { TriggerWhatsappPanelComponent } from '../../shared/components/trigger-whatsapp-panel/trigger-whatsapp-panel.component';
 
 interface AdminMonthlyEarnings {
@@ -54,9 +55,13 @@ export class AdminPageComponent implements OnInit {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly organizationContext = inject(OrganizationContextService);
 
   canViewAdminReport = false;
   currentUserId: number | null = null;
+  currentOrganizationId: number | null = null;
+  currentBranchId: number | null = null;
+  currentOrganizationName: string = '';
   isAddStockExpanded = false;
   isConsumableReportExpanded = false;
   isMonthlyReportExpanded = false;
@@ -117,6 +122,25 @@ export class AdminPageComponent implements OnInit {
       return;
     }
 
+    this.organizationContext.context$.subscribe((context) => {
+      const nextOrganizationId = context?.currentOrganization?.id ?? null;
+      const nextBranchId = context?.currentBranch?.id ?? null;
+      const contextChanged =
+        this.currentOrganizationId !== nextOrganizationId || this.currentBranchId !== nextBranchId;
+
+      this.currentOrganizationId = nextOrganizationId;
+      this.currentBranchId = nextBranchId;
+      this.currentOrganizationName = context?.currentOrganization?.name ?? '';
+      if (contextChanged) {
+        this.resetMonthlyReportState();
+        if (this.isMonthlyReportExpanded) {
+          this.loadMonthlyReport();
+          return;
+        }
+      }
+      this.cdr.markForCheck();
+    });
+
     this.http.get<AdminUserAccess>(`/api/user?email=${encodeURIComponent(email)}`).subscribe({
       next: (user) => {
         this.currentUserId = user?.id ?? null;
@@ -134,6 +158,10 @@ export class AdminPageComponent implements OnInit {
 
   goBack(): void {
     void this.router.navigate(['/dashboard']);
+  }
+
+  goToClubSetupPortal(): void {
+    void this.router.navigate(['/club-setup-portal']);
   }
 
   toggleMonthlyReport(): void {
@@ -294,7 +322,7 @@ export class AdminPageComponent implements OnInit {
     return 'stock-positive';
   }
 
-  private loadMonthlyReport(): void {
+  protected loadMonthlyReport(): void {
     this.isLoadingMonthlyReport = true;
     this.reportError = '';
     this.cdr.markForCheck();
@@ -318,20 +346,24 @@ export class AdminPageComponent implements OnInit {
       },
       error: (err) => {
         console.error('Failed to load monthly earnings report', err);
-        this.monthlyEarnings = {
-          currentMonthTotal: 0,
-          previousMonthTotal: 0,
-          snookerEarnings: 0,
-          snookerTableBreakdown: {},
-          consumableEarnings: 0,
-          kidsZoneEarnings: 0,
-        };
-        this.snookerBreakdownEntries = [];
+        this.resetMonthlyReportState();
         this.reportError = err?.error?.message || 'Unable to load monthly report right now';
-        this.isLoadingMonthlyReport = false;
         this.cdr.markForCheck();
       },
     });
+  }
+
+  protected resetMonthlyReportState(): void {
+    this.monthlyEarnings = {
+      currentMonthTotal: 0,
+      previousMonthTotal: 0,
+      snookerEarnings: 0,
+      snookerTableBreakdown: {},
+      consumableEarnings: 0,
+      kidsZoneEarnings: 0,
+    };
+    this.snookerBreakdownEntries = [];
+    this.isLoadingMonthlyReport = false;
   }
 
   private loadConsumableReport(): void {
