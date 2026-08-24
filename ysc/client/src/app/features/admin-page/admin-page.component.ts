@@ -59,6 +59,8 @@ export class AdminPageComponent implements OnInit {
 
   canViewAdminReport = false;
   currentUserId: number | null = null;
+  currentOrganizationId: number | null = null;
+  currentBranchId: number | null = null;
   currentOrganizationName: string = '';
   isAddStockExpanded = false;
   isConsumableReportExpanded = false;
@@ -121,7 +123,21 @@ export class AdminPageComponent implements OnInit {
     }
 
     this.organizationContext.context$.subscribe((context) => {
+      const nextOrganizationId = context?.currentOrganization?.id ?? null;
+      const nextBranchId = context?.currentBranch?.id ?? null;
+      const contextChanged =
+        this.currentOrganizationId !== nextOrganizationId || this.currentBranchId !== nextBranchId;
+
+      this.currentOrganizationId = nextOrganizationId;
+      this.currentBranchId = nextBranchId;
       this.currentOrganizationName = context?.currentOrganization?.name ?? '';
+      if (contextChanged) {
+        this.resetMonthlyReportState();
+        if (this.isMonthlyReportExpanded) {
+          this.loadMonthlyReport();
+          return;
+        }
+      }
       this.cdr.markForCheck();
     });
 
@@ -306,7 +322,7 @@ export class AdminPageComponent implements OnInit {
     return 'stock-positive';
   }
 
-  private loadMonthlyReport(): void {
+  protected loadMonthlyReport(): void {
     this.isLoadingMonthlyReport = true;
     this.reportError = '';
     this.cdr.markForCheck();
@@ -330,20 +346,24 @@ export class AdminPageComponent implements OnInit {
       },
       error: (err) => {
         console.error('Failed to load monthly earnings report', err);
-        this.monthlyEarnings = {
-          currentMonthTotal: 0,
-          previousMonthTotal: 0,
-          snookerEarnings: 0,
-          snookerTableBreakdown: {},
-          consumableEarnings: 0,
-          kidsZoneEarnings: 0,
-        };
-        this.snookerBreakdownEntries = [];
+        this.resetMonthlyReportState();
         this.reportError = err?.error?.message || 'Unable to load monthly report right now';
-        this.isLoadingMonthlyReport = false;
         this.cdr.markForCheck();
       },
     });
+  }
+
+  protected resetMonthlyReportState(): void {
+    this.monthlyEarnings = {
+      currentMonthTotal: 0,
+      previousMonthTotal: 0,
+      snookerEarnings: 0,
+      snookerTableBreakdown: {},
+      consumableEarnings: 0,
+      kidsZoneEarnings: 0,
+    };
+    this.snookerBreakdownEntries = [];
+    this.isLoadingMonthlyReport = false;
   }
 
   private loadConsumableReport(): void {

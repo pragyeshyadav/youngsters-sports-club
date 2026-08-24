@@ -1,7 +1,9 @@
 <div class="manager-page">
   <div class="manager-header">
     <app-club-logo size="md" />
-    <app-brand-title [organizationName]="currentOrganizationName" size="small" />
+    <div class="authenticated-brand-frame">
+      <app-brand-title [organizationName]="currentOrganizationName" size="small" />
+    </div>
   </div>
 
   <div class="manager-card">

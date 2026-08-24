@@ -6,11 +6,12 @@ import { RouterLink } from '@angular/router';
 import { AuthUser } from '../../../core/models/auth.models';
 import { AuthService } from '../../../core/services/auth.service';
 import { OrganizationContextService } from '../../../core/services/organization-context.service';
+import { ClubLogoComponent } from '../club-logo/club-logo.component';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [AsyncPipe, RouterLink],
+  imports: [AsyncPipe, RouterLink, ClubLogoComponent],
   templateUrl: './header.component.html',
   styleUrl: './header.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

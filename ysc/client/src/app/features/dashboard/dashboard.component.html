@@ -77,7 +77,7 @@
         </section>
       }
 
-      @if (!showPhoneInput && !showOrganizationSetup) {
+      @if (shouldShowKidsPlayCard()) {
         <button type="button" class="kids-entry-card" (click)="goToKidsPlay()">
           <div class="kids-entry-copy">
             <span class="kids-entry-badge">🌈 Family Fun</span>
@@ -86,6 +86,9 @@
           </div>
           <img src="/images/kodl-logo.png" alt="Kids Ocean Dreamland" class="kids-entry-logo" />
         </button>
+      }
+
+      @if (!showPhoneInput && !showOrganizationSetup) {
 
         @if (isCustomer()) {
           <button type="button" class="kids-entry-card olympics-card" (click)="goToSummerOlympicsRegistration()">

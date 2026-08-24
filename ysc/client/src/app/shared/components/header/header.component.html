@@ -2,7 +2,7 @@
   <div class="header">
     <a routerLink="/dashboard" class="brand-container-link" aria-label="Home — Dashboard">
       <div class="brand-container">
-        <img src="/images/logo.png" alt="Youngsters Sports Club, Satna" class="logo-circle logo-sm" />
+        <app-club-logo size="sm" />
         <div class="brand-name">
           @if (organizationName$ | async; as orgName) {
             <span class="white">{{ orgName }}</span>

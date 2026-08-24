@@ -2,9 +2,9 @@
     <header class="landing-header">
       <div class="landing-header__inner">
         <a routerLink="/" class="landing-brand" aria-label="Youngsters Sports Club home" (click)="closeMobileMenu()">
-          <app-club-logo size="sm"></app-club-logo>
+          <app-club-logo size="sm" [staticBranding]="true"></app-club-logo>
           <div class="landing-brand__copy">
-            <app-brand-title size="small"></app-brand-title>
+            <app-brand-title size="small" [staticBranding]="true"></app-brand-title>
             <span class="landing-brand__subtitle">Sports, play and family fun</span>
           </div>
         </a>

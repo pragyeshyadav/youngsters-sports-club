@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { AUTH_SESSION_STORAGE_KEY, GOOGLE_TOKEN_STORAGE_KEY } from '../../core/constants/storage.constants';
+import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { ClubSetupPortalComponent } from './club-setup-portal.component';
 
 function seedAdminSession(email = 'admin@example.com'): void {
@@ -19,6 +20,7 @@ function seedAdminSession(email = 'admin@example.com'): void {
 
 describe('ClubSetupPortalComponent', () => {
   let httpMock: HttpTestingController;
+  let organizationContext: OrganizationContextService;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -27,6 +29,7 @@ describe('ClubSetupPortalComponent', () => {
     }).compileComponents();
 
     httpMock = TestBed.inject(HttpTestingController);
+    organizationContext = TestBed.inject(OrganizationContextService);
   });
 
   afterEach(() => {
@@ -95,5 +98,34 @@ describe('ClubSetupPortalComponent', () => {
     (fixture.nativeElement.querySelector('.back-link') as HTMLButtonElement).click();
 
     expect(navigateSpy).toHaveBeenCalledWith(['/admin-page']);
+  });
+
+  it('renders the selected organization name and logo from context', async () => {
+    seedAdminSession();
+    (organizationContext as any).contextSubject.next({
+      currentOrganization: {
+        id: 7,
+        name: 'Headquartor City Center Snooker Club',
+        logoUrl: 'https://example.com/headquarter-logo.png',
+      },
+      currentBranch: { id: 9, name: 'Rewa' },
+      currentRole: 'ADMIN',
+      hasPersistedContext: true,
+      requiresSelection: false,
+      availableOrganizations: [],
+      accessibleBranches: [],
+    });
+
+    const fixture = TestBed.createComponent(ClubSetupPortalComponent);
+    fixture.detectChanges();
+    resolveRole('ADMIN');
+    fixture.detectChanges();
+
+    const brandFrame = fixture.nativeElement.querySelector('.authenticated-brand-frame') as HTMLElement | null;
+    const brandLogo = fixture.nativeElement.querySelector('.setup-header app-club-logo img') as HTMLImageElement | null;
+
+    expect(brandFrame?.textContent).toContain('Headquartor City Center Snooker Club');
+    expect(brandFrame?.textContent).not.toContain('Youngsters Sports Club & Cafe');
+    expect(brandLogo?.getAttribute('src')).toBe('https://example.com/headquarter-logo.png');
   });
 });

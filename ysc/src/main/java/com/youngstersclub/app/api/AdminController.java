@@ -56,8 +56,9 @@ public class AdminController {
     @GetMapping("/monthly-earnings")
     public ResponseEntity<AdminMonthlyEarningsDto> getMonthlyEarnings(
             @RequestParam int month,
-            @RequestParam int year) {
-        return ResponseEntity.ok(adminAnalyticsService.getMonthlyEarnings(month, year));
+            @RequestParam int year,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(adminAnalyticsService.getMonthlyEarnings(month, year, actorEmail));
     }
 
     @PostMapping("/consumables/stock")

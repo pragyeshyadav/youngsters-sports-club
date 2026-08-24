@@ -685,6 +685,12 @@ export class DashboardComponent implements OnInit {
     this.router.navigate(['/kids-play']);
   }
 
+  protected shouldShowKidsPlayCard(): boolean {
+    return !this.showPhoneInput
+      && !this.showOrganizationSetup
+      && !!this.organizationContext?.kidsPlayEnabled;
+  }
+
   goToSummerOlympicsRegistration() {
     this.router.navigate(['/tournament-registration']);
   }

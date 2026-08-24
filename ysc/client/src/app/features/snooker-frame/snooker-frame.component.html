@@ -1,7 +1,9 @@
 <div class="snooker-frame-page">
   <div class="header">
     <app-club-logo size="md" />
-    <app-brand-title size="small" />
+    <div class="authenticated-brand-frame">
+      <app-brand-title size="small" />
+    </div>
   </div>
 
   @if (isLoadingCurrentFrame) {

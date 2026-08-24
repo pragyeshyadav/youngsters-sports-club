@@ -18,6 +18,7 @@ public interface SnookerTableRepository extends JpaRepository<SnookerTable, Long
     Optional<SnookerTable> findByIdAndBranch_Id(Long id, Long branchId);
     Optional<SnookerTable> findByIdAndBranch_IdAndIsActiveTrue(Long id, Long branchId);
     Optional<SnookerTable> findByBranch_IdAndTableNameIgnoreCase(Long branchId, String tableName);
+    boolean existsByBranch_IdAndTableNameIgnoreCaseAndIsActiveTrue(Long branchId, String tableName);
     List<SnookerTable> findByBranch_IdOrderByIdAsc(Long branchId);
 
     @Query("""

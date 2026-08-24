@@ -1,16 +1,16 @@
 @switch (size) {
   @case ('large') {
-    <h1 class="brand-title brand-title--large">{{ organizationName }}</h1>
+    <h1 class="brand-title brand-title--large">{{ resolvedOrganizationName }}</h1>
   }
   @case ('medium') {
-    <h2 class="brand-title brand-title--medium">{{ organizationName }}</h2>
+    <h2 class="brand-title brand-title--medium">{{ resolvedOrganizationName }}</h2>
   }
   @case ('small') {
     <div
       class="brand-title brand-title--small"
-      aria-label="Youngsters Sports Club and Cafe"
+      [attr.aria-label]="resolvedOrganizationName"
     >
-      {{ organizationName }}
+      {{ resolvedOrganizationName }}
     </div>
   }
 }
