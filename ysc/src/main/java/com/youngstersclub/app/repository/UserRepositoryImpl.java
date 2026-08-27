@@ -165,6 +165,71 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
             LIMIT :limit
             """;
 
+    private static final String ACTIVE_USER_SUMMARY_SEARCH_BY_ORG_SCOPE_AND_ROLE_SQL = """
+            SELECT DISTINCT
+                u.id AS id,
+                u.name AS name,
+                u.email AS email,
+                u.google_id AS google_id,
+                u.profile_pic AS profile_pic,
+                u.phone AS phone,
+                COALESCE(u.is_active, true) AS is_active,
+                u.role AS role
+            FROM users u
+            JOIN organization_users ou
+              ON ou.user_id = u.id
+             AND ou.organization_id = :organizationId
+             AND ou.role = :role
+             AND COALESCE(ou.is_active, true) = true
+            LEFT JOIN user_branch_access uba
+              ON uba.organization_user_id = ou.id
+             AND uba.branch_id = :branchId
+             AND COALESCE(uba.is_active, true) = true
+            WHERE COALESCE(u.is_active, true) = true
+              AND (
+                    :branchId IS NULL
+                    OR ou.base_branch_id = :branchId
+                    OR uba.id IS NOT NULL
+              )
+              AND (
+                    (:includeTextMatch = true AND (
+                        LOWER(COALESCE(u.name, '')) LIKE :query
+                        OR LOWER(COALESCE(u.email, '')) LIKE :query
+                    ))
+                    OR (:includeDigitsMatch = true AND COALESCE(u.phone, '') LIKE :digitsQuery)
+              )
+            ORDER BY u.name ASC, u.id ASC
+            LIMIT :limit
+            """;
+
+    private static final String ACTIVE_USER_SUMMARY_SEARCH_BY_ORGANIZATION_AND_ROLE_SQL = """
+            SELECT DISTINCT
+                u.id AS id,
+                u.name AS name,
+                u.email AS email,
+                u.google_id AS google_id,
+                u.profile_pic AS profile_pic,
+                u.phone AS phone,
+                COALESCE(u.is_active, true) AS is_active,
+                u.role AS role
+            FROM users u
+            JOIN organization_users ou
+              ON ou.user_id = u.id
+             AND ou.organization_id = :organizationId
+             AND ou.role = :role
+             AND COALESCE(ou.is_active, true) = true
+            WHERE COALESCE(u.is_active, true) = true
+              AND (
+                    (:includeTextMatch = true AND (
+                        LOWER(COALESCE(u.name, '')) LIKE :query
+                        OR LOWER(COALESCE(u.email, '')) LIKE :query
+                    ))
+                    OR (:includeDigitsMatch = true AND COALESCE(u.phone, '') LIKE :digitsQuery)
+              )
+            ORDER BY u.name ASC, u.id ASC
+            LIMIT :limit
+            """;
+
     private static final RowMapper<PlayerSummaryBaseProjection> PLAYER_SUMMARY_ROW_MAPPER =
             new RowMapper<>() {
                 @Override
@@ -266,6 +331,47 @@ public class UserRepositoryImpl implements UserRepositoryCustom {
 
         params.addValue("branchId", branchId);
         return jdbcTemplate.query(ACTIVE_USER_SUMMARY_SEARCH_BY_ORG_SCOPE_SQL, params, USER_SEARCH_RESULT_ROW_MAPPER);
+    }
+
+    @Override
+    public List<UserSearchResultDto> searchActiveUserSummariesForOrganizationScopeAndRole(
+            String query,
+            String digitsQuery,
+            Pageable pageable,
+            Long organizationId,
+            Long branchId,
+            UserRole role) {
+        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
+        String normalizedDigitsQuery = digitsQuery == null ? "" : digitsQuery.trim();
+        if ((normalizedQuery.isEmpty() && normalizedDigitsQuery.isEmpty())
+                || organizationId == null
+                || role == null) {
+            return List.of();
+        }
+        boolean includeTextMatch = !normalizedQuery.isEmpty();
+        boolean includeDigitsMatch = !normalizedDigitsQuery.isEmpty();
+        int limit = pageable == null ? 10 : pageable.getPageSize();
+
+        MapSqlParameterSource params = new MapSqlParameterSource()
+                .addValue("organizationId", organizationId)
+                .addValue("role", role.name())
+                .addValue("includeTextMatch", includeTextMatch)
+                .addValue("includeDigitsMatch", includeDigitsMatch)
+                .addValue("query", "%" + normalizedQuery + "%")
+                .addValue("digitsQuery", "%" + normalizedDigitsQuery + "%")
+                .addValue("limit", limit);
+        if (branchId == null) {
+            return jdbcTemplate.query(
+                    ACTIVE_USER_SUMMARY_SEARCH_BY_ORGANIZATION_AND_ROLE_SQL,
+                    params,
+                    USER_SEARCH_RESULT_ROW_MAPPER);
+        }
+
+        params.addValue("branchId", branchId);
+        return jdbcTemplate.query(
+                ACTIVE_USER_SUMMARY_SEARCH_BY_ORG_SCOPE_AND_ROLE_SQL,
+                params,
+                USER_SEARCH_RESULT_ROW_MAPPER);
     }
 
     @Override

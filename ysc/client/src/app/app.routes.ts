@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 import { guestGuard } from './core/guards/guest.guard';
+import { superAdminGuard } from './core/guards/super-admin.guard';
 
 export const routes: Routes = [
   {
@@ -50,6 +51,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
     loadComponent: () =>
       import('./features/club-setup-portal/club-setup-portal.component').then((m) => m.ClubSetupPortalComponent),
+  },
+  {
+    path: 'super-admin-panel',
+    canActivate: [authGuard, superAdminGuard],
+    loadComponent: () =>
+      import('./features/super-admin-panel/super-admin-panel.component').then((m) => m.SuperAdminPanelComponent),
   },
   {
     path: 'managers-portal',

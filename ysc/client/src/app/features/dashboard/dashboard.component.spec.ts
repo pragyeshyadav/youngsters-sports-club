@@ -52,4 +52,26 @@ describe('DashboardComponent - Kids Ocean Dreamland visibility', () => {
 
     expect((component as DashboardComponent & { shouldShowKidsPlayCard(): boolean }).shouldShowKidsPlayCard()).toBeFalse();
   });
+
+  it('allows the Super Admin portal for the legacy super admin user id', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+
+    expect(
+      (component as DashboardComponent & {
+        isSuperAdminUser(user: { id?: number | null; role?: string | null } | null): boolean;
+      }).isSuperAdminUser({ id: 2, role: 'CUSTOMER' }),
+    ).toBeTrue();
+  });
+
+  it('allows the Super Admin portal for users with the SUPER_ADMIN role', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+
+    expect(
+      (component as DashboardComponent & {
+        isSuperAdminUser(user: { id?: number | null; role?: string | null } | null): boolean;
+      }).isSuperAdminUser({ id: 99, role: 'SUPER_ADMIN' }),
+    ).toBeTrue();
+  });
 });
