@@ -8,17 +8,19 @@ import static org.mockito.Mockito.when;
 
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.entity.Branch;
+import com.youngstersclub.app.entity.Organization;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
 import com.youngstersclub.app.repository.ConsumableOrderRepository;
 import com.youngstersclub.app.repository.FrameRepository;
 import com.youngstersclub.app.repository.GameActivityOrderRepository;
 import com.youngstersclub.app.repository.KidsPlaySessionRepository;
+import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
-import com.youngstersclub.app.repository.UserRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -28,7 +30,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class PaymentDueReminderExecutorTest {
 
-    @Mock private UserRepository userRepository;
     @Mock private OrganizationUserRepository organizationUserRepository;
     @Mock private BranchRepository branchRepository;
     @Mock private FrameRepository frameRepository;
@@ -38,12 +39,16 @@ class PaymentDueReminderExecutorTest {
     @Mock private PendingDueService pendingDueService;
     @Mock private WhatsAppService whatsAppService;
     @Mock private BrevoEmailService brevoEmailService;
+    @Mock private OrganizationRepository organizationRepository;
+    @Mock private OrganizationSummaryRecipientService organizationSummaryRecipientService;
 
     @InjectMocks private PaymentDueReminderExecutor executor;
 
     @Test
     void executeDryRunProcessesOrganizationsIncrementallyAndBuildsEligibleRecipients() {
         Long organizationId = 1L;
+        when(organizationRepository.findByIdAndIsActiveTrue(organizationId))
+                .thenReturn(Optional.of(organization(organizationId, "org@test.com")));
         when(organizationUserRepository.findDistinctActiveOrganizationIdsByRole(UserRole.CUSTOMER))
                 .thenReturn(List.of(organizationId));
         when(organizationUserRepository.findActiveCustomerMembershipsByRoleAndOrganizationId(UserRole.CUSTOMER, organizationId))
@@ -87,9 +92,12 @@ class PaymentDueReminderExecutorTest {
         when(gameActivityOrderRepository.getTotalUnpaidDueByParentUserIdsAndBranchId(List.of(10), rewa.getId()))
                 .thenReturn(List.of());
 
-        when(userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN)))
-                .thenReturn(List.of());
-        when(brevoEmailService.sendPaymentDueReminderSummaryEmail(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyList()))
+        when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organizationId))
+                .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
+        when(brevoEmailService.sendPaymentDueReminderSummaryEmail(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.any()))
                 .thenReturn(0);
 
         WhatsappTemplateExecutionResultDto result = executor.execute(true);
@@ -108,6 +116,11 @@ class PaymentDueReminderExecutorTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt());
+        verify(brevoEmailService).sendPaymentDueReminderSummaryEmail(
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyList(),
+                org.mockito.ArgumentMatchers.eq("org@test.com"));
+        verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(organizationId);
         verify(branchRepository).findByOrganizationIdAndIsActiveTrueOrderByNameAsc(organizationId);
         verify(pendingDueService, never()).calculateCustomerDue(org.mockito.ArgumentMatchers.anyLong(), org.mockito.ArgumentMatchers.anyLong());
     }
@@ -142,6 +155,14 @@ class PaymentDueReminderExecutorTest {
 
         assertEquals(new BigDecimal("125"), totals.get(10));
         assertEquals(new BigDecimal("30"), totals.get(11));
+    }
+
+    private Organization organization(Long id, String email) {
+        Organization organization = new Organization();
+        organization.setId(id);
+        organization.setEmail(email);
+        organization.setIsActive(true);
+        return organization;
     }
 
     private OrganizationUserRepository.ActiveCustomerMembershipProjection membership(

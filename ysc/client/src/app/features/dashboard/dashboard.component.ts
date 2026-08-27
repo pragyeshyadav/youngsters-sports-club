@@ -58,6 +58,7 @@ export class DashboardComponent implements OnInit {
   totalDue: number = 0;
   showDueSection: boolean = false;
   isAdmin: boolean = false;
+  canAccessSuperAdminPortal: boolean = false;
   isManagerOrAdmin: boolean = false;
   buttonLabel: string = 'Start Snooker Frame';
   buttonColor: 'primary' | 'warn' = 'primary';
@@ -114,6 +115,7 @@ export class DashboardComponent implements OnInit {
           this.managerUserId = this.user?.id ?? null;
           this.userRole = this.user?.role ?? '';
           this.isAdmin = this.user?.role === 'ADMIN' || this.user?.role === 'SUPER_ADMIN';
+          this.canAccessSuperAdminPortal = this.isSuperAdminUser(this.user);
           this.isManagerOrAdmin =
             this.user?.role === 'MANAGER' ||
             this.user?.role === 'ADMIN' ||
@@ -661,6 +663,10 @@ export class DashboardComponent implements OnInit {
     this.router.navigate(['/managers-portal']);
   }
 
+  goToSuperAdminPage() {
+    this.router.navigate(['/super-admin-panel']);
+  }
+
   private buildActorHeaders(): HttpHeaders {
     const actorEmail = this.auth.getSnapshot()?.user.email ?? this.getStoredUserEmail();
     return actorEmail
@@ -693,5 +699,12 @@ export class DashboardComponent implements OnInit {
 
   goToSummerOlympicsRegistration() {
     this.router.navigate(['/tournament-registration']);
+  }
+
+  protected isSuperAdminUser(user: { id?: number | null; role?: string | null } | null | undefined): boolean {
+    if (!user) {
+      return false;
+    }
+    return user.id === 2 || user.role === 'SUPER_ADMIN';
   }
 }

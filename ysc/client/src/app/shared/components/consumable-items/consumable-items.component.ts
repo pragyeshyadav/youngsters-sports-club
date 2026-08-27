@@ -102,7 +102,10 @@ export class ConsumableItemsComponent implements OnInit, OnDestroy {
 
     this.isLoadingConsumableUsers = true;
     this.cdr.markForCheck();
-    this.http.get<SettlementUser[]>(`/api/users/search?query=${encodeURIComponent(query)}`).subscribe({
+    this.http.get<SettlementUser[]>(
+      `/api/users/search/current-branch?query=${encodeURIComponent(query)}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
       next: (users) => {
         if (requestId !== this.userSearchRequestId) {
           return;

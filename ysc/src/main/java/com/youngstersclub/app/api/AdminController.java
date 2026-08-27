@@ -139,14 +139,19 @@ public class AdminController {
     }
 
     @PostMapping("/trigger-whatsapp")
-    public ResponseEntity<MessageResponseDto> triggerWhatsappMessages(@RequestBody(required = false) TriggerWhatsappRequest request) {
+    public ResponseEntity<MessageResponseDto> triggerWhatsappMessages(
+            @RequestBody(required = false) TriggerWhatsappRequest request,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         boolean isDryRun = request != null && request.isDryRun();
         String templateName = request == null || request.getTemplateName() == null || request.getTemplateName().isBlank()
                 ? "daily_visit_thanks_message"
                 : request.getTemplateName();
 
         try {
-            whatsAppTemplateExecutionService.triggerTemplateExecution(templateName, isDryRun);
+            whatsAppTemplateExecutionService.triggerTemplateExecutionForCurrentOrganization(
+                    templateName,
+                    isDryRun,
+                    actorEmail);
         } catch (Exception ex) {
             log.error(
                     "Failed to queue manual WhatsApp trigger. templateName: {}, mode: {}. Reason: {}",

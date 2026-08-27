@@ -37,6 +37,8 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
   @EntityGraph(attributePaths = {"organization", "baseBranch", "user"})
   Optional<OrganizationUser> findByUserIdAndOrganizationId(Integer userId, Long organizationId);
 
+  long countByBaseBranchIdAndIsActiveTrue(Long baseBranchId);
+
   @EntityGraph(attributePaths = {"baseBranch", "user"})
   List<OrganizationUser> findByOrganization_IdAndRoleAndIsActiveTrue(Long organizationId, UserRole role);
 
@@ -117,5 +119,23 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
   List<ActiveBranchStaffProjection> findActiveStaffByOrganizationIdAndBranchIdAndRoles(
           @Param("organizationId") Long organizationId,
           @Param("branchId") Long branchId,
+          @Param("roles") List<UserRole> roles);
+
+  @Query("""
+      SELECT DISTINCT LOWER(TRIM(ou.user.email))
+      FROM OrganizationUser ou
+      WHERE ou.organization.id = :organizationId
+        AND ou.role IN :roles
+        AND ou.isActive = true
+        AND ou.user IS NOT NULL
+        AND ou.user.email IS NOT NULL
+        AND TRIM(ou.user.email) <> ''
+        AND ou.user.isActive = true
+        AND ou.organization IS NOT NULL
+        AND ou.organization.isActive = true
+      ORDER BY LOWER(TRIM(ou.user.email)) ASC
+  """)
+  List<String> findActiveRecipientEmailsByOrganizationIdAndRoles(
+          @Param("organizationId") Long organizationId,
           @Param("roles") List<UserRole> roles);
 }

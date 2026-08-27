@@ -21,6 +21,7 @@ import com.youngstersclub.app.entity.TournamentRegistration;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
+import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.TournamentRegistrationRepository;
 import com.youngstersclub.app.repository.TournamentRepository;
@@ -60,6 +61,9 @@ class TournamentServiceTest {
     private BranchRepository branchRepository;
 
     @Mock
+    private OrganizationRepository organizationRepository;
+
+    @Mock
     private OrganizationUserRepository organizationUserRepository;
 
     @Mock
@@ -87,6 +91,7 @@ class TournamentServiceTest {
         organization = new Organization();
         organization.setId(1L);
         organization.setName("Youngsters");
+        organization.setEmail("org@test.com");
         organization.setIsActive(true);
 
         branch = new Branch();
@@ -135,6 +140,8 @@ class TournamentServiceTest {
         actor.setPhone("9876543210");
         Tournament tournament = buildTournament(101L, "Snooker Singles");
         when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId()))
+                .thenReturn(Optional.of(organization));
         when(tournamentRepository.findByIdAndBranch_IdAndIsActiveTrue(101L, branch.getId()))
                 .thenReturn(Optional.of(tournament));
         when(registrationRepository.existsByTournamentIdAndUserId(101L, actor.getId())).thenReturn(false);
@@ -153,7 +160,8 @@ class TournamentServiceTest {
                 eq("Rahul Sharma"),
                 eq("9876543210"),
                 eq(List.of("Snooker Singles")),
-                eq(List.of()));
+                eq(List.of()),
+                eq("org@test.com"));
     }
 
     @Test
@@ -167,6 +175,8 @@ class TournamentServiceTest {
         Tournament chess = buildTournament(102L, "Chess Championship");
 
         when(userRepository.findById(actor.getId())).thenReturn(Optional.of(actor));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId()))
+                .thenReturn(Optional.of(organization));
         when(tournamentRepository.findByIdAndBranch_IdAndIsActiveTrue(101L, branch.getId()))
                 .thenReturn(Optional.of(snooker));
         when(tournamentRepository.findByIdAndBranch_IdAndIsActiveTrue(102L, branch.getId()))
@@ -185,7 +195,8 @@ class TournamentServiceTest {
                 eq("Rahul Sharma"),
                 eq("9876543210"),
                 eq(List.of("Snooker Singles")),
-                eq(List.of("Chess Championship")));
+                eq(List.of("Chess Championship")),
+                eq("org@test.com"));
     }
 
     @Test
@@ -205,7 +216,7 @@ class TournamentServiceTest {
         assertEquals(List.of(), result.getSuccessfullyRegistered());
         assertEquals(List.of("Chess Championship"), result.getAlreadyRegistered());
         assertEquals(0, TransactionSynchronizationManager.getSynchronizations().size());
-        verify(brevoEmailService, never()).sendTournamentRegistrationNotification(any(), any(), any(), any());
+        verify(brevoEmailService, never()).sendTournamentRegistrationNotification(any(), any(), any(), any(), any());
     }
 
     @Test

@@ -1,0 +1,460 @@
+<div class="super-admin-page">
+  <div class="setup-header">
+    <app-club-logo size="md" />
+    <div class="authenticated-brand-frame">
+      <app-brand-title [organizationName]="currentOrganizationName || 'Youngsters Sports Club & Cafe'" size="small" />
+    </div>
+  </div>
+
+  <div class="setup-card">
+    <button type="button" class="back-link" (click)="goBack()">← Back to Dashboard</button>
+    <h2>🛡 Super Admin Portal</h2>
+    <p>Manage organizations, branches, and staff access from one secured workspace.</p>
+
+    @if (isLoadingPortal) {
+      <p class="panel-message">Loading Super Admin Portal...</p>
+    }
+
+    @if (portalError) {
+      <p class="panel-message error-message">{{ portalError }}</p>
+    }
+
+    <div class="admin-panel">
+      <button type="button" class="panel-header organizations-header" (click)="togglePanel('organizations')">
+        <span>🏢 Organizations</span>
+        <span class="panel-chevron">{{ organizationsExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (organizationsExpanded) {
+        <div class="panel-body">
+          <div class="panel-tools">
+            <button type="button" class="action-btn edit-btn" (click)="toggleOrganizationForm()">
+              {{ organizationFormExpanded ? 'Close Form' : 'Add New Organization' }}
+            </button>
+          </div>
+
+          @if (organizationFormExpanded) {
+            <div class="form-shell">
+              <div class="add-form-grid">
+                <div class="form-card">
+                  <label class="search-label" for="org-name">Organization Name</label>
+                  <input id="org-name" class="search-input" type="text" [(ngModel)]="organizationForm.name" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="org-logo">Logo URL</label>
+                  <input id="org-logo" class="search-input" type="text" [(ngModel)]="organizationForm.logoUrl" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="org-phone">Phone</label>
+                  <input id="org-phone" class="search-input" type="text" [(ngModel)]="organizationForm.phone" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="org-email">Email</label>
+                  <input id="org-email" class="search-input" type="email" [(ngModel)]="organizationForm.email" />
+                </div>
+                <div class="form-card form-card--full">
+                  <label class="search-label" for="org-address">Address</label>
+                  <input id="org-address" class="search-input" type="text" [(ngModel)]="organizationForm.address" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="org-city">City</label>
+                  <input id="org-city" class="search-input" type="text" [(ngModel)]="organizationForm.city" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="org-state">State</label>
+                  <input id="org-state" class="search-input" type="text" [(ngModel)]="organizationForm.state" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="org-country">Country</label>
+                  <input id="org-country" class="search-input" type="text" [(ngModel)]="organizationForm.country" />
+                </div>
+              </div>
+
+              <div class="inline-actions">
+                <button type="button" class="action-btn save-btn" [disabled]="!organizationForm.name.trim() || isSavingOrganization" (click)="saveOrganization()">
+                  {{ isSavingOrganization ? 'Saving...' : editingOrganizationId ? 'Save Organization' : 'Create Organization' }}
+                </button>
+                <button type="button" class="action-btn cancel-btn" (click)="toggleOrganizationForm()">Cancel</button>
+              </div>
+            </div>
+          }
+
+          @if (organizationMessage) {
+            <p class="panel-message success-message">{{ organizationMessage }}</p>
+          }
+          @if (organizationError) {
+            <p class="panel-message error-message">{{ organizationError }}</p>
+          }
+
+          @if (isLoadingOrganizations) {
+            <p class="panel-message">Loading organizations...</p>
+          } @else {
+            <div class="entity-list">
+              @for (organization of organizations; track trackById($index, organization)) {
+                <div class="entity-card">
+                  <div class="entity-main">
+                    <div class="entity-heading">
+                      <strong class="entity-name">{{ organization.name }}</strong>
+                      <span class="status-pill" [ngClass]="organization.active ? 'pill-active' : 'pill-inactive'">
+                        {{ organization.active ? 'Active' : 'Inactive' }}
+                      </span>
+                    </div>
+                    @if (formatOrganizationLocation(organization)) {
+                      <span class="entity-meta">{{ formatOrganizationLocation(organization) }}</span>
+                    }
+                    @if (organization.email) {
+                      <span class="entity-meta">{{ organization.email }}</span>
+                    }
+                    @if (organization.phone) {
+                      <span class="entity-meta">{{ organization.phone }}</span>
+                    }
+                  </div>
+                  <div class="entity-actions">
+                    <button type="button" class="action-btn edit-btn" (click)="startEditOrganization(organization)">Edit</button>
+                    @if (organization.active) {
+                      <button type="button" class="action-btn toggle-btn" (click)="deactivateOrganization(organization)">Deactivate</button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="admin-panel">
+      <button type="button" class="panel-header branches-header" (click)="togglePanel('branches')">
+        <span>📍 Branches</span>
+        <span class="panel-chevron">{{ branchesExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (branchesExpanded) {
+        <div class="panel-body">
+          <div class="form-card form-card--compact">
+            <label class="search-label" for="branch-organization">Organization</label>
+            <select id="branch-organization" class="search-input" [ngModel]="selectedBranchesOrganizationId" (ngModelChange)="onBranchesOrganizationChange($event)">
+              <option [ngValue]="null">Choose organization</option>
+              @for (organization of activeOrganizations; track organization.id) {
+                <option [ngValue]="organization.id">{{ organization.name }}</option>
+              }
+            </select>
+          </div>
+
+          <div class="panel-tools">
+            <button type="button" class="action-btn edit-btn" [disabled]="!selectedBranchesOrganizationId" (click)="toggleBranchForm()">
+              {{ branchFormExpanded ? 'Close Form' : 'Add New Branch' }}
+            </button>
+          </div>
+
+          @if (branchFormExpanded) {
+            <div class="form-shell">
+              <div class="add-form-grid">
+                <div class="form-card form-card--full">
+                  <label class="search-label" for="branch-name">Branch Name</label>
+                  <input id="branch-name" class="search-input" type="text" [(ngModel)]="branchForm.name" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="branch-code">Branch Code</label>
+                  <input id="branch-code" class="search-input" type="text" [(ngModel)]="branchForm.branchCode" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="branch-phone">Phone</label>
+                  <input id="branch-phone" class="search-input" type="text" [(ngModel)]="branchForm.phone" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="branch-email">Email</label>
+                  <input id="branch-email" class="search-input" type="email" [(ngModel)]="branchForm.email" />
+                </div>
+                <div class="form-card form-card--full">
+                  <label class="search-label" for="branch-address">Address</label>
+                  <input id="branch-address" class="search-input" type="text" [(ngModel)]="branchForm.address" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="branch-city">City</label>
+                  <input id="branch-city" class="search-input" type="text" [(ngModel)]="branchForm.city" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="branch-state">State</label>
+                  <input id="branch-state" class="search-input" type="text" [(ngModel)]="branchForm.state" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="branch-lat">Latitude</label>
+                  <input id="branch-lat" class="search-input" type="text" [(ngModel)]="branchForm.latitude" />
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="branch-lng">Longitude</label>
+                  <input id="branch-lng" class="search-input" type="text" [(ngModel)]="branchForm.longitude" />
+                </div>
+              </div>
+
+              <div class="inline-actions">
+                <button type="button" class="action-btn save-btn" [disabled]="!branchForm.organizationId || !branchForm.name.trim() || isSavingBranch" (click)="saveBranch()">
+                  {{ isSavingBranch ? 'Saving...' : editingBranchId ? 'Save Branch' : 'Create Branch' }}
+                </button>
+                <button type="button" class="action-btn cancel-btn" (click)="toggleBranchForm()">Cancel</button>
+              </div>
+            </div>
+          }
+
+          @if (branchMessage) {
+            <p class="panel-message success-message">{{ branchMessage }}</p>
+          }
+          @if (branchError) {
+            <p class="panel-message error-message">{{ branchError }}</p>
+          }
+
+          @if (isLoadingBranches) {
+            <p class="panel-message">Loading branches...</p>
+          } @else if (!selectedBranchesOrganizationId) {
+            <p class="panel-message">Select an organization to inspect and manage branches.</p>
+          } @else if (branches.length === 0) {
+            <p class="panel-message">No branches found for this organization yet.</p>
+          } @else {
+            <div class="entity-list">
+              @for (branch of branches; track trackById($index, branch)) {
+                <div class="entity-card">
+                  <div class="entity-main">
+                    <div class="entity-heading">
+                      <strong class="entity-name">{{ branch.name }}</strong>
+                      <span class="status-pill" [ngClass]="branch.active ? 'pill-active' : 'pill-inactive'">
+                        {{ branch.active ? 'Active' : 'Inactive' }}
+                      </span>
+                    </div>
+                    @if (branch.branchCode) {
+                      <span class="entity-meta">Code: {{ branch.branchCode }}</span>
+                    }
+                    @if (formatBranchLocation(branch)) {
+                      <span class="entity-meta">{{ formatBranchLocation(branch) }}</span>
+                    }
+                    @if (branch.email) {
+                      <span class="entity-meta">{{ branch.email }}</span>
+                    }
+                  </div>
+                  <div class="entity-actions">
+                    <button type="button" class="action-btn edit-btn" (click)="startEditBranch(branch)">Edit</button>
+                    @if (branch.active) {
+                      <button type="button" class="action-btn toggle-btn" (click)="deactivateBranch(branch)">Deactivate</button>
+                    }
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="admin-panel">
+      <button type="button" class="panel-header grant-header" (click)="togglePanel('grant')">
+        <span>🔐 Grant Access</span>
+        <span class="panel-chevron">{{ grantAccessExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (grantAccessExpanded) {
+        <div class="panel-body">
+          <div class="assignment-grid">
+            <div class="form-card">
+              <label class="search-label" for="grant-org">Organization</label>
+              <select id="grant-org" class="search-input" [ngModel]="grantState.organizationId" (ngModelChange)="onAssignmentOrganizationChange('grant', $event)">
+                <option [ngValue]="null">Choose organization</option>
+                @for (organization of activeOrganizations; track organization.id) {
+                  <option [ngValue]="organization.id">{{ organization.name }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-card">
+              <label class="search-label" for="grant-search">Search Customer</label>
+              <input id="grant-search" class="search-input" type="text" [(ngModel)]="grantState.searchText" (input)="onSearchInput('grant')" placeholder="Search by name or email" />
+              @if (grantState.isSearching) {
+                <small class="search-helper">Searching...</small>
+              } @else if (!grantState.organizationId) {
+                <small class="search-helper">Select an organization first.</small>
+              }
+              @if (grantState.searchResults.length > 0) {
+                <div class="search-results">
+                  @for (user of grantState.searchResults; track trackById($index, user)) {
+                    <button type="button" class="search-result" (click)="selectUser('grant', user)">
+                      <strong>{{ user.name || 'Unnamed User' }}</strong>
+                      <span>{{ user.email || user.phone || 'No contact info' }}</span>
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+
+          @if (grantState.errorMessage) {
+            <p class="panel-message error-message">{{ grantState.errorMessage }}</p>
+          }
+          @if (grantState.successMessage) {
+            <p class="panel-message success-message">{{ grantState.successMessage }}</p>
+          }
+
+          @if (grantState.candidate) {
+            <div class="assignment-shell">
+              <div class="selected-user-card">
+                <strong>{{ grantState.candidate.name || 'Unnamed User' }}</strong>
+                <span>{{ grantState.candidate.email || 'No email provided' }}</span>
+                <span>{{ grantState.candidate.phone || 'No phone provided' }}</span>
+              </div>
+
+              <div class="membership-list">
+                <h4>Current Assignments</h4>
+                @for (membership of grantState.candidate.memberships; track membership.organizationId) {
+                  <div class="membership-card">
+                    <strong>{{ membership.organizationName }}</strong>
+                    <span>Role: {{ membership.role || 'CUSTOMER' }}</span>
+                    <span>Base Branch: {{ membership.baseBranchName || 'Not set' }}</span>
+                    <span>Additional Access: {{ membership.accessibleBranches.length }}</span>
+                  </div>
+                }
+              </div>
+
+              <div class="assignment-grid">
+                <div class="form-card">
+                  <label class="search-label" for="grant-role">Assigned Role</label>
+                  <select id="grant-role" class="search-input" [(ngModel)]="grantState.role">
+                    <option [ngValue]="null">Choose role</option>
+                    @for (role of assignableRoles; track role) {
+                      <option [ngValue]="role">{{ role }}</option>
+                    }
+                  </select>
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="grant-base-branch">Base Branch</label>
+                  <select id="grant-base-branch" class="search-input" [(ngModel)]="grantState.baseBranchId">
+                    <option [ngValue]="null">Choose base branch</option>
+                    @for (branch of grantState.branches; track branch.id) {
+                      <option [ngValue]="branch.id">{{ branch.name }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+
+              <div class="branch-selector">
+                <h4>Additional Branch Access</h4>
+                @if (grantState.isLoadingBranches) {
+                  <p class="panel-message">Loading branches...</p>
+                } @else {
+                  <div class="checkbox-grid">
+                    @for (branch of grantState.branches; track branch.id) {
+                      <label class="checkbox-card">
+                        <input type="checkbox" [checked]="isBranchSelected(grantState, branch.id)" (change)="onBranchToggle(grantState, branch.id, $any($event.target).checked)" />
+                        <span>{{ branch.name }}</span>
+                      </label>
+                    }
+                  </div>
+                }
+              </div>
+
+              <button type="button" class="submit-btn grant-submit-btn" [disabled]="grantState.isSaving || !grantState.selectedUser || !grantState.organizationId || !grantState.role || !grantState.baseBranchId || grantState.selectedBranchIds.length === 0" (click)="saveAssignment('grant')">
+                {{ grantState.isSaving ? 'Saving...' : 'Update Access' }}
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+
+    <div class="admin-panel">
+      <button type="button" class="panel-header onboard-header" (click)="togglePanel('onboard')">
+        <span>🧑‍💼 Onboard Staff</span>
+        <span class="panel-chevron">{{ onboardStaffExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (onboardStaffExpanded) {
+        <div class="panel-body">
+          <div class="assignment-grid">
+            <div class="form-card">
+              <label class="search-label" for="onboard-org">Organization</label>
+              <select id="onboard-org" class="search-input" [ngModel]="onboardState.organizationId" (ngModelChange)="onAssignmentOrganizationChange('onboard', $event)">
+                <option [ngValue]="null">Choose organization</option>
+                @for (organization of activeOrganizations; track organization.id) {
+                  <option [ngValue]="organization.id">{{ organization.name }}</option>
+                }
+              </select>
+            </div>
+            <div class="form-card">
+              <label class="search-label" for="onboard-search">Search Customer</label>
+              <input id="onboard-search" class="search-input" type="text" [(ngModel)]="onboardState.searchText" (input)="onSearchInput('onboard')" placeholder="Search by name or email" />
+              @if (onboardState.isSearching) {
+                <small class="search-helper">Searching...</small>
+              } @else if (!onboardState.organizationId) {
+                <small class="search-helper">Select an organization first.</small>
+              }
+              @if (onboardState.searchResults.length > 0) {
+                <div class="search-results">
+                  @for (user of onboardState.searchResults; track trackById($index, user)) {
+                    <button type="button" class="search-result" (click)="selectUser('onboard', user)">
+                      <strong>{{ user.name || 'Unnamed User' }}</strong>
+                      <span>{{ user.email || user.phone || 'No contact info' }}</span>
+                    </button>
+                  }
+                </div>
+              }
+            </div>
+          </div>
+
+          @if (onboardState.errorMessage) {
+            <p class="panel-message error-message">{{ onboardState.errorMessage }}</p>
+          }
+          @if (onboardState.successMessage) {
+            <p class="panel-message success-message">{{ onboardState.successMessage }}</p>
+          }
+
+          @if (onboardState.candidate) {
+            <div class="assignment-shell">
+              <div class="selected-user-card">
+                <strong>{{ onboardState.candidate.name || 'Unnamed User' }}</strong>
+                <span>{{ onboardState.candidate.email || 'No email provided' }}</span>
+                <span>{{ onboardState.candidate.phone || 'No phone provided' }}</span>
+              </div>
+
+              <div class="assignment-grid">
+                <div class="form-card">
+                  <label class="search-label" for="onboard-role">Assigned Role</label>
+                  <select id="onboard-role" class="search-input" [(ngModel)]="onboardState.role">
+                    <option [ngValue]="null">Choose role</option>
+                    @for (role of assignableRoles; track role) {
+                      <option [ngValue]="role">{{ role }}</option>
+                    }
+                  </select>
+                </div>
+                <div class="form-card">
+                  <label class="search-label" for="onboard-base-branch">Base Branch</label>
+                  <select id="onboard-base-branch" class="search-input" [(ngModel)]="onboardState.baseBranchId">
+                    <option [ngValue]="null">Choose base branch</option>
+                    @for (branch of onboardState.branches; track branch.id) {
+                      <option [ngValue]="branch.id">{{ branch.name }}</option>
+                    }
+                  </select>
+                </div>
+              </div>
+
+              <div class="branch-selector">
+                <h4>Additional Branch Access</h4>
+                @if (onboardState.isLoadingBranches) {
+                  <p class="panel-message">Loading branches...</p>
+                } @else {
+                  <div class="checkbox-grid">
+                    @for (branch of onboardState.branches; track branch.id) {
+                      <label class="checkbox-card">
+                        <input type="checkbox" [checked]="isBranchSelected(onboardState, branch.id)" (change)="onBranchToggle(onboardState, branch.id, $any($event.target).checked)" />
+                        <span>{{ branch.name }}</span>
+                      </label>
+                    }
+                  </div>
+                }
+              </div>
+
+              <button type="button" class="submit-btn onboard-submit-btn" [disabled]="onboardState.isSaving || !onboardState.selectedUser || !onboardState.organizationId || !onboardState.role || !onboardState.baseBranchId || onboardState.selectedBranchIds.length === 0" (click)="saveAssignment('onboard')">
+                {{ onboardState.isSaving ? 'Saving...' : 'Onboard Staff Member' }}
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>

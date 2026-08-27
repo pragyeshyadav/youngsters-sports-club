@@ -199,6 +199,11 @@
               🛠 Admin Panel
             </button>
           }
+          @if (canAccessSuperAdminPortal) {
+            <button class="admin-btn" (click)="goToSuperAdminPage()">
+              🛡 Super Admin Portal
+            </button>
+          }
           @if (isManagerOrAdmin) {
             <button class="manager-btn" (click)="goToManagersPortal()">
               🧑‍💼 Manager's Portal

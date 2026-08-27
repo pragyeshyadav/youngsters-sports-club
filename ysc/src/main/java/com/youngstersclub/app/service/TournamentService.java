@@ -4,11 +4,13 @@ import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.TournamentRegistrationResult;
 import com.youngstersclub.app.dto.TournamentResponse;
 import com.youngstersclub.app.entity.Branch;
+import com.youngstersclub.app.entity.Organization;
 import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.Tournament;
 import com.youngstersclub.app.entity.TournamentRegistration;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.repository.BranchRepository;
+import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.TournamentRegistrationRepository;
 import com.youngstersclub.app.repository.TournamentRepository;
@@ -34,6 +36,7 @@ public class TournamentService {
     private final UserRepository userRepository;
     private final OrganizationContextService organizationContextService;
     private final BranchRepository branchRepository;
+    private final OrganizationRepository organizationRepository;
     private final OrganizationUserRepository organizationUserRepository;
     private final UserBranchAccessRepository userBranchAccessRepository;
     private final BrevoEmailService brevoEmailService;
@@ -43,6 +46,7 @@ public class TournamentService {
                              UserRepository userRepository,
                              OrganizationContextService organizationContextService,
                              BranchRepository branchRepository,
+                             OrganizationRepository organizationRepository,
                              OrganizationUserRepository organizationUserRepository,
                              UserBranchAccessRepository userBranchAccessRepository,
                              BrevoEmailService brevoEmailService) {
@@ -51,6 +55,7 @@ public class TournamentService {
         this.userRepository = userRepository;
         this.organizationContextService = organizationContextService;
         this.branchRepository = branchRepository;
+        this.organizationRepository = organizationRepository;
         this.organizationUserRepository = organizationUserRepository;
         this.userBranchAccessRepository = userBranchAccessRepository;
         this.brevoEmailService = brevoEmailService;
@@ -106,11 +111,14 @@ public class TournamentService {
             }
         }
 
-        registerTournamentRegistrationNotification(user, result);
+        registerTournamentRegistrationNotification(user, result, context.organizationId());
         return result;
     }
 
-    protected void registerTournamentRegistrationNotification(User user, TournamentRegistrationResult result) {
+    protected void registerTournamentRegistrationNotification(
+            User user,
+            TournamentRegistrationResult result,
+            Long organizationId) {
         if (user == null || result == null || result.getSuccessfullyRegistered().isEmpty()) {
             return;
         }
@@ -119,6 +127,7 @@ public class TournamentService {
         String customerPhone = user.getPhone();
         List<String> newlyRegistered = List.copyOf(result.getSuccessfullyRegistered());
         List<String> alreadyRegistered = List.copyOf(result.getAlreadyRegistered());
+        String organizationEmail = resolveOrganizationEmail(organizationId);
 
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
             log.warn("Tournament registration email skipped because transaction synchronization is not active");
@@ -133,12 +142,22 @@ public class TournamentService {
                             customerName,
                             customerPhone,
                             newlyRegistered,
-                            alreadyRegistered);
+                            alreadyRegistered,
+                            organizationEmail);
                 } catch (Exception ex) {
                     log.error("Failed to send tournament registration notification email. Reason: {}", ex.getMessage(), ex);
                 }
             }
         });
+    }
+
+    protected String resolveOrganizationEmail(Long organizationId) {
+        if (organizationId == null) {
+            return null;
+        }
+        return organizationRepository.findByIdAndIsActiveTrue(organizationId)
+                .map(Organization::getEmail)
+                .orElse(null);
     }
 
     private void validateTournamentMembership(Integer userId, Long organizationId) {

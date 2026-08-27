@@ -17,13 +17,17 @@ public class WhatsAppTemplateExecutionService {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppTemplateExecutionService.class);
 
     private final Map<String, WhatsAppTemplateExecutor> executorsByTemplateName;
+    private final OrganizationContextService organizationContextService;
 
-    public WhatsAppTemplateExecutionService(List<WhatsAppTemplateExecutor> executors) {
+    public WhatsAppTemplateExecutionService(
+            List<WhatsAppTemplateExecutor> executors,
+            OrganizationContextService organizationContextService) {
         this.executorsByTemplateName = executors.stream()
                 .collect(Collectors.toMap(
                         executor -> normalizeTemplateName(executor.getTemplateName()),
                         Function.identity(),
                         (left, right) -> left));
+        this.organizationContextService = organizationContextService;
     }
 
     @Async
@@ -40,8 +44,42 @@ public class WhatsAppTemplateExecutionService {
         }
     }
 
+    @Async
+    public void triggerTemplateExecutionForCurrentOrganization(
+            String templateName,
+            boolean isDryRun,
+            String actorEmail) {
+        try {
+            executeTemplateForCurrentOrganization(templateName, isDryRun, actorEmail);
+        } catch (Exception ex) {
+            log.error(
+                    "Manual WhatsApp template trigger failed for selected organization. templateName: {}, mode: {}, actorEmail: {}. Reason: {}",
+                    templateName,
+                    isDryRun ? "DRY RUN" : "ACTUAL RUN",
+                    actorEmail,
+                    ex.getMessage(),
+                    ex);
+        }
+    }
+
     public WhatsappTemplateExecutionResultDto executeTemplate(String templateName, boolean isDryRun) {
         return resolveExecutor(templateName).execute(isDryRun);
+    }
+
+    public WhatsappTemplateExecutionResultDto executeTemplateForCurrentOrganization(
+            String templateName,
+            boolean isDryRun,
+            String actorEmail) {
+        Long organizationId = resolveCurrentOrganizationId(actorEmail);
+        return resolveExecutor(templateName).executeForOrganization(organizationId, isDryRun);
+    }
+
+    protected Long resolveCurrentOrganizationId(String actorEmail) {
+        var context = organizationContextService.resolveContext(actorEmail);
+        if (context == null || context.getCurrentOrganization() == null || context.getCurrentOrganization().getId() == null) {
+            throw new SecurityException("Current organization context is required");
+        }
+        return context.getCurrentOrganization().getId();
     }
 
     private WhatsAppTemplateExecutor resolveExecutor(String templateName) {

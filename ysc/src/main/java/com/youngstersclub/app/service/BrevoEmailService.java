@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -58,7 +59,15 @@ public class BrevoEmailService {
     public int sendDailyVisitSummaryEmail(
             WhatsappTemplateExecutionResultDto result,
             List<String> adminEmails) {
-        if (adminEmails == null || adminEmails.isEmpty()) {
+        return sendDailyVisitSummaryEmail(result, adminEmails, null);
+    }
+
+    public int sendDailyVisitSummaryEmail(
+            WhatsappTemplateExecutionResultDto result,
+            List<String> adminEmails,
+            String organizationEmail) {
+        List<String> effectiveRecipients = resolveEffectiveRecipients(adminEmails, organizationEmail);
+        if (effectiveRecipients.isEmpty()) {
             log.warn("Brevo summary email skipped because no admin recipient emails were found");
             return 0;
         }
@@ -71,7 +80,7 @@ public class BrevoEmailService {
         String htmlContent = buildDailyVisitSummaryHtml(result);
         int sentCount = 0;
 
-        for (String adminEmail : sanitizeEmails(adminEmails)) {
+        for (String adminEmail : effectiveRecipients) {
             try {
                 sendToRecipient(adminEmail, htmlContent);
                 sentCount++;
@@ -98,7 +107,26 @@ public class BrevoEmailService {
             String message,
             int successfulSends,
             int failedSends) {
-        if (adminEmails == null || adminEmails.isEmpty()) {
+        return sendNotificationBroadcastSummaryEmail(
+                recipients,
+                adminEmails,
+                null,
+                recipientTypeLabel,
+                message,
+                successfulSends,
+                failedSends);
+    }
+
+    public int sendNotificationBroadcastSummaryEmail(
+            List<User> recipients,
+            List<String> adminEmails,
+            String organizationEmail,
+            String recipientTypeLabel,
+            String message,
+            int successfulSends,
+            int failedSends) {
+        List<String> effectiveRecipients = resolveEffectiveRecipients(adminEmails, organizationEmail);
+        if (effectiveRecipients.isEmpty()) {
             log.warn("Brevo broadcast summary email skipped because no admin recipient emails were found");
             return 0;
         }
@@ -131,7 +159,7 @@ public class BrevoEmailService {
                 failedSends);
 
         int sentCount = 0;
-        for (String adminEmail : sanitizeEmails(adminEmails)) {
+        for (String adminEmail : effectiveRecipients) {
             try {
                 sendToRecipient(adminEmail, BROADCAST_SUBJECT, htmlContent);
                 sentCount++;
@@ -154,7 +182,15 @@ public class BrevoEmailService {
     public int sendPaymentDueReminderSummaryEmail(
             WhatsappTemplateExecutionResultDto result,
             List<String> adminEmails) {
-        if (adminEmails == null || adminEmails.isEmpty()) {
+        return sendPaymentDueReminderSummaryEmail(result, adminEmails, null);
+    }
+
+    public int sendPaymentDueReminderSummaryEmail(
+            WhatsappTemplateExecutionResultDto result,
+            List<String> adminEmails,
+            String organizationEmail) {
+        List<String> effectiveRecipients = resolveEffectiveRecipients(adminEmails, organizationEmail);
+        if (effectiveRecipients.isEmpty()) {
             log.warn("Brevo payment due reminder summary email skipped because no admin recipient emails were found");
             return 0;
         }
@@ -166,7 +202,7 @@ public class BrevoEmailService {
 
         String htmlContent = buildPaymentDueReminderSummaryHtml(result);
         int sentCount = 0;
-        for (String adminEmail : sanitizeEmails(adminEmails)) {
+        for (String adminEmail : effectiveRecipients) {
             try {
                 sendToRecipient(adminEmail, PAYMENT_DUE_REMINDER_SUBJECT, htmlContent);
                 sentCount++;
@@ -189,7 +225,15 @@ public class BrevoEmailService {
     public int sendHappyBirthdayWishesSummaryEmail(
             WhatsappTemplateExecutionResultDto result,
             List<String> adminEmails) {
-        if (adminEmails == null || adminEmails.isEmpty()) {
+        return sendHappyBirthdayWishesSummaryEmail(result, adminEmails, null);
+    }
+
+    public int sendHappyBirthdayWishesSummaryEmail(
+            WhatsappTemplateExecutionResultDto result,
+            List<String> adminEmails,
+            String organizationEmail) {
+        List<String> effectiveRecipients = resolveEffectiveRecipients(adminEmails, organizationEmail);
+        if (effectiveRecipients.isEmpty()) {
             log.warn("Brevo happy birthday wishes summary email skipped because no admin recipient emails were found");
             return 0;
         }
@@ -201,7 +245,7 @@ public class BrevoEmailService {
 
         String htmlContent = buildHappyBirthdayWishesSummaryHtml(result);
         int sentCount = 0;
-        for (String adminEmail : sanitizeEmails(adminEmails)) {
+        for (String adminEmail : effectiveRecipients) {
             try {
                 sendToRecipient(adminEmail, HAPPY_BIRTHDAY_WISHES_SUBJECT, htmlContent);
                 sentCount++;
@@ -226,13 +270,29 @@ public class BrevoEmailService {
             String phone,
             List<String> successfullyRegistered,
             List<String> alreadyRegistered) {
+        return sendTournamentRegistrationNotification(
+                userName,
+                phone,
+                successfullyRegistered,
+                alreadyRegistered,
+                null);
+    }
+
+    public boolean sendTournamentRegistrationNotification(
+            String userName,
+            String phone,
+            List<String> successfullyRegistered,
+            List<String> alreadyRegistered,
+            String organizationEmail) {
         if (successfullyRegistered == null || successfullyRegistered.isEmpty()) {
             log.info("Tournament registration notification skipped because no new games were registered");
             return false;
         }
 
-        String recipient = defaultString(tournamentRegistrationNotificationEmail, "").trim().toLowerCase();
-        if (recipient.isBlank()) {
+        List<String> effectiveRecipients = resolveEffectiveRecipients(
+                List.of(tournamentRegistrationNotificationEmail),
+                organizationEmail);
+        if (effectiveRecipients.isEmpty()) {
             log.warn("Tournament registration notification skipped because recipient configuration is missing");
             return false;
         }
@@ -255,7 +315,9 @@ public class BrevoEmailService {
                 TimeUtil.nowIST());
 
         try {
-            sendToRecipient(recipient, subject, htmlContent);
+            for (String recipient : effectiveRecipients) {
+                sendToRecipient(recipient, subject, htmlContent);
+            }
             log.info("Tournament registration notification email sent successfully");
             return true;
         } catch (RestClientResponseException ex) {
@@ -471,7 +533,7 @@ public class BrevoEmailService {
         return (value == null || value.isBlank()) ? "Not provided" : value.trim();
     }
 
-    private List<String> sanitizeEmails(List<String> emails) {
+    protected List<String> sanitizeEmails(List<String> emails) {
         Set<String> uniqueEmails = new LinkedHashSet<>();
         for (String email : emails) {
             if (email != null) {
@@ -482,6 +544,17 @@ public class BrevoEmailService {
             }
         }
         return List.copyOf(uniqueEmails);
+    }
+
+    protected List<String> resolveEffectiveRecipients(List<String> existingRecipients, String organizationEmail) {
+        String sanitizedOrganizationEmail = organizationEmail == null ? null : organizationEmail.trim().toLowerCase();
+        if (sanitizedOrganizationEmail == null || sanitizedOrganizationEmail.isBlank()) {
+            return sanitizeEmails(existingRecipients == null ? List.of() : existingRecipients);
+        }
+        return sanitizeEmails(Stream.concat(
+                        (existingRecipients == null ? List.<String>of() : existingRecipients).stream(),
+                        Stream.of(sanitizedOrganizationEmail))
+                .toList());
     }
 
     private String escapeHtml(String input) {

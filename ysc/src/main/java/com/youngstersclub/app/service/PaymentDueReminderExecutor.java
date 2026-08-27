@@ -3,15 +3,15 @@ package com.youngstersclub.app.service;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.entity.Branch;
-import com.youngstersclub.app.entity.User;
+import com.youngstersclub.app.entity.Organization;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
 import com.youngstersclub.app.repository.ConsumableOrderRepository;
 import com.youngstersclub.app.repository.FrameRepository;
 import com.youngstersclub.app.repository.GameActivityOrderRepository;
 import com.youngstersclub.app.repository.KidsPlaySessionRepository;
+import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
-import com.youngstersclub.app.repository.UserRepository;
 import com.youngstersclub.app.util.TimeUtil;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -31,7 +31,6 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
     private static final String TEMPLATE_NAME = "payment_due_reminder";
     private static final BigDecimal DUE_THRESHOLD = new BigDecimal("500");
 
-    private final UserRepository userRepository;
     private final OrganizationUserRepository organizationUserRepository;
     private final BranchRepository branchRepository;
     private final FrameRepository frameRepository;
@@ -41,9 +40,10 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
     private final PendingDueService pendingDueService;
     private final WhatsAppService whatsAppService;
     private final BrevoEmailService brevoEmailService;
+    private final OrganizationRepository organizationRepository;
+    private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
 
     public PaymentDueReminderExecutor(
-            UserRepository userRepository,
             OrganizationUserRepository organizationUserRepository,
             BranchRepository branchRepository,
             FrameRepository frameRepository,
@@ -52,8 +52,9 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
             GameActivityOrderRepository gameActivityOrderRepository,
             PendingDueService pendingDueService,
             WhatsAppService whatsAppService,
-            BrevoEmailService brevoEmailService) {
-        this.userRepository = userRepository;
+            BrevoEmailService brevoEmailService,
+            OrganizationRepository organizationRepository,
+            OrganizationSummaryRecipientService organizationSummaryRecipientService) {
         this.organizationUserRepository = organizationUserRepository;
         this.branchRepository = branchRepository;
         this.frameRepository = frameRepository;
@@ -63,6 +64,8 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         this.pendingDueService = pendingDueService;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
+        this.organizationRepository = organizationRepository;
+        this.organizationSummaryRecipientService = organizationSummaryRecipientService;
     }
 
     @Override
@@ -73,61 +76,70 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
     @Override
     public WhatsappTemplateExecutionResultDto execute(boolean isDryRun) {
         LocalDateTime executionTime = TimeUtil.nowIST();
-        List<WhatsappTemplateExecutionRecipientDto> eligibleRecipients = new ArrayList<>();
-        int totalCustomersScanned = 0;
+        String mode = isDryRun ? "DRY RUN" : "ACTUAL RUN";
+        List<WhatsappTemplateExecutionResultDto> organizationResults = organizationUserRepository
+                .findDistinctActiveOrganizationIdsByRole(UserRole.CUSTOMER)
+                .stream()
+                .map(organizationId -> executeForOrganizationInternal(organizationId, isDryRun, executionTime))
+                .toList();
 
-        for (Long organizationId : organizationUserRepository.findDistinctActiveOrganizationIdsByRole(UserRole.CUSTOMER)) {
-            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> organizationMemberships =
-                    organizationUserRepository.findActiveCustomerMembershipsByRoleAndOrganizationId(
-                            UserRole.CUSTOMER,
-                            organizationId);
-            List<Integer> userIds = extractDistinctUserIds(organizationMemberships);
-            if (userIds.isEmpty()) {
-                continue;
-            }
+        WhatsappTemplateExecutionResultDto result = buildCombinedResult(organizationResults);
 
-            Map<Integer, BigDecimal> totalDueByUserId = loadOrganizationTotalDueByUserId(userIds, organizationId);
-            totalCustomersScanned += organizationMemberships.size();
-            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships = organizationMemberships.stream()
-                    .filter(membership -> totalDueByUserId
-                            .getOrDefault(membership.getUserId(), BigDecimal.ZERO)
-                            .compareTo(DUE_THRESHOLD) > 0)
-                    .toList();
-            if (eligibleMemberships.isEmpty()) {
-                continue;
-            }
+        log.info(
+                "Payment due reminder job completed. Mode: {}. Total customers scanned: {}, eligible: {}, successful sends: {}, failed sends: {}",
+                mode,
+                result.getTotalCustomersScanned(),
+                result.getEligibleCustomers(),
+                result.getSuccessfulMessages(),
+                result.getFailedMessages());
 
-            Map<Integer, String> branchNamesByUserId = resolveDueBranchNamesByUser(organizationId, eligibleMemberships);
+        return result;
+    }
 
-            for (OrganizationUserRepository.ActiveCustomerMembershipProjection membership : eligibleMemberships) {
-                Integer userId = membership.getUserId();
-                BigDecimal totalDue = totalDueByUserId.getOrDefault(userId, BigDecimal.ZERO);
-                eligibleRecipients.add(new WhatsappTemplateExecutionRecipientDto(
-                        userId,
-                        membership.getUserName(),
-                        membership.getPhone(),
-                        totalDue,
-                        null,
-                        membership.getOrganizationName(),
-                        branchNamesByUserId.getOrDefault(userId, fallbackBranchName(membership)),
-                        "TOTAL DUE ABOVE ₹500"));
-            }
+    @Override
+    public WhatsappTemplateExecutionResultDto executeForOrganization(Long organizationId, boolean isDryRun) {
+        return executeForOrganizationInternal(organizationId, isDryRun, TimeUtil.nowIST());
+    }
+
+    protected WhatsappTemplateExecutionResultDto executeForOrganizationInternal(
+            Long organizationId,
+            boolean isDryRun,
+            LocalDateTime executionTime) {
+        List<OrganizationUserRepository.ActiveCustomerMembershipProjection> organizationMemberships =
+                organizationUserRepository.findActiveCustomerMembershipsByRoleAndOrganizationId(
+                        UserRole.CUSTOMER,
+                        organizationId);
+        List<Integer> userIds = extractDistinctUserIds(organizationMemberships);
+        if (userIds.isEmpty()) {
+            WhatsappTemplateExecutionResultDto emptyResult = new WhatsappTemplateExecutionResultDto(
+                    TEMPLATE_NAME,
+                    isDryRun,
+                    executionTime,
+                    organizationMemberships.size(),
+                    0,
+                    organizationMemberships.size(),
+                    0,
+                    0,
+                    List.of());
+            sendSummaryEmail(organizationId, emptyResult, resolveOrganizationEmail(organizationId));
+            return emptyResult;
         }
 
-        eligibleRecipients = eligibleRecipients.stream()
-                .sorted((left, right) -> right.getAmount().compareTo(left.getAmount()))
+        Map<Integer, BigDecimal> totalDueByUserId = loadOrganizationTotalDueByUserId(userIds, organizationId);
+        List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships = organizationMemberships.stream()
+                .filter(membership -> totalDueByUserId
+                        .getOrDefault(membership.getUserId(), BigDecimal.ZERO)
+                        .compareTo(DUE_THRESHOLD) > 0)
                 .toList();
+
+        Map<Integer, String> branchNamesByUserId = resolveDueBranchNamesByUser(organizationId, eligibleMemberships);
+        List<WhatsappTemplateExecutionRecipientDto> eligibleRecipients = buildEligibleRecipients(
+                eligibleMemberships,
+                totalDueByUserId,
+                branchNamesByUserId);
 
         int successCount = 0;
         int failedCount = 0;
-        String mode = isDryRun ? "DRY RUN" : "ACTUAL RUN";
-        log.info(
-                "Payment due reminder job started. Mode: {}. Total customers scanned: {}, eligible customers: {}, skipped: {}",
-                mode,
-                totalCustomersScanned,
-                eligibleRecipients.size(),
-                Math.max(totalCustomersScanned - eligibleRecipients.size(), 0));
-
         for (WhatsappTemplateExecutionRecipientDto recipient : eligibleRecipients) {
             log.info(
                     "Payment due reminder eligible customer. userId: {}, organization: {}, branches: {}, due: {}",
@@ -157,36 +169,85 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
                 TEMPLATE_NAME,
                 isDryRun,
                 executionTime,
-                totalCustomersScanned,
+                organizationMemberships.size(),
                 eligibleRecipients.size(),
-                Math.max(totalCustomersScanned - eligibleRecipients.size(), 0),
+                Math.max(organizationMemberships.size() - eligibleRecipients.size(), 0),
                 successCount,
                 failedCount,
                 new ArrayList<>(eligibleRecipients));
 
-        sendSummaryEmail(result);
-
-        log.info(
-                "Payment due reminder job completed. Mode: {}. Total customers scanned: {}, eligible: {}, successful sends: {}, failed sends: {}",
-                mode,
-                result.getTotalCustomersScanned(),
-                result.getEligibleCustomers(),
-                result.getSuccessfulMessages(),
-                result.getFailedMessages());
-
+        sendSummaryEmail(organizationId, result, resolveOrganizationEmail(organizationId));
         return result;
     }
 
-    private void sendSummaryEmail(WhatsappTemplateExecutionResultDto result) {
+    protected List<WhatsappTemplateExecutionRecipientDto> buildEligibleRecipients(
+            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships,
+            Map<Integer, BigDecimal> totalDueByUserId,
+            Map<Integer, String> branchNamesByUserId) {
+        return (eligibleMemberships == null ? List.<OrganizationUserRepository.ActiveCustomerMembershipProjection>of() : eligibleMemberships)
+                .stream()
+                .map(membership -> {
+                    Integer userId = membership.getUserId();
+                    BigDecimal totalDue = totalDueByUserId.getOrDefault(userId, BigDecimal.ZERO);
+                    return new WhatsappTemplateExecutionRecipientDto(
+                            userId,
+                            membership.getUserName(),
+                            membership.getPhone(),
+                            totalDue,
+                            null,
+                            membership.getOrganizationName(),
+                            branchNamesByUserId.getOrDefault(userId, fallbackBranchName(membership)),
+                            "TOTAL DUE ABOVE ₹500");
+                })
+                .sorted((left, right) -> right.getAmount().compareTo(left.getAmount()))
+                .toList();
+    }
+
+    protected WhatsappTemplateExecutionResultDto buildCombinedResult(List<WhatsappTemplateExecutionResultDto> organizationResults) {
+        List<WhatsappTemplateExecutionRecipientDto> eligibleRecipients = new ArrayList<>();
+        int totalCustomersScanned = 0;
+        int eligibleCustomers = 0;
+        int skippedCustomers = 0;
+        int successCount = 0;
+        int failedCount = 0;
+        boolean isDryRun = false;
+        LocalDateTime executionTime = TimeUtil.nowIST();
+
+        for (WhatsappTemplateExecutionResultDto result : organizationResults == null ? List.<WhatsappTemplateExecutionResultDto>of() : organizationResults) {
+            if (result == null) {
+                continue;
+            }
+            isDryRun = result.isDryRun();
+            executionTime = result.getExecutionTime();
+            totalCustomersScanned += result.getTotalCustomersScanned();
+            eligibleCustomers += result.getEligibleCustomers();
+            skippedCustomers += result.getSkippedCustomers();
+            successCount += result.getSuccessfulMessages();
+            failedCount += result.getFailedMessages();
+            if (result.getRecipients() != null) {
+                eligibleRecipients.addAll(result.getRecipients());
+            }
+        }
+
+        return new WhatsappTemplateExecutionResultDto(
+                TEMPLATE_NAME,
+                isDryRun,
+                executionTime,
+                totalCustomersScanned,
+                eligibleCustomers,
+                skippedCustomers,
+                successCount,
+                failedCount,
+                new ArrayList<>(eligibleRecipients));
+    }
+
+    private void sendSummaryEmail(Long organizationId, WhatsappTemplateExecutionResultDto result, String organizationEmail) {
         try {
-            List<String> adminEmails = userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN))
-                    .stream()
-                    .map(User::getEmail)
-                    .filter(email -> email != null && !email.isBlank())
-                    .collect(Collectors.toList());
-            int sentEmails = brevoEmailService.sendPaymentDueReminderSummaryEmail(result, adminEmails);
+            List<String> adminEmails = organizationSummaryRecipientService.resolveRecipientsForOrganization(organizationId);
+            int sentEmails = brevoEmailService.sendPaymentDueReminderSummaryEmail(result, adminEmails, organizationEmail);
             log.info(
-                    "Payment due reminder summary email completed. Mode: {}. Admin recipients emailed: {}",
+                    "Payment due reminder summary email completed. organizationId: {}, mode: {}. Admin recipients emailed: {}",
+                    organizationId,
                     result.isDryRun() ? "DRY RUN" : "ACTUAL RUN",
                     sentEmails);
         } catch (Exception ex) {
@@ -290,5 +351,11 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         }
         String baseBranchName = membership.getBaseBranchName();
         return (baseBranchName == null || baseBranchName.isBlank()) ? "Organization-wide" : baseBranchName;
+    }
+
+    protected String resolveOrganizationEmail(Long organizationId) {
+        return organizationRepository.findByIdAndIsActiveTrue(organizationId)
+                .map(Organization::getEmail)
+                .orElse(null);
     }
 }

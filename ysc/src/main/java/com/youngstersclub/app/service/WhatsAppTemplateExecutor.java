@@ -7,4 +7,8 @@ public interface WhatsAppTemplateExecutor {
     String getTemplateName();
 
     WhatsappTemplateExecutionResultDto execute(boolean isDryRun);
+
+    default WhatsappTemplateExecutionResultDto executeForOrganization(Long organizationId, boolean isDryRun) {
+        return execute(isDryRun);
+    }
 }

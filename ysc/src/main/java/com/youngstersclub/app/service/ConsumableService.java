@@ -95,7 +95,7 @@ public class ConsumableService {
         }
 
         ConsumableBranchContext context = resolveConsumableContext(actorEmail);
-        User user = userRepository.findById(request.getUserId()).orElseThrow();
+        User user = resolveEligibleConsumableUser(request.getUserId(), context);
 
         Map<Long, Integer> quantitiesByItemId = new LinkedHashMap<>();
         for (ConsumableOrderCreateRequest.ItemRequest itemRequest : request.getItems()) {
@@ -145,6 +145,29 @@ public class ConsumableService {
         ConsumableOrder savedOrder = consumableOrderRepository.save(order);
         userDueService.syncBranchDue(savedOrder.getUser(), savedOrder.getBranch());
         return new ConsumableOrderResponseDto(savedOrder.getId(), totalAmount);
+    }
+
+    protected User resolveEligibleConsumableUser(Integer userId, ConsumableBranchContext context) {
+        if (userId == null) {
+            throw new IllegalArgumentException("User is required");
+        }
+        if (context == null) {
+            throw new SecurityException("Active organization and branch context are required");
+        }
+
+        User user = userRepository.findById(userId)
+                .filter(candidate -> Boolean.TRUE.equals(candidate.getIsActive()))
+                .orElseThrow(() -> new IllegalArgumentException("Selected user is unavailable for the current branch"));
+
+        OrganizationUser membership = organizationUserRepository
+                .findByUserIdAndOrganizationIdAndIsActiveTrue(user.getId(), context.organizationId())
+                .orElseThrow(() -> new IllegalArgumentException("Selected user is unavailable for the current branch"));
+
+        if (!hasActiveBranchAccess(membership, context.branch().getId())) {
+            throw new IllegalArgumentException("Selected user is unavailable for the current branch");
+        }
+
+        return user;
     }
 
     @Transactional
@@ -471,6 +494,20 @@ public class ConsumableService {
         }
     }
 
+    protected boolean hasActiveBranchAccess(OrganizationUser membership, Long branchId) {
+        if (membership == null || branchId == null) {
+            return false;
+        }
+
+        if (membership.getBaseBranch() != null && branchId.equals(membership.getBaseBranch().getId())) {
+            return true;
+        }
+
+        return userBranchAccessRepository.existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(
+                membership.getId(),
+                branchId);
+    }
+
     private ConsumableBranchContext resolveConsumableContext(String actorEmail) {
         String normalizedEmail = actorEmail == null ? "" : actorEmail.trim().toLowerCase();
         if (normalizedEmail.isEmpty()) {
@@ -493,20 +530,12 @@ public class ConsumableService {
         Branch branch = branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(branchId, organizationId)
                 .orElseThrow(() -> new SecurityException("Current branch is unavailable"));
 
-        boolean hasAccess = membership.getBaseBranch() != null
-                && branchId.equals(membership.getBaseBranch().getId());
-        if (!hasAccess) {
-            hasAccess = userBranchAccessRepository.existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(
-                    membership.getId(),
-                    branchId);
-        }
-
-        if (!hasAccess) {
+        if (!hasActiveBranchAccess(membership, branchId)) {
             throw new SecurityException("You do not have access to the current branch");
         }
 
-        return new ConsumableBranchContext(actor, branch);
+        return new ConsumableBranchContext(actor, branch, organizationId);
     }
 
-    private record ConsumableBranchContext(User actor, Branch branch) {}
+    protected record ConsumableBranchContext(User actor, Branch branch, Long organizationId) {}
 }

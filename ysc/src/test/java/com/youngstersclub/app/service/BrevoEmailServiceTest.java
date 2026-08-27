@@ -1,6 +1,7 @@
 package com.youngstersclub.app.service;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.LocalDateTime;
@@ -80,5 +81,32 @@ class BrevoEmailServiceTest {
                 List.of("Chess"));
 
         assertFalse(sent);
+    }
+
+    @Test
+    void resolveEffectiveRecipientsAddsOrganizationEmail() {
+        List<String> recipients = brevoEmailService.resolveEffectiveRecipients(
+                List.of("pragyesh.yadav@gmail.com"),
+                "org@test.com");
+
+        assertIterableEquals(List.of("pragyesh.yadav@gmail.com", "org@test.com"), recipients);
+    }
+
+    @Test
+    void resolveEffectiveRecipientsIgnoresBlankOrganizationEmail() {
+        List<String> recipients = brevoEmailService.resolveEffectiveRecipients(
+                List.of("pragyesh.yadav@gmail.com"),
+                "   ");
+
+        assertIterableEquals(List.of("pragyesh.yadav@gmail.com"), recipients);
+    }
+
+    @Test
+    void resolveEffectiveRecipientsDeduplicatesCaseInsensitively() {
+        List<String> recipients = brevoEmailService.resolveEffectiveRecipients(
+                List.of("Admin@Test.com", "  "),
+                "admin@test.com");
+
+        assertIterableEquals(List.of("admin@test.com"), recipients);
     }
 }
