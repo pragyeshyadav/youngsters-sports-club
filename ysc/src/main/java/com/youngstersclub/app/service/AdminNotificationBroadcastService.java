@@ -3,10 +3,12 @@ package com.youngstersclub.app.service;
 import com.youngstersclub.app.dto.OrganizationContextDto;
 import com.youngstersclub.app.dto.UserSearchResultDto;
 import com.youngstersclub.app.entity.Branch;
+import com.youngstersclub.app.entity.Organization;
 import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
+import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
@@ -15,7 +17,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -31,25 +32,31 @@ public class AdminNotificationBroadcastService {
     private final WhatsAppService whatsAppService;
     private final BrevoEmailService brevoEmailService;
     private final OrganizationContextService organizationContextService;
+    private final OrganizationRepository organizationRepository;
     private final OrganizationUserRepository organizationUserRepository;
     private final BranchRepository branchRepository;
     private final UserBranchAccessRepository userBranchAccessRepository;
+    private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
 
     public AdminNotificationBroadcastService(
             UserRepository userRepository,
             WhatsAppService whatsAppService,
             BrevoEmailService brevoEmailService,
             OrganizationContextService organizationContextService,
+            OrganizationRepository organizationRepository,
             OrganizationUserRepository organizationUserRepository,
             BranchRepository branchRepository,
-            UserBranchAccessRepository userBranchAccessRepository) {
+            UserBranchAccessRepository userBranchAccessRepository,
+            OrganizationSummaryRecipientService organizationSummaryRecipientService) {
         this.userRepository = userRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
         this.organizationContextService = organizationContextService;
+        this.organizationRepository = organizationRepository;
         this.organizationUserRepository = organizationUserRepository;
         this.branchRepository = branchRepository;
         this.userBranchAccessRepository = userBranchAccessRepository;
+        this.organizationSummaryRecipientService = organizationSummaryRecipientService;
     }
 
     @Async
@@ -108,7 +115,14 @@ public class AdminNotificationBroadcastService {
             }
         }
 
-        sendBroadcastSummary(uniqueRecipients, resolvedRecipientType, normalizedMessage, successCount, failedCount);
+        sendBroadcastSummary(
+                uniqueRecipients,
+                scope.organizationId(),
+                scope.organizationEmail(),
+                resolvedRecipientType,
+                normalizedMessage,
+                successCount,
+                failedCount);
 
         log.info(
                 "Completed WhatsApp notification broadcast. recipientType: {}, recipients: {}, successfulSends: {}, failedSends: {}",
@@ -180,27 +194,27 @@ public class AdminNotificationBroadcastService {
 
     private void sendBroadcastSummary(
             List<User> recipients,
+            Long organizationId,
+            String organizationEmail,
             RecipientType recipientType,
             String message,
             int successCount,
             int failedCount) {
         try {
-            List<String> adminEmails = userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN))
-                    .stream()
-                    .map(User::getEmail)
-                    .filter(email -> email != null && !email.isBlank())
-                    .collect(Collectors.toList());
+            List<String> adminEmails = organizationSummaryRecipientService.resolveRecipientsForOrganization(organizationId);
 
             int emailSentCount = brevoEmailService.sendNotificationBroadcastSummaryEmail(
                     recipients,
                     adminEmails,
+                    organizationEmail,
                     recipientType.toDisplayLabel(),
                     message,
                     successCount,
                     failedCount);
 
             log.info(
-                    "Notification broadcast summary email completed. recipientType: {}, adminRecipientsEmailed: {}",
+                    "Notification broadcast summary email completed. organizationId: {}, recipientType: {}, adminRecipientsEmailed: {}",
+                    organizationId,
                     recipientType,
                     emailSentCount);
         } catch (Exception ex) {
@@ -224,6 +238,9 @@ public class AdminNotificationBroadcastService {
         }
 
         Long organizationId = context.getCurrentOrganization().getId();
+        String organizationEmail = organizationRepository.findByIdAndIsActiveTrue(organizationId)
+                .map(Organization::getEmail)
+                .orElse(null);
         OrganizationUser membership = organizationUserRepository
                 .findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organizationId)
                 .orElseThrow(() -> new java.util.NoSuchElementException("Caller organization membership not found"));
@@ -236,7 +253,7 @@ public class AdminNotificationBroadcastService {
                         .toList();
 
         if (requestedBranchId == null) {
-            return new NotificationScope(organizationId, null, "All Branches");
+            return new NotificationScope(organizationId, organizationEmail, null, "All Branches");
         }
 
         if (!accessibleBranchIds.contains(requestedBranchId)) {
@@ -258,7 +275,7 @@ public class AdminNotificationBroadcastService {
             throw new SecurityException("You do not have access to the selected branch");
         }
 
-        return new NotificationScope(organizationId, branch.getId(), branch.getName());
+        return new NotificationScope(organizationId, organizationEmail, branch.getId(), branch.getName());
     }
 
     private enum RecipientType {
@@ -284,6 +301,7 @@ public class AdminNotificationBroadcastService {
 
     protected record NotificationScope(
             Long organizationId,
+            String organizationEmail,
             Long branchId,
             String branchLabel) {
     }

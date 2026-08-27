@@ -3,6 +3,7 @@ package com.youngstersclub.app.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -138,6 +139,8 @@ class ConsumableServiceTest {
     void createOrderAssignsCurrentBranchAndSyncsThatBranchDue() {
         mockAuthorizedContext();
         when(userRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(customer.getId(), organization.getId()))
+                .thenReturn(Optional.of(buildCustomerMembership(branch)));
 
         ConsumableItem item = buildItem(101L, "Tea", BigDecimal.valueOf(15));
         when(consumableItemRepository.findByIdInAndBranch_IdAndIsActiveTrue(List.of(101L), branch.getId()))
@@ -174,6 +177,8 @@ class ConsumableServiceTest {
     void createOrderRejectsCrossBranchItemsAndDoesNotTouchCurrentBranchInventory() {
         mockAuthorizedContext();
         when(userRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(customer.getId(), organization.getId()))
+                .thenReturn(Optional.of(buildCustomerMembership(branch)));
         when(consumableItemRepository.findByIdInAndBranch_IdAndIsActiveTrue(List.of(101L), branch.getId()))
                 .thenReturn(List.of());
 
@@ -191,6 +196,79 @@ class ConsumableServiceTest {
         assertEquals("One or more consumable items are unavailable", exception.getMessage());
         verify(consumableOrderRepository, never()).save(any(ConsumableOrder.class));
         verify(userDueService, never()).syncBranchDue(customer, branch);
+    }
+
+    @Test
+    void createOrderRejectsUserOutsideCurrentBranch() {
+        mockAuthorizedContext();
+        when(userRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+
+        Organization otherOrganization = new Organization();
+        otherOrganization.setId(99L);
+        otherOrganization.setName("Other Org");
+        otherOrganization.setIsActive(true);
+
+        Branch otherBranch = new Branch();
+        otherBranch.setId(77L);
+        otherBranch.setName("Other Branch");
+        otherBranch.setOrganization(otherOrganization);
+        otherBranch.setIsActive(true);
+
+        when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(customer.getId(), organization.getId()))
+                .thenReturn(Optional.of(buildCustomerMembership(otherBranch)));
+
+        ConsumableOrderCreateRequest request = new ConsumableOrderCreateRequest();
+        request.setUserId(customer.getId());
+        ConsumableOrderCreateRequest.ItemRequest itemRequest = new ConsumableOrderCreateRequest.ItemRequest();
+        itemRequest.setItemId(101L);
+        itemRequest.setQuantity(1);
+        request.setItems(List.of(itemRequest));
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> consumableService.createOrder(request, "manager@test.com"));
+
+        assertEquals("Selected user is unavailable for the current branch", exception.getMessage());
+        verify(consumableItemRepository, never()).findByIdInAndBranch_IdAndIsActiveTrue(any(), any());
+        verify(consumableOrderRepository, never()).save(any(ConsumableOrder.class));
+        verify(userDueService, never()).syncBranchDue(any(), any());
+    }
+
+    @Test
+    void createOrderAllowsUserWithAdditionalBranchAccess() {
+        mockAuthorizedContext();
+        when(userRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+
+        OrganizationUser customerMembership = buildCustomerMembership(null);
+        customerMembership.setId(55L);
+        when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(customer.getId(), organization.getId()))
+                .thenReturn(Optional.of(customerMembership));
+        when(userBranchAccessRepository.existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(customerMembership.getId(), branch.getId()))
+                .thenReturn(true);
+
+        ConsumableItem item = buildItem(101L, "Tea", BigDecimal.valueOf(15));
+        when(consumableItemRepository.findByIdInAndBranch_IdAndIsActiveTrue(List.of(101L), branch.getId()))
+                .thenReturn(List.of(item));
+        when(consumableOrderRepository.save(any(ConsumableOrder.class)))
+                .thenAnswer(invocation -> {
+                    ConsumableOrder order = invocation.getArgument(0);
+                    order.setId(502L);
+                    return order;
+                });
+
+        ConsumableOrderCreateRequest request = new ConsumableOrderCreateRequest();
+        request.setUserId(customer.getId());
+        ConsumableOrderCreateRequest.ItemRequest itemRequest = new ConsumableOrderCreateRequest.ItemRequest();
+        itemRequest.setItemId(101L);
+        itemRequest.setQuantity(1);
+        request.setItems(List.of(itemRequest));
+
+        ConsumableOrderResponseDto response = consumableService.createOrder(request, "manager@test.com");
+
+        assertEquals(502L, response.getOrderId());
+        assertTrue(response.getTotalAmount().compareTo(BigDecimal.valueOf(15)) == 0);
+        verify(userBranchAccessRepository).existsByOrganizationUserIdAndBranchIdAndIsActiveTrue(customerMembership.getId(), branch.getId());
+        verify(userDueService).syncBranchDue(customer, branch);
     }
 
     @Test
@@ -286,5 +364,17 @@ class ConsumableServiceTest {
         item.setBranch(branch);
         item.setIsActive(true);
         return item;
+    }
+
+    private OrganizationUser buildCustomerMembership(Branch membershipBranch) {
+        OrganizationUser customerMembership = new OrganizationUser();
+        customerMembership.setId(56L);
+        customerMembership.setUser(customer);
+        customerMembership.setOrganization(organization);
+        customerMembership.setBaseBranch(membershipBranch);
+        customerMembership.setRole(UserRole.CUSTOMER);
+        customerMembership.setIsActive(true);
+        customerMembership.setCreatedAt(LocalDateTime.now());
+        return customerMembership;
     }
 }

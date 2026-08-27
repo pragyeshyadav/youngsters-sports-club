@@ -10,10 +10,11 @@ import static org.mockito.Mockito.when;
 import com.youngstersclub.app.dto.DailyVisitedOrganizationDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
-import com.youngstersclub.app.enums.UserRole;
+import com.youngstersclub.app.entity.Organization;
 import com.youngstersclub.app.repository.DailyCustomerVisitRepository;
-import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.repository.OrganizationRepository;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -24,32 +25,44 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DailyCustomerEngagementServiceTest {
 
     @Mock private DailyCustomerVisitRepository dailyCustomerVisitRepository;
-    @Mock private UserRepository userRepository;
     @Mock private WhatsAppService whatsAppService;
     @Mock private BrevoEmailService brevoEmailService;
+    @Mock private OrganizationRepository organizationRepository;
+    @Mock private OrganizationSummaryRecipientService organizationSummaryRecipientService;
 
     @InjectMocks private DailyCustomerEngagementService dailyCustomerEngagementService;
 
     @Test
-    void processDailyWhatsappNotificationsUsesPreAggregatedVisitsAndBuildsRecipients() {
+    void processDailyWhatsappNotificationsUsesPreAggregatedVisitsAndBuildsRecipientsPerOrganization() {
+        Organization ysc = organization(1L, "ysc@test.com");
+        Organization area7 = organization(2L, "area7@test.com");
         when(dailyCustomerVisitRepository.findDailyVisitedCustomersByOrganization(any()))
                 .thenReturn(List.of(
                         new DailyVisitedOrganizationDto(10, "Rahul", "9999999999", 1L, "YSC", null, "Satna, Rewa"),
-                        new DailyVisitedOrganizationDto(11, "Prince", "", 1L, "YSC", null, "Organization-wide")));
-        when(userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN)))
-                .thenReturn(List.of());
-        when(brevoEmailService.sendDailyVisitSummaryEmail(any(), anyList())).thenReturn(0);
+                        new DailyVisitedOrganizationDto(11, "Prince", "", 1L, "YSC", null, "Organization-wide"),
+                        new DailyVisitedOrganizationDto(12, "Aryan", "8888888888", 2L, "Area 7", null, "Rewa")));
+        when(organizationSummaryRecipientService.resolveRecipientsForOrganization(1L))
+                .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
+        when(organizationSummaryRecipientService.resolveRecipientsForOrganization(2L))
+                .thenReturn(List.of("pragyesh.yadav@gmail.com", "area7shrinet@gmail.com"));
+        when(organizationRepository.findByIdAndIsActiveTrue(1L)).thenReturn(Optional.of(ysc));
+        when(organizationRepository.findByIdAndIsActiveTrue(2L)).thenReturn(Optional.of(area7));
+        when(brevoEmailService.sendDailyVisitSummaryEmail(any(), anyList(), any())).thenReturn(0);
 
         WhatsappTemplateExecutionResultDto result = dailyCustomerEngagementService.processDailyWhatsappNotifications(true);
 
-        assertEquals(2, result.getTotalCustomersScanned());
-        assertEquals(1, result.getEligibleCustomers());
+        assertEquals(3, result.getTotalCustomersScanned());
+        assertEquals(2, result.getEligibleCustomers());
         assertEquals(1, result.getFailedMessages());
-        assertEquals(1, result.getSuccessfulMessages());
-        assertEquals(1, result.getRecipients().size());
+        assertEquals(2, result.getSuccessfulMessages());
+        assertEquals(2, result.getRecipients().size());
         WhatsappTemplateExecutionRecipientDto recipient = result.getRecipients().get(0);
         assertEquals("Rahul", recipient.getName());
         assertEquals("Satna, Rewa", recipient.getBranchName());
+        verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(1L);
+        verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(2L);
+        verify(brevoEmailService).sendDailyVisitSummaryEmail(any(), anyList(), org.mockito.ArgumentMatchers.eq("ysc@test.com"));
+        verify(brevoEmailService).sendDailyVisitSummaryEmail(any(), anyList(), org.mockito.ArgumentMatchers.eq("area7@test.com"));
         verify(whatsAppService, never()).sendDailyVisitThankYouMessage(any(), any());
     }
 
@@ -62,5 +75,13 @@ class DailyCustomerEngagementServiceTest {
         assertEquals("YSC", recipient.getOrganizationName());
         assertEquals("Satna", recipient.getBranchName());
         assertEquals("VISITED TODAY", recipient.getStatus());
+    }
+
+    private Organization organization(Long id, String email) {
+        Organization organization = new Organization();
+        organization.setId(id);
+        organization.setEmail(email);
+        organization.setIsActive(true);
+        return organization;
     }
 }

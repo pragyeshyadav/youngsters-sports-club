@@ -5,6 +5,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.youngstersclub.app.dto.AdminMonthlyEarningsDto;
+import com.youngstersclub.app.dto.TriggerWhatsappRequest;
 import com.youngstersclub.app.service.AdminAnalyticsService;
 import com.youngstersclub.app.service.AdminNotificationBroadcastService;
 import com.youngstersclub.app.service.ConsumableService;
@@ -44,5 +45,21 @@ class AdminControllerTest {
 
         assertEquals(dto, response.getBody());
         verify(adminAnalyticsService).getMonthlyEarnings(8, 2026, "admin@test.com");
+    }
+
+    @Test
+    void triggerWhatsappMessagesUsesCurrentOrganizationExecutionPath() {
+        TriggerWhatsappRequest request = new TriggerWhatsappRequest();
+        request.setTemplateName("happy_birthday_wishes_offer");
+        request.setDryRun(true);
+
+        ResponseEntity<?> response = adminController.triggerWhatsappMessages(request, "admin@test.com");
+
+        assertEquals(200, response.getStatusCode().value());
+        verify(whatsAppTemplateExecutionService)
+                .triggerTemplateExecutionForCurrentOrganization(
+                        "happy_birthday_wishes_offer",
+                        true,
+                        "admin@test.com");
     }
 }

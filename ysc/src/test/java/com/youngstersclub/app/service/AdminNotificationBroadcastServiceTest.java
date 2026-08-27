@@ -20,6 +20,7 @@ import com.youngstersclub.app.entity.OrganizationUser;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.UserRole;
 import com.youngstersclub.app.repository.BranchRepository;
+import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
@@ -40,9 +41,11 @@ class AdminNotificationBroadcastServiceTest {
     @Mock private WhatsAppService whatsAppService;
     @Mock private BrevoEmailService brevoEmailService;
     @Mock private OrganizationContextService organizationContextService;
+    @Mock private OrganizationRepository organizationRepository;
     @Mock private OrganizationUserRepository organizationUserRepository;
     @Mock private BranchRepository branchRepository;
     @Mock private UserBranchAccessRepository userBranchAccessRepository;
+    @Mock private OrganizationSummaryRecipientService organizationSummaryRecipientService;
 
     @InjectMocks private AdminNotificationBroadcastService adminNotificationBroadcastService;
 
@@ -62,6 +65,7 @@ class AdminNotificationBroadcastServiceTest {
         organization = new Organization();
         organization.setId(1L);
         organization.setName("Youngsters");
+        organization.setEmail("org@test.com");
         organization.setIsActive(true);
 
         satnaBranch = new Branch();
@@ -83,6 +87,7 @@ class AdminNotificationBroadcastServiceTest {
     void searchCustomersUsesOrganizationAndSelectedBranchScope() {
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(actor));
         when(organizationContextService.resolveContext("admin@test.com")).thenReturn(buildContext(List.of(satnaBranch), satnaBranch));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId())).thenReturn(Optional.of(organization));
         when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organization.getId()))
                 .thenReturn(Optional.of(membership));
         when(branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(satnaBranch.getId(), organization.getId()))
@@ -108,6 +113,7 @@ class AdminNotificationBroadcastServiceTest {
     void searchCustomersUsesOrganizationScopeWhenAllBranchesSelected() {
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(actor));
         when(organizationContextService.resolveContext("admin@test.com")).thenReturn(buildContext(List.of(satnaBranch), satnaBranch));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId())).thenReturn(Optional.of(organization));
         when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organization.getId()))
                 .thenReturn(Optional.of(membership));
 
@@ -132,6 +138,7 @@ class AdminNotificationBroadcastServiceTest {
         User customer = buildCustomer(101, "Prince", "9999999999");
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(actor));
         when(organizationContextService.resolveContext("admin@test.com")).thenReturn(buildContext(List.of(satnaBranch), satnaBranch));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId())).thenReturn(Optional.of(organization));
         when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organization.getId()))
                 .thenReturn(Optional.of(membership));
         when(userRepository.findActiveUsersByRoleAndOrganizationAndOptionalBranch(
@@ -141,11 +148,12 @@ class AdminNotificationBroadcastServiceTest {
                 .thenReturn(List.of(customer));
         when(whatsAppService.sendClubCustomerNotificationMessage("9999999999", "Prince", "Hi", 101))
                 .thenReturn(true);
-        when(userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN)))
-                .thenReturn(List.of(actor));
+        when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
+                .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
         when(brevoEmailService.sendNotificationBroadcastSummaryEmail(
                 any(),
                 any(),
+                eq("org@test.com"),
                 eq("All Customers"),
                 eq("Hi"),
                 eq(1),
@@ -163,6 +171,7 @@ class AdminNotificationBroadcastServiceTest {
                 UserRole.CUSTOMER,
                 organization.getId(),
                 null);
+        verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(organization.getId());
     }
 
     @Test
@@ -170,6 +179,7 @@ class AdminNotificationBroadcastServiceTest {
         User customer = buildCustomer(101, "Prince", "9999999999");
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(actor));
         when(organizationContextService.resolveContext("admin@test.com")).thenReturn(buildContext(List.of(satnaBranch), satnaBranch));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId())).thenReturn(Optional.of(organization));
         when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organization.getId()))
                 .thenReturn(Optional.of(membership));
         when(branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(satnaBranch.getId(), organization.getId()))
@@ -182,11 +192,12 @@ class AdminNotificationBroadcastServiceTest {
                 .thenReturn(List.of(customer));
         when(whatsAppService.sendClubCustomerNotificationMessage("9999999999", "Prince", "Hi", 101))
                 .thenReturn(true);
-        when(userRepository.findByRoleInAndIsActiveTrue(List.of(UserRole.ADMIN, UserRole.SUPER_ADMIN)))
-                .thenReturn(List.of(actor));
+        when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
+                .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
         when(brevoEmailService.sendNotificationBroadcastSummaryEmail(
                 anyList(),
                 anyList(),
+                eq("org@test.com"),
                 eq("Selected Customers"),
                 eq("Hi"),
                 eq(1),
@@ -205,6 +216,7 @@ class AdminNotificationBroadcastServiceTest {
                 UserRole.CUSTOMER,
                 organization.getId(),
                 satnaBranch.getId());
+        verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(organization.getId());
     }
 
     @Test
@@ -217,6 +229,7 @@ class AdminNotificationBroadcastServiceTest {
 
         when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(actor));
         when(organizationContextService.resolveContext("admin@test.com")).thenReturn(buildContext(List.of(satnaBranch), satnaBranch));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId())).thenReturn(Optional.of(organization));
         when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organization.getId()))
                 .thenReturn(Optional.of(membership));
 
