@@ -220,7 +220,13 @@ public class PaymentService {
                     paymentMethod);
         }
 
-        registerPaymentSettlementNotification(user, request.getAmount(), discount, context.branch().getId());
+        registerPaymentSettlementNotification(
+                user,
+                request.getAmount(),
+                discount,
+                context.branch().getId(),
+                resolveOrganizationName(context),
+                resolveOrganizationPhone(context));
     }
 
     @Transactional
@@ -355,32 +361,70 @@ public class PaymentService {
                     paymentMethod);
         }
 
-        registerPaymentSettlementNotification(user, request.getPaidAmount(), discount, context.branch().getId());
+        registerPaymentSettlementNotification(
+                user,
+                request.getPaidAmount(),
+                discount,
+                context.branch().getId(),
+                resolveOrganizationName(context),
+                resolveOrganizationPhone(context));
     }
 
-    private void registerPaymentSettlementNotification(User user, BigDecimal paidAmount, BigDecimal discountAmount, Long branchId) {
+    private void registerPaymentSettlementNotification(
+            User user,
+            BigDecimal paidAmount,
+            BigDecimal discountAmount,
+            Long branchId,
+            String organizationName,
+            String organizationPhone) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            triggerPaymentSettlementNotification(user, paidAmount, discountAmount, branchId);
+            triggerPaymentSettlementNotification(user, paidAmount, discountAmount, branchId, organizationName, organizationPhone);
             return;
         }
 
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                triggerPaymentSettlementNotification(user, paidAmount, discountAmount, branchId);
+                triggerPaymentSettlementNotification(user, paidAmount, discountAmount, branchId, organizationName, organizationPhone);
             }
         });
     }
 
-    private void triggerPaymentSettlementNotification(User user, BigDecimal paidAmount, BigDecimal discountAmount, Long branchId) {
+    private void triggerPaymentSettlementNotification(
+            User user,
+            BigDecimal paidAmount,
+            BigDecimal discountAmount,
+            Long branchId,
+            String organizationName,
+            String organizationPhone) {
         try {
             BigDecimal remainingDue = branchId == null
                     ? BigDecimal.ZERO
                     : userPaymentSummaryService.getBranchPaymentSummary(user.getId(), branchId).getTotalDue();
-            whatsAppService.sendPaymentSettlementMessage(user, paidAmount, discountAmount, remainingDue);
+            whatsAppService.sendPaymentSettlementMessage(
+                    user,
+                    paidAmount,
+                    discountAmount,
+                    remainingDue,
+                    organizationName,
+                    organizationPhone);
         } catch (Exception ex) {
             log.warn("WhatsApp settlement notification failed for userId: {}. Reason: {}", user.getId(), ex.getMessage());
         }
+    }
+
+    protected String resolveOrganizationName(PaymentBranchContext context) {
+        if (context == null || context.branch() == null || context.branch().getOrganization() == null) {
+            return null;
+        }
+        return context.branch().getOrganization().getName();
+    }
+
+    protected String resolveOrganizationPhone(PaymentBranchContext context) {
+        if (context == null || context.branch() == null || context.branch().getOrganization() == null) {
+            return null;
+        }
+        return context.branch().getOrganization().getPhone();
     }
 
     private BigDecimal pendingTotalDue(Integer userId, Long branchId) {

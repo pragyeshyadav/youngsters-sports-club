@@ -102,6 +102,8 @@ public class AdminNotificationBroadcastService {
                         recipient.getPhone(),
                         recipient.getName(),
                         normalizedMessage,
+                        scope.organizationPhone(),
+                        scope.organizationName(),
                         recipient.getId());
                 if (sent) {
                     successCount++;
@@ -238,9 +240,9 @@ public class AdminNotificationBroadcastService {
         }
 
         Long organizationId = context.getCurrentOrganization().getId();
-        String organizationEmail = organizationRepository.findByIdAndIsActiveTrue(organizationId)
-                .map(Organization::getEmail)
-                .orElse(null);
+        Organization organization = organizationRepository.findByIdAndIsActiveTrue(organizationId)
+                .orElseThrow(() -> new java.util.NoSuchElementException("Current organization not found"));
+        String organizationEmail = organization.getEmail();
         OrganizationUser membership = organizationUserRepository
                 .findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organizationId)
                 .orElseThrow(() -> new java.util.NoSuchElementException("Caller organization membership not found"));
@@ -253,7 +255,13 @@ public class AdminNotificationBroadcastService {
                         .toList();
 
         if (requestedBranchId == null) {
-            return new NotificationScope(organizationId, organizationEmail, null, "All Branches");
+            return new NotificationScope(
+                    organizationId,
+                    organization.getName(),
+                    organization.getPhone(),
+                    organizationEmail,
+                    null,
+                    "All Branches");
         }
 
         if (!accessibleBranchIds.contains(requestedBranchId)) {
@@ -275,7 +283,13 @@ public class AdminNotificationBroadcastService {
             throw new SecurityException("You do not have access to the selected branch");
         }
 
-        return new NotificationScope(organizationId, organizationEmail, branch.getId(), branch.getName());
+        return new NotificationScope(
+                organizationId,
+                organization.getName(),
+                organization.getPhone(),
+                organizationEmail,
+                branch.getId(),
+                branch.getName());
     }
 
     private enum RecipientType {
@@ -301,6 +315,8 @@ public class AdminNotificationBroadcastService {
 
     protected record NotificationScope(
             Long organizationId,
+            String organizationName,
+            String organizationPhone,
             String organizationEmail,
             Long branchId,
             String branchLabel) {

@@ -20,7 +20,7 @@ public class WhatsAppService {
 
     private static final Logger log = LoggerFactory.getLogger(WhatsAppService.class);
     private static final String WHATSAPP_API_BASE_URL = "https://graph.facebook.com/v17.0/";
-    private static final String PAYMENT_TEMPLATE_NAME = "payment_settled_successfully";
+    private static final String PAYMENT_TEMPLATE_NAME = "payment_settled_successfully_org_wise";
     private static final String PAYMENT_TEMPLATE_LANGUAGE_CODE = "en";
     private static final String DAILY_VISIT_TEMPLATE_NAME = "daily_visit_thanks_message";
     private static final String DAILY_VISIT_TEMPLATE_LANGUAGE_CODE = "en";
@@ -28,8 +28,9 @@ public class WhatsAppService {
     private static final String PAYMENT_DUE_REMINDER_TEMPLATE_LANGUAGE_CODE = "en";
     private static final String HAPPY_BIRTHDAY_WISHES_OFFER_TEMPLATE_NAME = "happy_birthday_wishes_offer";
     private static final String HAPPY_BIRTHDAY_WISHES_OFFER_LANGUAGE_CODE = "en";
-    private static final String CLUB_NOTIFICATION_TEMPLATE_NAME = "club_customer_notification";
+    private static final String CLUB_NOTIFICATION_TEMPLATE_NAME = "club_customer_notification_org_wise";
     private static final String CLUB_NOTIFICATION_TEMPLATE_LANGUAGE_CODE = "en";
+    private static final String DEFAULT_CLUB_NOTIFICATION_PHONE = "9765657902";
 
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -43,7 +44,9 @@ public class WhatsAppService {
             User user,
             BigDecimal paidAmount,
             BigDecimal discountAmount,
-            BigDecimal remainingDue) {
+            BigDecimal remainingDue,
+            String organizationName,
+            String organizationPhone) {
         if (user == null || user.getId() == null) {
             log.warn("WhatsApp message skipped because user details are missing");
             return;
@@ -60,17 +63,22 @@ public class WhatsAppService {
             return;
         }
 
+        String safeOrganizationName = normalizeOrganizationText(organizationName);
+        String safeOrganizationPhone = normalizeOrganizationText(organizationPhone);
+        if (safeOrganizationName == null || safeOrganizationPhone == null) {
+            log.warn(
+                    "WhatsApp payment settlement message skipped for userId: {} because organization details are incomplete",
+                    user.getId());
+            return;
+        }
+
         try {
             sendTemplateMessage(
                     "payment settlement",
                     phoneNumber,
                     PAYMENT_TEMPLATE_NAME,
                     PAYMENT_TEMPLATE_LANGUAGE_CODE,
-                    List.of(
-                            Map.of("type", "text", "text", safeText(user.getName())),
-                            Map.of("type", "text", "text", formatAmount(paidAmount)),
-                            Map.of("type", "text", "text", formatAmount(discountAmount)),
-                            Map.of("type", "text", "text", formatAmount(remainingDue))),
+                    buildPaymentSettlementParameters(user, paidAmount, discountAmount, remainingDue, safeOrganizationName, safeOrganizationPhone),
                     user.getId());
         } catch (Exception ex) {
             log.warn("WhatsApp message failed for userId: {}. Reason: {}", user.getId(), ex.getMessage());
@@ -97,7 +105,13 @@ public class WhatsAppService {
                 null);
     }
 
-    public boolean sendClubCustomerNotificationMessage(String phoneNumber, String name, String message, Integer userId) {
+    public boolean sendClubCustomerNotificationMessage(
+            String phoneNumber,
+            String name,
+            String message,
+            String organizationPhone,
+            String organizationName,
+            Integer userId) {
         if (accessToken == null || accessToken.isBlank() || phoneNumberId == null || phoneNumberId.isBlank()) {
             log.warn("Club customer notification skipped for userId: {} because configuration is missing", userId);
             return false;
@@ -109,14 +123,22 @@ public class WhatsAppService {
             return false;
         }
 
+        String resolvedOrganizationName = normalizeOrganizationText(organizationName);
+        if (resolvedOrganizationName == null) {
+            log.warn("Club customer notification skipped for userId: {} because organization name is missing", userId);
+            return false;
+        }
+
         return sendTemplateMessage(
                 "club customer notification",
                 normalizedPhoneNumber,
                 CLUB_NOTIFICATION_TEMPLATE_NAME,
                 CLUB_NOTIFICATION_TEMPLATE_LANGUAGE_CODE,
-                List.of(
-                        Map.of("type", "text", "text", safeText(name)),
-                        Map.of("type", "text", "text", safeText(message))),
+                buildClubCustomerNotificationParameters(
+                        name,
+                        message,
+                        resolveClubCustomerNotificationPhone(organizationPhone),
+                        resolvedOrganizationName),
                 userId);
     }
 
@@ -164,7 +186,35 @@ public class WhatsAppService {
                 userId);
     }
 
-    private boolean sendTemplateMessage(
+    protected List<Map<String, Object>> buildPaymentSettlementParameters(
+            User user,
+            BigDecimal paidAmount,
+            BigDecimal discountAmount,
+            BigDecimal remainingDue,
+            String organizationName,
+            String organizationPhone) {
+        return List.of(
+                Map.of("type", "text", "text", safeText(user == null ? null : user.getName())),
+                Map.of("type", "text", "text", organizationName),
+                Map.of("type", "text", "text", formatAmount(paidAmount)),
+                Map.of("type", "text", "text", formatAmount(discountAmount)),
+                Map.of("type", "text", "text", formatAmount(remainingDue)),
+                Map.of("type", "text", "text", organizationPhone));
+    }
+
+    protected List<Map<String, Object>> buildClubCustomerNotificationParameters(
+            String customerName,
+            String message,
+            String organizationPhone,
+            String organizationName) {
+        return List.of(
+                Map.of("type", "text", "text", safeText(customerName)),
+                Map.of("type", "text", "text", safeText(message)),
+                Map.of("type", "text", "text", organizationPhone),
+                Map.of("type", "text", "text", organizationName));
+    }
+
+    protected boolean sendTemplateMessage(
             String messageType,
             String phoneNumber,
             String templateName,
@@ -237,7 +287,7 @@ public class WhatsAppService {
         }
     }
 
-    private String normalizePhoneNumber(String phone) {
+    protected String normalizePhoneNumber(String phone) {
         if (phone == null || phone.isBlank()) {
             return null;
         }
@@ -252,12 +302,25 @@ public class WhatsAppService {
         return null;
     }
 
-    private String formatAmount(BigDecimal amount) {
+    protected String formatAmount(BigDecimal amount) {
         BigDecimal safeAmount = amount == null ? BigDecimal.ZERO : amount;
         return safeAmount.stripTrailingZeros().toPlainString();
     }
 
-    private String safeText(String value) {
+    protected String safeText(String value) {
         return (value == null || value.isBlank()) ? "Customer" : value.trim();
+    }
+
+    protected String normalizeOrganizationText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    protected String resolveClubCustomerNotificationPhone(String organizationPhone) {
+        String normalizedPhone = normalizeOrganizationText(organizationPhone);
+        return normalizedPhone == null ? DEFAULT_CLUB_NOTIFICATION_PHONE : normalizedPhone;
     }
 }

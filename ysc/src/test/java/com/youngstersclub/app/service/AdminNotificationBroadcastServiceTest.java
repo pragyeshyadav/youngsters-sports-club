@@ -66,6 +66,7 @@ class AdminNotificationBroadcastServiceTest {
         organization.setId(1L);
         organization.setName("Youngsters");
         organization.setEmail("org@test.com");
+        organization.setPhone("9765657902");
         organization.setIsActive(true);
 
         satnaBranch = new Branch();
@@ -146,7 +147,13 @@ class AdminNotificationBroadcastServiceTest {
                 organization.getId(),
                 null))
                 .thenReturn(List.of(customer));
-        when(whatsAppService.sendClubCustomerNotificationMessage("9999999999", "Prince", "Hi", 101))
+        when(whatsAppService.sendClubCustomerNotificationMessage(
+                "9999999999",
+                "Prince",
+                "Hi",
+                "9765657902",
+                "Youngsters",
+                101))
                 .thenReturn(true);
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
                 .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
@@ -190,7 +197,13 @@ class AdminNotificationBroadcastServiceTest {
                 organization.getId(),
                 satnaBranch.getId()))
                 .thenReturn(List.of(customer));
-        when(whatsAppService.sendClubCustomerNotificationMessage("9999999999", "Prince", "Hi", 101))
+        when(whatsAppService.sendClubCustomerNotificationMessage(
+                "9999999999",
+                "Prince",
+                "Hi",
+                "9765657902",
+                "Youngsters",
+                101))
                 .thenReturn(true);
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
                 .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
@@ -217,6 +230,57 @@ class AdminNotificationBroadcastServiceTest {
                 organization.getId(),
                 satnaBranch.getId());
         verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(organization.getId());
+    }
+
+    @Test
+    void processNotificationBroadcastUsesOrganizationAwarePhoneFallbackWhenOrganizationPhoneMissing() {
+        organization.setPhone("   ");
+        User customer = buildCustomer(101, "Prince", "9999999999");
+
+        when(userRepository.findByEmail("admin@test.com")).thenReturn(Optional.of(actor));
+        when(organizationContextService.resolveContext("admin@test.com")).thenReturn(buildContext(List.of(satnaBranch), satnaBranch));
+        when(organizationRepository.findByIdAndIsActiveTrue(organization.getId())).thenReturn(Optional.of(organization));
+        when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), organization.getId()))
+                .thenReturn(Optional.of(membership));
+        when(userRepository.findActiveUsersByRoleAndOrganizationAndOptionalBranch(
+                UserRole.CUSTOMER,
+                organization.getId(),
+                null))
+                .thenReturn(List.of(customer));
+        when(whatsAppService.sendClubCustomerNotificationMessage(
+                "9999999999",
+                "Prince",
+                "Hi",
+                "   ",
+                "Youngsters",
+                101))
+                .thenReturn(true);
+        when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
+                .thenReturn(List.of("pragyesh.yadav@gmail.com"));
+        when(brevoEmailService.sendNotificationBroadcastSummaryEmail(
+                any(),
+                any(),
+                eq("org@test.com"),
+                eq("All Customers"),
+                eq("Hi"),
+                eq(1),
+                eq(0)))
+                .thenReturn(1);
+
+        adminNotificationBroadcastService.processNotificationBroadcast(
+                "Hi",
+                "ALL_CUSTOMERS",
+                null,
+                "admin@test.com",
+                null);
+
+        verify(whatsAppService).sendClubCustomerNotificationMessage(
+                "9999999999",
+                "Prince",
+                "Hi",
+                "   ",
+                "Youngsters",
+                101);
     }
 
     @Test
