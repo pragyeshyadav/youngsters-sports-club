@@ -55,6 +55,13 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
                     null);
             persistRecord(record);
             writeWamidLookup(wamid, trackingId);
+            log.info(
+                    "WhatsApp accepted message tracking persisted. organizationId: {}, branchId: {}, userId: {}, templateName: {}, trackingId: {}",
+                    metadata.organizationId(),
+                    metadata.branchId(),
+                    metadata.userId(),
+                    metadata.templateName(),
+                    trackingId);
         } catch (Exception ex) {
             log.warn("Unable to track accepted WhatsApp message. wamid: {}. Reason: {}", wamid, ex.getMessage());
         }
@@ -228,7 +235,7 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
 
         String trackingId = normalizeText(redisTemplate.opsForValue().get(buildWamidLookupKey(wamid)));
         if (trackingId == null) {
-            log.debug("WhatsApp webhook status ignored because tracked wamid was not found. wamid: {}", wamid);
+            log.warn("WhatsApp webhook status ignored because tracked wamid was not found. wamid: {}", wamid);
             return;
         }
 
@@ -252,6 +259,14 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
             }
         }
         persistRecord(record);
+        log.info(
+                "WhatsApp webhook status applied. organizationId: {}, branchId: {}, userId: {}, templateName: {}, status: {}, trackingId: {}",
+                record.getOrganizationId(),
+                record.getBranchId(),
+                record.getUserId(),
+                record.getTemplateName(),
+                mappedStatus,
+                trackingId);
     }
 
     protected LocalDateTime resolveWebhookTimestamp(JsonNode statusNode) {
