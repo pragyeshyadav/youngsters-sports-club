@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -126,7 +127,9 @@ class PaymentServiceTest {
                 .thenReturn(List.of(frame));
         when(consumableService.getUnpaidOrders(customer.getId(), branch.getId())).thenReturn(List.of());
         when(userPaymentSummaryService.getBranchPaymentSummary(customer.getId(), branch.getId()))
-                .thenReturn(new UserPaymentSummaryDto(BigDecimal.valueOf(100), BigDecimal.ZERO, BigDecimal.ZERO));
+                .thenReturn(
+                        new UserPaymentSummaryDto(BigDecimal.valueOf(100), BigDecimal.ZERO, BigDecimal.ZERO),
+                        new UserPaymentSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
         when(paymentRepository.save(any(Payment.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(frameRepository.save(any(Frame.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -148,6 +151,16 @@ class PaymentServiceTest {
         verify(consumableService).getUnpaidOrders(customer.getId(), branch.getId());
         verify(userDueService).syncBranchDue(customer, branch);
         verify(userDueService, never()).syncBranchDue(customer, otherBranch);
+        verify(whatsAppService).sendPaymentSettlementMessage(
+                eq(customer),
+                eq(BigDecimal.valueOf(100)),
+                eq(BigDecimal.ZERO),
+                eq(BigDecimal.ZERO),
+                eq(organization.getId()),
+                eq("Youngsters Sports Club"),
+                eq(null),
+                eq(branch.getId()),
+                eq(branch.getName()));
     }
 
     @Test
@@ -180,6 +193,65 @@ class PaymentServiceTest {
                 () -> paymentService.settlePayment(request, "manager@test.com"));
 
         assertEquals("You do not have access to the current branch", exception.getMessage());
+    }
+
+    @Test
+    void settlePaymentUsesOrganizationOwnedByCurrentBranchForWhatsappTemplate() {
+        Organization cueSociety = new Organization();
+        cueSociety.setId(9L);
+        cueSociety.setName("The Cue Society");
+        cueSociety.setPhone("2222222222");
+        cueSociety.setIsActive(true);
+
+        Branch cueBranch = new Branch();
+        cueBranch.setId(12L);
+        cueBranch.setName("Cue Main");
+        cueBranch.setOrganization(cueSociety);
+        cueBranch.setIsActive(true);
+
+        membership.setOrganization(cueSociety);
+        membership.setBaseBranch(cueBranch);
+
+        OrganizationContextDto context = new OrganizationContextDto();
+        context.setCurrentRole(UserRole.MANAGER.name());
+        context.setCurrentOrganization(new OrganizationOptionDto(cueSociety.getId(), cueSociety.getName()));
+        context.setCurrentBranch(new BranchOptionDto(cueBranch.getId(), cueBranch.getName()));
+        context.setHasPersistedContext(true);
+        context.setRequiresSelection(false);
+
+        when(userRepository.findByEmail("manager@test.com")).thenReturn(Optional.of(actor));
+        when(organizationContextService.resolveContext("manager@test.com")).thenReturn(context);
+        when(organizationUserRepository.findByUserIdAndOrganizationIdAndIsActiveTrue(actor.getId(), cueSociety.getId()))
+                .thenReturn(Optional.of(membership));
+        when(branchRepository.findByIdAndOrganizationIdAndIsActiveTrue(cueBranch.getId(), cueSociety.getId()))
+                .thenReturn(Optional.of(cueBranch));
+        when(userRepository.findById(customer.getId())).thenReturn(Optional.of(customer));
+        when(frameRepository.findDueFramesByUserAndBranchOrderByStartTime(customer.getId(), cueBranch.getId()))
+                .thenReturn(List.of());
+        when(consumableService.getUnpaidOrders(customer.getId(), cueBranch.getId())).thenReturn(List.of());
+        when(userPaymentSummaryService.getBranchPaymentSummary(customer.getId(), cueBranch.getId()))
+                .thenReturn(
+                        new UserPaymentSummaryDto(BigDecimal.valueOf(110), BigDecimal.ZERO, BigDecimal.ZERO),
+                        new UserPaymentSummaryDto(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+
+        PaymentRequest request = new PaymentRequest();
+        request.setUserId(customer.getId());
+        request.setAmount(BigDecimal.valueOf(100));
+        request.setDiscount(BigDecimal.TEN);
+        request.setMode(PaymentMethod.CASH.name());
+
+        paymentService.settlePayment(request, "manager@test.com");
+
+        verify(whatsAppService).sendPaymentSettlementMessage(
+                eq(customer),
+                eq(BigDecimal.valueOf(100)),
+                eq(BigDecimal.TEN),
+                eq(BigDecimal.ZERO),
+                eq(cueSociety.getId()),
+                eq("The Cue Society"),
+                eq("2222222222"),
+                eq(cueBranch.getId()),
+                eq(cueBranch.getName()));
     }
 
     private void mockAuthorizedContext() {

@@ -17,6 +17,7 @@ public interface ChildRepository extends JpaRepository<Child, Long> {
         String getParentPhone();
         Long getOrganizationId();
         String getOrganizationName();
+        Long getBaseBranchId();
         String getBaseBranchName();
     }
 
@@ -32,6 +33,7 @@ public interface ChildRepository extends JpaRepository<Child, Long> {
             p.phone AS parentPhone,
             o.id AS organizationId,
             o.name AS organizationName,
+            b.id AS baseBranchId,
             b.name AS baseBranchName
         FROM children c
         JOIN users p ON p.id = c.parent_user_id

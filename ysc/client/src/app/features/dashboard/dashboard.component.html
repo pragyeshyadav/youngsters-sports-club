@@ -120,9 +120,13 @@
         </div>
       }
 
-      @if (!showPhoneInput && !showOrganizationSetup) {
+        @if (!showPhoneInput && !showOrganizationSetup) {
         <app-top-rankers></app-top-rankers>
-        <app-available-tables></app-available-tables>
+        @if (shouldShowOngoingFramesToday()) {
+          <app-ongoing-frames-today />
+        } @else if (shouldShowAvailableTables()) {
+          <app-available-tables></app-available-tables>
+        }
         
         <div class="action-container">
           <button

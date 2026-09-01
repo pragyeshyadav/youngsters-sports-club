@@ -119,7 +119,9 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
             List<ChildRepository.BirthdayChildProjection> birthdayChildren,
             boolean isDryRun,
             LocalDateTime executionTime) {
-        List<WhatsappTemplateExecutionRecipientDto> recipients = (birthdayChildren == null ? List.<ChildRepository.BirthdayChildProjection>of() : birthdayChildren)
+        List<ChildRepository.BirthdayChildProjection> safeBirthdayChildren =
+                birthdayChildren == null ? List.of() : birthdayChildren;
+        List<WhatsappTemplateExecutionRecipientDto> recipients = safeBirthdayChildren
                 .stream()
                 .map(this::toRecipient)
                 .toList();
@@ -127,7 +129,9 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
         int successCount = 0;
         int failedCount = 0;
 
-        for (WhatsappTemplateExecutionRecipientDto recipient : recipients) {
+        for (int index = 0; index < recipients.size(); index++) {
+            WhatsappTemplateExecutionRecipientDto recipient = recipients.get(index);
+            ChildRepository.BirthdayChildProjection child = safeBirthdayChildren.get(index);
             log.info(
                     "Happy birthday eligible parent. userId: {}, organization: {}, parentName: {}, kidName: {}",
                     recipient.getUserId(),
@@ -149,7 +153,11 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
             boolean sent = whatsAppService.sendHappyBirthdayWishesOfferMessage(
                     recipient.getPhone(),
                     recipient.getDetail(),
-                    recipient.getUserId());
+                    child.getOrganizationId(),
+                    child.getBaseBranchId(),
+                    child.getBaseBranchName(),
+                    recipient.getUserId(),
+                    recipient.getName());
             if (sent) {
                 successCount++;
             } else {

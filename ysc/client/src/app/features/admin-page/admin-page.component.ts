@@ -42,6 +42,27 @@ interface ConsumableStockReportRow {
   availableStock: number | string | null;
 }
 
+interface WhatsAppTrackedMessage {
+  trackingId: string;
+  wamid?: string | null;
+  branchName?: string | null;
+  customerName?: string | null;
+  customerPhone?: string | null;
+  templateName?: string | null;
+  status?: string | null;
+  sentTime?: string | null;
+  lastStatusUpdatedTime?: string | null;
+  metaErrorCode?: number | null;
+  metaErrorMessage?: string | null;
+}
+
+interface WhatsAppTrackedMessagePage {
+  messages: WhatsAppTrackedMessage[];
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
 @Component({
   selector: 'app-admin-page',
   standalone: true,
@@ -65,13 +86,17 @@ export class AdminPageComponent implements OnInit {
   isAddStockExpanded = false;
   isConsumableReportExpanded = false;
   isMonthlyReportExpanded = false;
+  isWhatsAppStatusExpanded = false;
   isLoadingStockItems = false;
   isSavingStock = false;
   isLoadingConsumableReport = false;
   isLoadingMonthlyReport = false;
+  isLoadingWhatsAppStatuses = false;
+  isLoadingMoreWhatsAppStatuses = false;
   reportError = '';
   stockError = '';
   consumableReportError = '';
+  whatsAppStatusError = '';
   selectedMonth = '';
   selectedYear = '';
   selectedConsumableReportMonth = '';
@@ -98,6 +123,9 @@ export class AdminPageComponent implements OnInit {
   ];
   yearOptions: string[] = [];
   snookerBreakdownEntries: SnookerBreakdownEntry[] = [];
+  whatsAppStatuses: WhatsAppTrackedMessage[] = [];
+  hasMoreWhatsAppStatuses = false;
+  private whatsAppStatusPage = 0;
   private stockItemSearchRequestId = 0;
   monthlyEarnings: AdminMonthlyEarnings = {
     currentMonthTotal: 0,
@@ -133,8 +161,13 @@ export class AdminPageComponent implements OnInit {
       this.currentOrganizationName = context?.currentOrganization?.name ?? '';
       if (contextChanged) {
         this.resetMonthlyReportState();
+        this.resetWhatsAppStatusState();
         if (this.isMonthlyReportExpanded) {
           this.loadMonthlyReport();
+          return;
+        }
+        if (this.isWhatsAppStatusExpanded) {
+          this.loadWhatsAppStatuses(true);
           return;
         }
       }
@@ -322,6 +355,67 @@ export class AdminPageComponent implements OnInit {
     return 'stock-positive';
   }
 
+  toggleWhatsAppStatusPanel(): void {
+    if (!this.canViewAdminReport) {
+      return;
+    }
+    this.isWhatsAppStatusExpanded = !this.isWhatsAppStatusExpanded;
+    if (this.isWhatsAppStatusExpanded) {
+      this.loadWhatsAppStatuses(true);
+    } else {
+      this.cdr.markForCheck();
+    }
+  }
+
+  loadMoreWhatsAppStatuses(): void {
+    if (!this.hasMoreWhatsAppStatuses || this.isLoadingWhatsAppStatuses || this.isLoadingMoreWhatsAppStatuses) {
+      return;
+    }
+    this.loadWhatsAppStatuses(false);
+  }
+
+  formatWhatsAppStatusLabel(status: string | null | undefined): string {
+    const normalized = (status ?? '').trim();
+    if (!normalized) {
+      return 'Unknown';
+    }
+    return normalized.toLowerCase().split('_').map((segment) => (
+      segment ? `${segment.charAt(0).toUpperCase()}${segment.slice(1)}` : ''
+    )).join(' ');
+  }
+
+  getWhatsAppStatusClass(status: string | null | undefined): string {
+    switch ((status ?? '').trim().toUpperCase()) {
+      case 'READ':
+        return 'status-read';
+      case 'DELIVERED':
+        return 'status-delivered';
+      case 'SENT':
+      case 'ACCEPTED':
+        return 'status-sent';
+      case 'FAILED':
+      case 'NOT_ACCEPTED':
+        return 'status-failed';
+      default:
+        return 'status-unknown';
+    }
+  }
+
+  formatWhatsAppSentTime(value: string | null | undefined): string {
+    if (!value) {
+      return '-';
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+
   protected loadMonthlyReport(): void {
     this.isLoadingMonthlyReport = true;
     this.reportError = '';
@@ -364,6 +458,58 @@ export class AdminPageComponent implements OnInit {
     };
     this.snookerBreakdownEntries = [];
     this.isLoadingMonthlyReport = false;
+  }
+
+  protected loadWhatsAppStatuses(reset: boolean): void {
+    if (reset) {
+      this.whatsAppStatusPage = 0;
+      this.whatsAppStatuses = [];
+      this.hasMoreWhatsAppStatuses = false;
+      this.whatsAppStatusError = '';
+      this.isLoadingWhatsAppStatuses = true;
+    } else {
+      this.isLoadingMoreWhatsAppStatuses = true;
+      this.whatsAppStatusError = '';
+    }
+    this.cdr.markForCheck();
+
+    const requestedPage = reset ? 0 : this.whatsAppStatusPage + 1;
+    this.http.get<WhatsAppTrackedMessagePage>(
+      `/api/admin/whatsapp-message-statuses?page=${requestedPage}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
+      next: (response) => {
+        const nextMessages = response?.messages ?? [];
+        this.whatsAppStatuses = reset
+          ? nextMessages
+          : [...this.whatsAppStatuses, ...nextMessages];
+        this.whatsAppStatusPage = response?.page ?? requestedPage;
+        this.hasMoreWhatsAppStatuses = !!response?.hasMore;
+        this.isLoadingWhatsAppStatuses = false;
+        this.isLoadingMoreWhatsAppStatuses = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load WhatsApp statuses', err);
+        if (reset) {
+          this.whatsAppStatuses = [];
+        }
+        this.hasMoreWhatsAppStatuses = false;
+        this.isLoadingWhatsAppStatuses = false;
+        this.isLoadingMoreWhatsAppStatuses = false;
+        this.whatsAppStatusError = err?.error?.message || 'Unable to load sent WhatsApp messages right now';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  protected resetWhatsAppStatusState(): void {
+    this.whatsAppStatuses = [];
+    this.whatsAppStatusPage = 0;
+    this.hasMoreWhatsAppStatuses = false;
+    this.isLoadingWhatsAppStatuses = false;
+    this.isLoadingMoreWhatsAppStatuses = false;
+    this.whatsAppStatusError = '';
   }
 
   private loadConsumableReport(): void {

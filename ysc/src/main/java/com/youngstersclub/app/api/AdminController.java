@@ -9,11 +9,13 @@ import com.youngstersclub.app.dto.ConsumableStockCreateResponseDto;
 import com.youngstersclub.app.dto.ConsumableStockReportRowDto;
 import com.youngstersclub.app.dto.MessageResponseDto;
 import com.youngstersclub.app.dto.NotificationBroadcastRequest;
-import com.youngstersclub.app.dto.UserSearchResultDto;
 import com.youngstersclub.app.dto.TriggerWhatsappRequest;
+import com.youngstersclub.app.dto.UserSearchResultDto;
+import com.youngstersclub.app.dto.WhatsAppMessageStatusPageDto;
 import com.youngstersclub.app.service.ConsumableService;
 import com.youngstersclub.app.service.AdminAnalyticsService;
 import com.youngstersclub.app.service.AdminNotificationBroadcastService;
+import com.youngstersclub.app.service.AdminWhatsAppMessageStatusService;
 import com.youngstersclub.app.service.DailyCustomerEngagementService;
 import com.youngstersclub.app.service.WhatsAppTemplateExecutionService;
 import java.util.List;
@@ -41,16 +43,19 @@ public class AdminController {
     private final ConsumableService consumableService;
     private final WhatsAppTemplateExecutionService whatsAppTemplateExecutionService;
     private final AdminNotificationBroadcastService adminNotificationBroadcastService;
+    private final AdminWhatsAppMessageStatusService adminWhatsAppMessageStatusService;
 
     public AdminController(
             AdminAnalyticsService adminAnalyticsService,
             ConsumableService consumableService,
             WhatsAppTemplateExecutionService whatsAppTemplateExecutionService,
-            AdminNotificationBroadcastService adminNotificationBroadcastService) {
+            AdminNotificationBroadcastService adminNotificationBroadcastService,
+            AdminWhatsAppMessageStatusService adminWhatsAppMessageStatusService) {
         this.adminAnalyticsService = adminAnalyticsService;
         this.consumableService = consumableService;
         this.whatsAppTemplateExecutionService = whatsAppTemplateExecutionService;
         this.adminNotificationBroadcastService = adminNotificationBroadcastService;
+        this.adminWhatsAppMessageStatusService = adminWhatsAppMessageStatusService;
     }
 
     @GetMapping("/monthly-earnings")
@@ -188,5 +193,12 @@ public class AdminController {
             @RequestParam(name = "branchId", required = false) Long branchId,
             @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         return ResponseEntity.ok(adminNotificationBroadcastService.searchCustomers(query, actorEmail, branchId));
+    }
+
+    @GetMapping("/whatsapp-message-statuses")
+    public ResponseEntity<WhatsAppMessageStatusPageDto> getWhatsAppMessageStatuses(
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        return ResponseEntity.ok(adminWhatsAppMessageStatusService.getTodayStatuses(actorEmail, page));
     }
 }

@@ -79,6 +79,10 @@
   background: linear-gradient(135deg, #14532d 0%, #15803d 48%, #166534 100%);
 }
 
+.whatsapp-status-header {
+  background: linear-gradient(135deg, #7c2d12 0%, #c2410c 48%, #ea580c 100%);
+}
+
 .panel-chevron {
   font-size: 0.95rem;
 }
@@ -460,6 +464,119 @@
   display: none;
 }
 
+.whatsapp-status-table-wrap {
+  display: block;
+  overflow-x: auto;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.whatsapp-status-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+
+  th,
+  td {
+    padding: 0.95rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: #fff7ed;
+    color: #7c2d12;
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+
+  td {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.whatsapp-status-cards {
+  display: none;
+}
+
+.whatsapp-status-card {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.whatsapp-status-card__header,
+.whatsapp-status-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.whatsapp-status-card__header {
+  margin-bottom: 0.9rem;
+}
+
+.whatsapp-status-card__row {
+  padding-top: 0.7rem;
+  color: #475569;
+
+  strong {
+    color: #0f172a;
+    text-align: right;
+  }
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 104px;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.status-read {
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f766e;
+}
+
+.status-delivered {
+  background: rgba(22, 163, 74, 0.12);
+  color: #15803d;
+}
+
+.status-sent {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
+
+.status-failed {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.status-unknown {
+  background: rgba(148, 163, 184, 0.16);
+  color: #475569;
+}
+
+.whatsapp-status-load-more {
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #7c2d12 0%, #ea580c 100%);
+}
+
 .stock-report-card {
   padding: 1rem;
   border-radius: 1rem;
@@ -534,8 +651,19 @@
     display: none;
   }
 
-  .stock-report-cards {
+  .stock-report-cards,
+  .whatsapp-status-cards {
     display: grid;
     gap: 0.85rem;
+  }
+
+  .whatsapp-status-table-wrap {
+    display: none;
+  }
+
+  .whatsapp-status-card__header,
+  .whatsapp-status-card__row {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

@@ -14,6 +14,7 @@ import { ConsumableItemsComponent } from '../../shared/components/consumable-ite
 import { PlayZoneActivitiesComponent } from '../../shared/components/play-zone-activities/play-zone-activities.component';
 import { AvailableTablesComponent } from './available-tables/available-tables.component';
 import { TopRankersComponent } from './top-rankers/top-rankers.component';
+import { OngoingFramesTodayComponent } from '../../shared/components/ongoing-frames-today/ongoing-frames-today.component';
 
 interface PaymentSummary {
   totalDue: number | string | null;
@@ -33,7 +34,7 @@ interface PhoneVerificationResponse {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, ConsumableItemsComponent, PlayZoneActivitiesComponent, AvailableTablesComponent, TopRankersComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, ConsumableItemsComponent, PlayZoneActivitiesComponent, AvailableTablesComponent, TopRankersComponent, OngoingFramesTodayComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -695,6 +696,16 @@ export class DashboardComponent implements OnInit {
     return !this.showPhoneInput
       && !this.showOrganizationSetup
       && !!this.organizationContext?.kidsPlayEnabled;
+  }
+
+  protected shouldShowOngoingFramesToday(): boolean {
+    const role = this.organizationContext?.currentRole ?? this.userRole;
+    return role === 'ADMIN' || role === 'MANAGER' || role === 'SUPER_ADMIN';
+  }
+
+  protected shouldShowAvailableTables(): boolean {
+    const role = this.organizationContext?.currentRole ?? this.userRole;
+    return role === 'CUSTOMER';
   }
 
   goToSummerOlympicsRegistration() {

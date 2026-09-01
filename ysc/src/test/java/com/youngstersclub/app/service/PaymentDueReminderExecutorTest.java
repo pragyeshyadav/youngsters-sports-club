@@ -115,6 +115,9 @@ class PaymentDueReminderExecutorTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyInt());
         verify(brevoEmailService).sendPaymentDueReminderSummaryEmail(
                 org.mockito.ArgumentMatchers.any(),
@@ -196,6 +199,11 @@ class PaymentDueReminderExecutorTest {
             @Override
             public String getPhone() {
                 return phone;
+            }
+
+            @Override
+            public Long getBaseBranchId() {
+                return 101L;
             }
 
             @Override

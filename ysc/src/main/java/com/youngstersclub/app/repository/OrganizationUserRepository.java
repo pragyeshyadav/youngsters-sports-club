@@ -16,6 +16,7 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
     Integer getUserId();
     String getUserName();
     String getPhone();
+    Long getBaseBranchId();
     String getBaseBranchName();
   }
 
@@ -78,6 +79,7 @@ public interface OrganizationUserRepository extends JpaRepository<OrganizationUs
           ou.user.id AS userId,
           ou.user.name AS userName,
           ou.user.phone AS phone,
+          ou.baseBranch.id AS baseBranchId,
           ou.baseBranch.name AS baseBranchName
       FROM OrganizationUser ou
       WHERE ou.role = :role

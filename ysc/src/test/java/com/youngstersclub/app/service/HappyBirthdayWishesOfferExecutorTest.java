@@ -54,7 +54,7 @@ class HappyBirthdayWishesOfferExecutorTest {
         verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(2L);
         verify(brevoEmailService).sendHappyBirthdayWishesSummaryEmail(any(), anyList(), org.mockito.ArgumentMatchers.eq("ysc@test.com"));
         verify(brevoEmailService).sendHappyBirthdayWishesSummaryEmail(any(), anyList(), org.mockito.ArgumentMatchers.eq("area7@test.com"));
-        verify(whatsAppService, never()).sendHappyBirthdayWishesOfferMessage(any(), any(), any(Integer.class));
+        verify(whatsAppService, never()).sendHappyBirthdayWishesOfferMessage(any(), any(), any(), any(), any(), any(Integer.class), any());
     }
 
     private Organization organization(Long id, String email) {
@@ -107,6 +107,11 @@ class HappyBirthdayWishesOfferExecutorTest {
             @Override
             public String getOrganizationName() {
                 return organizationName;
+            }
+
+            @Override
+            public Long getBaseBranchId() {
+                return 101L;
             }
 
             @Override
