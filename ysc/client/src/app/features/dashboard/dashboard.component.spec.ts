@@ -74,4 +74,46 @@ describe('DashboardComponent - Kids Ocean Dreamland visibility', () => {
       }).isSuperAdminUser({ id: 99, role: 'SUPER_ADMIN' }),
     ).toBeTrue();
   });
+
+  it('renders the available-tables slot only for the CUSTOMER organization role', () => {
+    const fixture = TestBed.createComponent(DashboardComponent);
+    const component = fixture.componentInstance;
+    component.userRole = 'ADMIN';
+    component.organizationContext = {
+      hasPersistedContext: true,
+      requiresSelection: false,
+      userId: 1,
+      currentRole: 'CUSTOMER',
+      currentOrganization: { id: 1, name: 'Organization A' },
+      currentBranch: { id: 1, name: 'Branch A' },
+      availableOrganizations: [],
+      accessibleBranches: [],
+    };
+
+    const roleVisibility = component as DashboardComponent & {
+      shouldShowOngoingFramesToday(): boolean;
+      shouldShowAvailableTables(): boolean;
+    };
+    expect(roleVisibility.shouldShowOngoingFramesToday()).toBeFalse();
+    expect(roleVisibility.shouldShowAvailableTables()).toBeTrue();
+  });
+
+  for (const role of ['ADMIN', 'MANAGER', 'SUPER_ADMIN']) {
+    it(`renders the ongoing-frames slot for the ${role} organization role`, () => {
+      const fixture = TestBed.createComponent(DashboardComponent);
+      const component = fixture.componentInstance;
+      component.organizationContext = {
+        hasPersistedContext: true,
+        requiresSelection: false,
+        userId: 1,
+        currentRole: role,
+        currentOrganization: { id: 1, name: 'Organization A' },
+        currentBranch: { id: 1, name: 'Branch A' },
+        availableOrganizations: [],
+        accessibleBranches: [],
+      };
+
+      expect((component as DashboardComponent & { shouldShowOngoingFramesToday(): boolean }).shouldShowOngoingFramesToday()).toBeTrue();
+    });
+  }
 });

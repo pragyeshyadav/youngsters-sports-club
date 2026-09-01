@@ -104,6 +104,9 @@ public class AdminNotificationBroadcastService {
                         normalizedMessage,
                         scope.organizationPhone(),
                         scope.organizationName(),
+                        scope.organizationId(),
+                        scope.branchId(),
+                        scope.branchLabel(),
                         recipient.getId());
                 if (sent) {
                     successCount++;

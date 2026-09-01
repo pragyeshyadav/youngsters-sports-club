@@ -175,4 +175,47 @@ describe('AdminPageComponent – Club Setup Portal entry', () => {
       { tableName: 'Area 7 Arena', amount: 1200 },
     ]);
   });
+
+  it('loads today’s sent WhatsApp message statuses when the new status panel is expanded', () => {
+    seedSession('admin@example.com');
+    const fixture = TestBed.createComponent(AdminPageComponent);
+    fixture.detectChanges();
+
+    flushUserRole('ADMIN');
+    rerender(fixture);
+
+    const statusPanelButton = Array.from(
+      fixture.nativeElement.querySelectorAll('.panel-header'),
+    ).find((element) => (element as HTMLElement).textContent?.includes('Sent Whatsapp Message Status')) as HTMLButtonElement | undefined;
+
+    expect(statusPanelButton).toBeTruthy();
+    statusPanelButton?.click();
+    fixture.detectChanges();
+
+    const statusRequest = httpMock.expectOne('/api/admin/whatsapp-message-statuses?page=0');
+    expect(statusRequest.request.method).toBe('GET');
+    statusRequest.flush({
+      messages: [
+        {
+          trackingId: 'accepted:wamid.1',
+          customerName: 'Pragyesh',
+          customerPhone: '919765657902',
+          templateName: 'club_customer_notification_org_wise',
+          status: 'DELIVERED',
+          branchName: 'Satna',
+          sentTime: '2026-08-29T10:30:00',
+        },
+      ],
+      page: 0,
+      pageSize: 20,
+      hasMore: false,
+    });
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Pragyesh');
+    expect(text).toContain('club_customer_notification_org_wise');
+    expect(text).toContain('Delivered');
+    expect(text).toContain('Satna');
+  });
 });

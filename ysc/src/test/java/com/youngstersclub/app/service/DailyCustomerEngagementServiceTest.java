@@ -63,7 +63,7 @@ class DailyCustomerEngagementServiceTest {
         verify(organizationSummaryRecipientService).resolveRecipientsForOrganization(2L);
         verify(brevoEmailService).sendDailyVisitSummaryEmail(any(), anyList(), org.mockito.ArgumentMatchers.eq("ysc@test.com"));
         verify(brevoEmailService).sendDailyVisitSummaryEmail(any(), anyList(), org.mockito.ArgumentMatchers.eq("area7@test.com"));
-        verify(whatsAppService, never()).sendDailyVisitThankYouMessage(any(), any());
+        verify(whatsAppService, never()).sendDailyVisitThankYouMessage(any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

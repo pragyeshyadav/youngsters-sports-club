@@ -153,6 +153,9 @@ class AdminNotificationBroadcastServiceTest {
                 "Hi",
                 "9765657902",
                 "Youngsters",
+                organization.getId(),
+                null,
+                "All Branches",
                 101))
                 .thenReturn(true);
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
@@ -203,6 +206,9 @@ class AdminNotificationBroadcastServiceTest {
                 "Hi",
                 "9765657902",
                 "Youngsters",
+                organization.getId(),
+                satnaBranch.getId(),
+                satnaBranch.getName(),
                 101))
                 .thenReturn(true);
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
@@ -253,6 +259,9 @@ class AdminNotificationBroadcastServiceTest {
                 "Hi",
                 "   ",
                 "Youngsters",
+                organization.getId(),
+                null,
+                "All Branches",
                 101))
                 .thenReturn(true);
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
@@ -280,6 +289,9 @@ class AdminNotificationBroadcastServiceTest {
                 "Hi",
                 "   ",
                 "Youngsters",
+                organization.getId(),
+                null,
+                "All Branches",
                 101);
     }
 

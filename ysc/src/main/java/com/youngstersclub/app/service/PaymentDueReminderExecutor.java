@@ -156,6 +156,9 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
                     recipient.getPhone(),
                     recipient.getName(),
                     recipient.getAmount(),
+                    organizationId,
+                    resolveBaseBranchId(eligibleMemberships, recipient.getUserId()),
+                    recipient.getBranchName(),
                     recipient.getUserId());
             if (sent) {
                 successCount++;
@@ -319,6 +322,20 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         fallbackBranchNameByUserId.forEach((userId, fallbackBranchName) ->
                 dueBranchNamesByUserId.putIfAbsent(userId, fallbackBranchName));
         return dueBranchNamesByUserId;
+    }
+
+    protected Long resolveBaseBranchId(
+            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> memberships,
+            Integer userId) {
+        if (memberships == null || userId == null) {
+            return null;
+        }
+        return memberships.stream()
+                .filter(membership -> userId.equals(membership.getUserId()))
+                .map(OrganizationUserRepository.ActiveCustomerMembershipProjection::getBaseBranchId)
+                .filter(branchId -> branchId != null)
+                .findFirst()
+                .orElse(null);
     }
 
     protected Map<Integer, BigDecimal> loadBranchTotalDueByUserId(List<Integer> userIds, Long branchId) {

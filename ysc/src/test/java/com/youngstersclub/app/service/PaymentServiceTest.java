@@ -156,8 +156,11 @@ class PaymentServiceTest {
                 eq(BigDecimal.valueOf(100)),
                 eq(BigDecimal.ZERO),
                 eq(BigDecimal.ZERO),
+                eq(organization.getId()),
                 eq("Youngsters Sports Club"),
-                eq(null));
+                eq(null),
+                eq(branch.getId()),
+                eq(branch.getName()));
     }
 
     @Test
@@ -244,8 +247,11 @@ class PaymentServiceTest {
                 eq(BigDecimal.valueOf(100)),
                 eq(BigDecimal.TEN),
                 eq(BigDecimal.ZERO),
+                eq(cueSociety.getId()),
                 eq("The Cue Society"),
-                eq("2222222222"));
+                eq("2222222222"),
+                eq(cueBranch.getId()),
+                eq(cueBranch.getName()));
     }
 
     private void mockAuthorizedContext() {

@@ -270,6 +270,97 @@
 
       <app-trigger-whatsapp-panel></app-trigger-whatsapp-panel>
 
+      <div class="admin-panel">
+        <button type="button" class="panel-header whatsapp-status-header" (click)="toggleWhatsAppStatusPanel()">
+          <span>📬 Sent Whatsapp Message Status</span>
+          <span class="panel-chevron">{{ isWhatsAppStatusExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isWhatsAppStatusExpanded) {
+          <div class="panel-body">
+            @if (isLoadingWhatsAppStatuses) {
+              <div class="spinner-container compact-spinner">
+                <div class="spinner" aria-label="Loading sent WhatsApp statuses"></div>
+              </div>
+            } @else if (whatsAppStatusError) {
+              <p class="panel-message error-message">{{ whatsAppStatusError }}</p>
+            } @else if (whatsAppStatuses.length === 0) {
+              <p class="panel-message">No WhatsApp customer messages have been tracked for today in this branch yet.</p>
+            } @else {
+              <div class="whatsapp-status-table-wrap">
+                <table class="whatsapp-status-table">
+                  <thead>
+                    <tr>
+                      <th>Customer Name</th>
+                      <th>Template Name</th>
+                      <th>Status</th>
+                      <th>Branch</th>
+                      <th>Sent Time</th>
+                      <th>Customer Phone Number</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (message of whatsAppStatuses; track message.trackingId) {
+                      <tr>
+                        <td>{{ message.customerName || '-' }}</td>
+                        <td>{{ message.templateName || '-' }}</td>
+                        <td>
+                          <span class="status-pill" [ngClass]="getWhatsAppStatusClass(message.status)">
+                            {{ formatWhatsAppStatusLabel(message.status) }}
+                          </span>
+                        </td>
+                        <td>{{ message.branchName || 'All Branches' }}</td>
+                        <td>{{ formatWhatsAppSentTime(message.sentTime) }}</td>
+                        <td>{{ message.customerPhone || '-' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="whatsapp-status-cards">
+                @for (message of whatsAppStatuses; track message.trackingId) {
+                  <div class="whatsapp-status-card">
+                    <div class="whatsapp-status-card__header">
+                      <strong>{{ message.customerName || '-' }}</strong>
+                      <span class="status-pill" [ngClass]="getWhatsAppStatusClass(message.status)">
+                        {{ formatWhatsAppStatusLabel(message.status) }}
+                      </span>
+                    </div>
+                    <div class="whatsapp-status-card__row">
+                      <span>Template</span>
+                      <strong>{{ message.templateName || '-' }}</strong>
+                    </div>
+                    <div class="whatsapp-status-card__row">
+                      <span>Branch</span>
+                      <strong>{{ message.branchName || 'All Branches' }}</strong>
+                    </div>
+                    <div class="whatsapp-status-card__row">
+                      <span>Sent Time</span>
+                      <strong>{{ formatWhatsAppSentTime(message.sentTime) }}</strong>
+                    </div>
+                    <div class="whatsapp-status-card__row">
+                      <span>Phone</span>
+                      <strong>{{ message.customerPhone || '-' }}</strong>
+                    </div>
+                  </div>
+                }
+              </div>
+
+              @if (hasMoreWhatsAppStatuses) {
+                <button
+                  type="button"
+                  class="submit-btn whatsapp-status-load-more"
+                  [disabled]="isLoadingMoreWhatsAppStatuses"
+                  (click)="loadMoreWhatsAppStatuses()">
+                  {{ isLoadingMoreWhatsAppStatuses ? 'Loading More...' : 'Load More' }}
+                </button>
+              }
+            }
+          </div>
+        }
+      </div>
+
       <button type="button" class="submit-btn club-setup-nav-btn" (click)="goToClubSetupPortal()">
         <span>🏛 Club Setup Portal</span>
       </button>

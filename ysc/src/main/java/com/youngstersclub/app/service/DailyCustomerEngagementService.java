@@ -168,7 +168,14 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
                 continue;
             }
 
-            boolean sent = whatsAppService.sendDailyVisitThankYouMessage(customer.getPhone(), customer.getName());
+            boolean sent = whatsAppService.sendDailyVisitThankYouMessage(
+                    customer.getPhone(),
+                    customer.getName(),
+                    customer.getOrganizationId(),
+                    customer.getOrganizationName(),
+                    customer.getBranchId(),
+                    customer.getBranchName(),
+                    customer.getUserId());
             if (sent) {
                 sentCount++;
                 recipientSummaries.add(buildRecipientSummary(customer));

@@ -224,7 +224,9 @@ public class PaymentService {
                 user,
                 request.getAmount(),
                 discount,
+                resolveOrganizationId(context),
                 context.branch().getId(),
+                resolveBranchName(context),
                 resolveOrganizationName(context),
                 resolveOrganizationPhone(context));
     }
@@ -365,7 +367,9 @@ public class PaymentService {
                 user,
                 request.getPaidAmount(),
                 discount,
+                resolveOrganizationId(context),
                 context.branch().getId(),
+                resolveBranchName(context),
                 resolveOrganizationName(context),
                 resolveOrganizationPhone(context));
     }
@@ -374,18 +378,36 @@ public class PaymentService {
             User user,
             BigDecimal paidAmount,
             BigDecimal discountAmount,
+            Long organizationId,
             Long branchId,
+            String branchName,
             String organizationName,
             String organizationPhone) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            triggerPaymentSettlementNotification(user, paidAmount, discountAmount, branchId, organizationName, organizationPhone);
+            triggerPaymentSettlementNotification(
+                    user,
+                    paidAmount,
+                    discountAmount,
+                    organizationId,
+                    branchId,
+                    branchName,
+                    organizationName,
+                    organizationPhone);
             return;
         }
 
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                triggerPaymentSettlementNotification(user, paidAmount, discountAmount, branchId, organizationName, organizationPhone);
+                triggerPaymentSettlementNotification(
+                        user,
+                        paidAmount,
+                        discountAmount,
+                        organizationId,
+                        branchId,
+                        branchName,
+                        organizationName,
+                        organizationPhone);
             }
         });
     }
@@ -394,7 +416,9 @@ public class PaymentService {
             User user,
             BigDecimal paidAmount,
             BigDecimal discountAmount,
+            Long organizationId,
             Long branchId,
+            String branchName,
             String organizationName,
             String organizationPhone) {
         try {
@@ -406,11 +430,21 @@ public class PaymentService {
                     paidAmount,
                     discountAmount,
                     remainingDue,
+                    organizationId,
                     organizationName,
-                    organizationPhone);
+                    organizationPhone,
+                    branchId,
+                    branchName);
         } catch (Exception ex) {
             log.warn("WhatsApp settlement notification failed for userId: {}. Reason: {}", user.getId(), ex.getMessage());
         }
+    }
+
+    protected Long resolveOrganizationId(PaymentBranchContext context) {
+        if (context == null || context.branch() == null || context.branch().getOrganization() == null) {
+            return null;
+        }
+        return context.branch().getOrganization().getId();
     }
 
     protected String resolveOrganizationName(PaymentBranchContext context) {
@@ -418,6 +452,13 @@ public class PaymentService {
             return null;
         }
         return context.branch().getOrganization().getName();
+    }
+
+    protected String resolveBranchName(PaymentBranchContext context) {
+        if (context == null || context.branch() == null) {
+            return null;
+        }
+        return context.branch().getName();
     }
 
     protected String resolveOrganizationPhone(PaymentBranchContext context) {

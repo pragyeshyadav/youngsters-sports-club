@@ -9,16 +9,7 @@ import { AuthService } from '../../core/services/auth.service';
 import { OrganizationContextService } from '../../core/services/organization-context.service';
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
-
-interface OngoingFrame {
-  id: number;
-  tableId: number | null;
-  tableName: string | null;
-  startTime: string;
-  status: string;
-  startedBy: string | null;
-  players: string[];
-}
+import { OngoingFramesTodayComponent } from '../../shared/components/ongoing-frames-today/ongoing-frames-today.component';
 
 interface CompletedFrame {
   id: number;
@@ -215,7 +206,7 @@ interface CustomerOnboardingResponse {
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, OngoingFramesTodayComponent],
   templateUrl: './managers-portal.component.html',
   styleUrl: './managers-portal.component.scss',
 })
@@ -236,12 +227,9 @@ private readonly http = inject(HttpClient);
   private expensesRequestVersion = 0;
   private expensePayersRequestVersion = 0;
 
-  isOngoingExpanded = false;
-  ongoingFrames: OngoingFrame[] = [];
   isCompletedExpanded = false;
   completedFrames: CompletedFrame[] = [];
   isMobile = false;
-  isLoadingOngoing = false;
   isLoadingCompleted = false;
   selectedCompletedDate = '';
   minCompletedDate = '';
@@ -389,14 +377,6 @@ private readonly http = inject(HttpClient);
     this.subscriptions.unsubscribe();
   }
 
-  toggleOngoing(): void {
-    this.isOngoingExpanded = !this.isOngoingExpanded;
-
-    if (this.isOngoingExpanded && this.ongoingFrames.length === 0) {
-      this.loadOngoingFrames();
-    }
-  }
-
   toggleEarnings(): void {
     if (!this.canViewTodayEarnings) {
       return;
@@ -503,30 +483,6 @@ private readonly http = inject(HttpClient);
     }
 
     this.loadEarningsForSelectedDate();
-  }
-
-  loadOngoingFrames(): void {
-    this.isLoadingOngoing = true;
-    const headers = this.buildActorHeaders();
-    const requestVersion = this.branchStateVersion;
-
-    this.http.get<OngoingFrame[]>('/api/frame/ongoing/today', { headers }).subscribe({
-      next: (frames) => {
-        if (requestVersion !== this.branchStateVersion) {
-          return;
-        }
-        this.ongoingFrames = frames;
-        this.isLoadingOngoing = false;
-      },
-      error: (err) => {
-        if (requestVersion !== this.branchStateVersion) {
-          return;
-        }
-        console.error('Failed to load ongoing frames', err);
-        this.ongoingFrames = [];
-        this.isLoadingOngoing = false;
-      },
-    });
   }
 
   toggleCompleted(): void {
@@ -1212,22 +1168,6 @@ private readonly http = inject(HttpClient);
     }
   }
 
-  endFrame(frameId: number): void {
-    void this.router.navigate(['/start-frame'], { state: { frameId, source: 'manager-portal' } });
-  }
-
-  rejectFrame(frameId: number): void {
-    this.http.post(`/api/frame/reject/${frameId}`, {}).subscribe({
-      next: () => {
-        this.loadOngoingFrames();
-      },
-      error: (err) => {
-        console.error('Failed to reject frame', err);
-        alert('Unable to reject frame right now');
-      },
-    });
-  }
-
   goToSettlement(): void {
     void this.router.navigate(['/payment-settlement']);
   }
@@ -1245,10 +1185,6 @@ private readonly http = inject(HttpClient);
     }
 
     return 'due-row';
-  }
-
-  private updateViewportState(): void {
-    this.isMobile = window.innerWidth < 768;
   }
 
   private loadViewerAccess(): void {
@@ -1312,14 +1248,10 @@ private readonly http = inject(HttpClient);
 
         this.currentBranchId = nextBranchId;
         this.branchStateVersion++;
-        this.resetFrameListsForBranchChange();
         this.resetEarningsForBranchChange();
         this.resetPlayersForBranchChange();
         this.resetMonthlyExpensesForBranchChange();
         if (nextBranchId) {
-          if (this.isOngoingExpanded) {
-            this.loadOngoingFrames();
-          }
           if (this.isCompletedExpanded) {
             this.loadCompletedFrames(this.selectedCompletedDate === this.maxCompletedDate);
           }
@@ -1459,13 +1391,6 @@ private readonly http = inject(HttpClient);
     return actorEmail
       ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() })
       : new HttpHeaders();
-  }
-
-  private resetFrameListsForBranchChange(): void {
-    this.ongoingFrames = [];
-    this.completedFrames = [];
-    this.isLoadingOngoing = false;
-    this.isLoadingCompleted = false;
   }
 
   private resetEarningsForBranchChange(): void {
@@ -1902,5 +1827,9 @@ private readonly http = inject(HttpClient);
         alert(err?.error?.message || 'Payment settlement failed');
       }
     });
+  }
+
+  private updateViewportState(): void {
+    this.isMobile = window.innerWidth < 768;
   }
 }
