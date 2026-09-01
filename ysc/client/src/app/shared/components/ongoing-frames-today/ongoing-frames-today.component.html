@@ -1,0 +1,81 @@
+<div class="portal-panel">
+  <button type="button" class="panel-header" (click)="toggleExpand()">
+    <span>📌 Ongoing Frames (Today)</span>
+    <span class="panel-chevron">{{ isExpanded ? '▲' : '▼' }}</span>
+  </button>
+
+  @if (isExpanded) {
+    <div class="panel-body">
+      @if (isLoading) {
+        <div class="spinner-container compact-spinner">
+          <div class="spinner" aria-label="Loading ongoing frames"></div>
+        </div>
+      } @else if (ongoingFrames.length === 0) {
+        <p class="panel-message">No ongoing frames found for today.</p>
+      } @else if (!isMobile) {
+        <div class="table-wrap">
+          <table class="frames-table">
+            <thead>
+              <tr>
+                <th>Table</th>
+                <th>Started By</th>
+                <th>Players</th>
+                <th>Start Time</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (frame of ongoingFrames; track frame.id) {
+                <tr>
+                  <td>{{ frame.tableName || ('Table #' + frame.tableId) }}</td>
+                  <td>{{ frame.startedBy || '-' }}</td>
+                  <td class="players-cell">
+                    <div class="players-wrapper">
+                      @for (player of frame.players; track player) {
+                        <span class="player-chip">{{ player }}</span>
+                      } @empty {
+                        <span>-</span>
+                      }
+                    </div>
+                  </td>
+                  <td>{{ frame.startTime | date: 'short' }}</td>
+                  <td>{{ frame.status }}</td>
+                  <td class="actions-cell">
+                    <button type="button" class="action-btn end-action" (click)="endFrame(frame.id)">🔴 End Frame</button>
+                    <button type="button" class="action-btn reject-action" (click)="rejectFrame(frame.id)">❌ Reject Frame</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <div class="card-container">
+          @for (frame of ongoingFrames; track frame.id) {
+            <div class="history-card running-row">
+              <div class="card-row"><span>🎱 Table</span><strong>{{ frame.tableName || ('Table #' + frame.tableId) }}</strong></div>
+              <div class="card-row"><span>👤 Started By</span><strong>{{ frame.startedBy || '-' }}</strong></div>
+              <div class="players-stack">
+                <span class="players-label">Players</span>
+                <div class="players-wrapper">
+                  @for (player of frame.players; track player) {
+                    <span class="player-chip">{{ player }}</span>
+                  } @empty {
+                    <span>-</span>
+                  }
+                </div>
+              </div>
+              <div class="card-row"><span>🕒 Start</span><span>{{ frame.startTime | date: 'short' }}</span></div>
+              <div class="card-row"><span>Status</span><strong>{{ frame.status }}</strong></div>
+              <div class="actions">
+                <button type="button" class="action-btn end-action" (click)="endFrame(frame.id)">🔴 End Frame</button>
+                <button type="button" class="action-btn reject-action" (click)="rejectFrame(frame.id)">❌ Reject Frame</button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  }
+</div>
