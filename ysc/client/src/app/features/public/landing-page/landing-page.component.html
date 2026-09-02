@@ -13,6 +13,7 @@
           @for (item of navItems; track trackByLabel($index, item)) {
             <a [href]="'/#' + item.id" class="landing-nav__link">{{ item.label }}</a>
           }
+          <a routerLink="/sports-club-management-software" class="landing-nav__link">Club Management Software</a>
         </nav>
 
         <div class="landing-header__actions">
@@ -37,6 +38,7 @@
         @for (item of navItems; track trackByLabel($index, item)) {
           <a [href]="'/#' + item.id" class="landing-nav__link" (click)="closeMobileMenu()">{{ item.label }}</a>
         }
+        <a routerLink="/sports-club-management-software" class="landing-nav__link" (click)="closeMobileMenu()">Club Management Software</a>
         <a [routerLink]="isAuthenticated() ? '/dashboard' : '/login'" class="landing-nav__cta" (click)="closeMobileMenu()">
           {{ getPrimaryCtaLabel(isAuthenticated()) }}
         </a>
@@ -56,6 +58,7 @@
           <div class="hero__actions">
             <a href="/#activities" class="hero__button hero__button--primary">Explore Activities</a>
             <a href="/#moments" class="hero__button hero__button--secondary">View Moments</a>
+            <a routerLink="/sports-club-management-software" class="hero__button hero__button--secondary">Run Your Club with YSC Software</a>
             <a [routerLink]="isAuthenticated() ? '/dashboard' : '/login'" class="hero__button hero__button--ghost">
               {{ getPrimaryCtaLabel(isAuthenticated()) }}
             </a>

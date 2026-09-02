@@ -17,6 +17,13 @@ export const routes: Routes = [
       import('./features/auth/login/login.component').then((m) => m.LoginComponent),
   },
   {
+    path: 'sports-club-management-software',
+    loadComponent: () =>
+      import('./features/public/sports-club-management-software/sports-club-management-software.component').then(
+        (m) => m.SportsClubManagementSoftwareComponent,
+      ),
+  },
+  {
     path: 'dashboard',
     canActivate: [authGuard],
     loadComponent: () =>
