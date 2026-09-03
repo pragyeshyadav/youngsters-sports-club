@@ -1,0 +1,12 @@
+@if (performance; as data) {
+  <app-player-performance-card [performance]="data" />
+} @else if (isLoading) {
+  <section class="performance-card performance-card--loading" aria-label="Loading your snooker statistics">
+    <div class="performance-spinner"></div>
+    <p>Loading your snooker stats...</p>
+  </section>
+} @else if (hasError) {
+  <section class="performance-card performance-card--error" role="status">
+    <p>Unable to load your snooker stats right now.</p>
+  </section>
+}

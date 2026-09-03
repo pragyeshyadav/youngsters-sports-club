@@ -15,6 +15,7 @@ import { PlayZoneActivitiesComponent } from '../../shared/components/play-zone-a
 import { AvailableTablesComponent } from './available-tables/available-tables.component';
 import { TopRankersComponent } from './top-rankers/top-rankers.component';
 import { OngoingFramesTodayComponent } from '../../shared/components/ongoing-frames-today/ongoing-frames-today.component';
+import { PlayerPerformanceComponent } from './player-performance/player-performance.component';
 
 interface PaymentSummary {
   totalDue: number | string | null;
@@ -34,7 +35,7 @@ interface PhoneVerificationResponse {
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, ConsumableItemsComponent, PlayZoneActivitiesComponent, AvailableTablesComponent, TopRankersComponent, OngoingFramesTodayComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, ConsumableItemsComponent, PlayZoneActivitiesComponent, AvailableTablesComponent, TopRankersComponent, OngoingFramesTodayComponent, PlayerPerformanceComponent],
   templateUrl: './dashboard.component.html',
   styleUrl: './dashboard.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

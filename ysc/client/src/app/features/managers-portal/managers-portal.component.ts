@@ -10,6 +10,7 @@ import { OrganizationContextService } from '../../core/services/organization-con
 import { BrandTitleComponent } from '../../shared/components/brand-title/brand-title.component';
 import { ClubLogoComponent } from '../../shared/components/club-logo/club-logo.component';
 import { OngoingFramesTodayComponent } from '../../shared/components/ongoing-frames-today/ongoing-frames-today.component';
+import { PlayerPerformanceCardComponent, PlayerPerformanceView } from '../../shared/components/player-performance-card/player-performance-card.component';
 
 interface CompletedFrame {
   id: number;
@@ -206,7 +207,7 @@ interface CustomerOnboardingResponse {
 @Component({
   selector: 'app-managers-portal',
   standalone: true,
-  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, OngoingFramesTodayComponent],
+  imports: [CommonModule, FormsModule, BrandTitleComponent, ClubLogoComponent, OngoingFramesTodayComponent, PlayerPerformanceCardComponent],
   templateUrl: './managers-portal.component.html',
   styleUrl: './managers-portal.component.scss',
 })
@@ -226,6 +227,7 @@ private readonly http = inject(HttpClient);
   private branchStateVersion = 0;
   private expensesRequestVersion = 0;
   private expensePayersRequestVersion = 0;
+  private playerStatsRequestVersion = 0;
 
   isCompletedExpanded = false;
   completedFrames: CompletedFrame[] = [];
@@ -280,6 +282,14 @@ private readonly http = inject(HttpClient);
     email: '',
     phone: '',
   };
+  isPlayerStatsExpanded = false;
+  isSearchingPlayerStats = false;
+  isLoadingPlayerStats = false;
+  playerStatsSearch = '';
+  playerStatsResults: CustomerSearchResult[] = [];
+  selectedPlayerStats: CustomerSearchResult | null = null;
+  playerPerformance: PlayerPerformanceView | null = null;
+  playerStatsError = false;
   isOnboardExistingExpanded = false;
   isLoadingOnboardingContext = false;
   isSearchingOnboardingCustomers = false;
@@ -557,6 +567,73 @@ private readonly http = inject(HttpClient);
 
   toggleUpdateCustomer(): void {
     this.isUpdateCustomerExpanded = !this.isUpdateCustomerExpanded;
+  }
+
+  togglePlayerStats(): void {
+    this.isPlayerStatsExpanded = !this.isPlayerStatsExpanded;
+  }
+
+  onPlayerStatsSearchInput(): void {
+    const query = this.playerStatsSearch.trim();
+    const requestVersion = ++this.playerStatsRequestVersion;
+    this.playerPerformance = null;
+    this.playerStatsError = false;
+    if (query.length < 3) {
+      this.playerStatsResults = [];
+      this.isSearchingPlayerStats = false;
+      if (!query) {
+        this.selectedPlayerStats = null;
+      }
+      return;
+    }
+
+    this.isSearchingPlayerStats = true;
+    this.http.get<CustomerSearchResult[]>(
+      `/api/manager/player-performance/search?query=${encodeURIComponent(query)}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
+      next: (players) => {
+        if (requestVersion !== this.playerStatsRequestVersion) return;
+        this.playerStatsResults = players;
+        this.isSearchingPlayerStats = false;
+        this.changeDetectorRef.markForCheck();
+      },
+      error: (error) => {
+        if (requestVersion !== this.playerStatsRequestVersion) return;
+        console.error('Failed to search player stats', error);
+        this.playerStatsResults = [];
+        this.isSearchingPlayerStats = false;
+        this.changeDetectorRef.markForCheck();
+      },
+    });
+  }
+
+  selectPlayerStats(player: CustomerSearchResult): void {
+    this.selectedPlayerStats = player;
+    this.playerStatsSearch = player.name;
+    this.playerStatsResults = [];
+    this.isLoadingPlayerStats = true;
+    this.playerStatsError = false;
+    const requestVersion = ++this.playerStatsRequestVersion;
+    this.http.get<PlayerPerformanceView>(
+      `/api/manager/player-performance/${player.id}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
+      next: (performance) => {
+        if (requestVersion !== this.playerStatsRequestVersion) return;
+        this.playerPerformance = performance;
+        this.isLoadingPlayerStats = false;
+        this.changeDetectorRef.markForCheck();
+      },
+      error: (error) => {
+        if (requestVersion !== this.playerStatsRequestVersion) return;
+        console.error('Failed to load player stats', error);
+        this.playerPerformance = null;
+        this.isLoadingPlayerStats = false;
+        this.playerStatsError = true;
+        this.changeDetectorRef.markForCheck();
+      },
+    });
   }
 
   toggleMonthlyExpenses(): void {
@@ -1249,6 +1326,7 @@ private readonly http = inject(HttpClient);
         this.currentBranchId = nextBranchId;
         this.branchStateVersion++;
         this.resetEarningsForBranchChange();
+        this.resetPlayerStatsForBranchChange();
         this.resetPlayersForBranchChange();
         this.resetMonthlyExpensesForBranchChange();
         if (nextBranchId) {
@@ -1402,6 +1480,17 @@ private readonly http = inject(HttpClient);
       duePlayers: [],
       settledPayments: [],
     };
+  }
+
+  private resetPlayerStatsForBranchChange(): void {
+    this.playerStatsRequestVersion++;
+    this.playerStatsSearch = '';
+    this.playerStatsResults = [];
+    this.selectedPlayerStats = null;
+    this.playerPerformance = null;
+    this.isSearchingPlayerStats = false;
+    this.isLoadingPlayerStats = false;
+    this.playerStatsError = false;
   }
 
   private loadExpensePayers(): void {
