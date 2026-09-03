@@ -12,6 +12,7 @@
         <img [src]="user.profileImageUrl" width="96" height="96" alt="" class="avatar" />
       </div>
       <h1 class="welcome-head">Welcome, {{ user.name }}</h1>
+      <app-player-performance />
 
       @if (isLoadingContext) {
         <div class="context-card context-card--loading">

@@ -1219,4 +1219,68 @@ public interface FrameRepository extends JpaRepository<Frame, Integer> {
     BigDecimal getTotalDueForUserByDate(
             @Param("userId") Integer userId,
             @Param("selectedDate") LocalDate selectedDate);
+
+    interface GlobalPlayerPerformanceProjection {
+        Integer getUserId();
+        String getDisplayName();
+        String getProfileImageUrl();
+        Long getTotalFrames();
+        Long getWins();
+        Long getLosses();
+    }
+
+    interface GlobalPlayerRecentFormProjection {
+        Integer getUserId();
+        String getOutcome();
+    }
+
+    @Query(value = """
+        SELECT
+            fp.user_id AS userId,
+            u.name AS displayName,
+            u.profile_pic AS profileImageUrl,
+            COUNT(*) AS totalFrames,
+            SUM(CASE WHEN COALESCE(fp.is_winner, false) = true THEN 1 ELSE 0 END) AS wins,
+            SUM(CASE WHEN COALESCE(fp.is_loser, false) = true THEN 1 ELSE 0 END) AS losses
+        FROM frame_players fp
+        JOIN frames f ON f.id = fp.frame_id
+        JOIN users u ON u.id = fp.user_id
+        WHERE f.status = 'ENDED'
+          AND f.end_time IS NOT NULL
+          AND fp.user_id IS NOT NULL
+          AND (
+              COALESCE(fp.is_winner, false) = true
+              OR COALESCE(fp.is_loser, false) = true
+          )
+        GROUP BY fp.user_id, u.name, u.profile_pic
+        """, nativeQuery = true)
+    List<GlobalPlayerPerformanceProjection> findGlobalPlayerPerformance();
+
+    @Query(value = """
+        SELECT user_id AS userId, outcome
+        FROM (
+            SELECT
+                fp.user_id,
+                CASE
+                    WHEN COALESCE(fp.is_winner, false) = true THEN 'W'
+                    WHEN COALESCE(fp.is_loser, false) = true THEN 'L'
+                END AS outcome,
+                ROW_NUMBER() OVER (
+                    PARTITION BY fp.user_id
+                    ORDER BY f.end_time DESC, f.id DESC, fp.id DESC
+                ) AS row_number
+            FROM frame_players fp
+            JOIN frames f ON f.id = fp.frame_id
+            WHERE f.status = 'ENDED'
+              AND f.end_time IS NOT NULL
+              AND fp.user_id IS NOT NULL
+              AND (
+                  COALESCE(fp.is_winner, false) = true
+                  OR COALESCE(fp.is_loser, false) = true
+              )
+        ) recent
+        WHERE row_number <= 5
+        ORDER BY user_id, row_number
+        """, nativeQuery = true)
+    List<GlobalPlayerRecentFormProjection> findGlobalPlayerRecentForm();
 }

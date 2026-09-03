@@ -759,6 +759,54 @@
       }
     </div>
 
+    <div class="portal-panel player-stats-panel">
+      <button type="button" class="panel-header player-stats-header" (click)="togglePlayerStats()">
+        <span>🎱 Player Stats</span>
+        <span class="panel-chevron">{{ isPlayerStatsExpanded ? '▲' : '▼' }}</span>
+      </button>
+
+      @if (isPlayerStatsExpanded) {
+        <div class="panel-body player-stats-body">
+          <div class="customer-field customer-search-field">
+            <label for="manager-player-stats-search">Search Player</label>
+            <input
+              id="manager-player-stats-search"
+              type="text"
+              [(ngModel)]="playerStatsSearch"
+              (ngModelChange)="onPlayerStatsSearchInput()"
+              placeholder="Search player (min 3 characters)"
+              autocomplete="off"
+            />
+
+            @if (isSearchingPlayerStats) {
+              <div class="customer-search-status">Searching players...</div>
+            } @else if (playerStatsSearch.trim().length >= 3 && playerStatsResults.length > 0) {
+              <div class="customer-search-results">
+                @for (player of playerStatsResults; track player.id) {
+                  <button type="button" class="customer-search-result" (click)="selectPlayerStats(player)">
+                    <span class="customer-search-name">{{ player.name }}</span>
+                    <span class="customer-search-meta">{{ player.email || 'No email' }}</span>
+                  </button>
+                }
+              </div>
+            } @else if (playerStatsSearch.trim().length >= 3 && !selectedPlayerStats) {
+              <div class="customer-search-status">No players found in this branch.</div>
+            }
+          </div>
+
+          @if (isLoadingPlayerStats) {
+            <div class="spinner-container compact-spinner"><div class="spinner" aria-label="Loading player stats"></div></div>
+          } @else if (playerPerformance) {
+            <app-player-performance-card [performance]="playerPerformance" />
+          } @else if (playerStatsError) {
+            <p class="panel-message">Unable to load player stats right now.</p>
+          } @else if (!selectedPlayerStats) {
+            <p class="panel-message">Search for a player to view their snooker performance.</p>
+          }
+        </div>
+      }
+    </div>
+
     <div class="portal-panel monthly-expenses-panel">
       <button type="button" class="panel-header monthly-expenses-header" (click)="toggleMonthlyExpenses()">
         <span>💸 Add Monthly Expenses</span>

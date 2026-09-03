@@ -1,0 +1,4 @@
+.performance-card--loading, .performance-card--error { margin: 1.25rem auto; width: min(100%, 34rem); min-height: 7rem; display: grid; place-content: center; justify-items: center; text-align: center; color: #64748b; }
+.performance-card--error { color: #991b1b; }
+.performance-spinner { width: 1.7rem; height: 1.7rem; border: 4px solid rgba(20,83,45,.18); border-top-color: #166534; border-radius: 50%; animation: performance-spin .9s linear infinite; }
+@keyframes performance-spin { to { transform: rotate(360deg); } }
