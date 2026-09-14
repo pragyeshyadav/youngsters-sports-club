@@ -80,6 +80,10 @@
   background: linear-gradient(135deg, #14532d 0%, #15803d 48%, #166534 100%);
 }
 
+.policy-header {
+  background: linear-gradient(135deg, #334155 0%, #475569 48%, #1e293b 100%);
+}
+
 .panel-chevron {
   font-size: 0.95rem;
 }
@@ -118,6 +122,23 @@
   border-radius: 0.85rem;
   background: white;
   font-size: 1rem;
+}
+
+.policy-form-card { display: grid; gap: 0.7rem; }
+.policy-option { display: flex; align-items: center; gap: 0.55rem; color: #334155; font-weight: 600; }
+.policy-option input { accent-color: #14532d; width: 1rem; height: 1rem; }
+.policy-section-label { margin-top: 0.8rem; }
+.policy-helper { color: #64748b; font-size: 0.9rem; }
+.policy-warning { color: #9a3412; margin-top: 0.2rem; }
+.weekday-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+.policy-submit-btn {
+  margin-top: 0.5rem;
+  background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+
+  &:disabled {
+    background: #475569;
+    opacity: 1;
+  }
 }
 
 .submit-btn {

@@ -11,6 +11,8 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,6 +33,10 @@ public class Organization {
 
   @Column(length = 20)
   private String phone;
+
+  @JdbcTypeCode(SqlTypes.JSON)
+  @Column(columnDefinition = "jsonb")
+  private String policy;
 
   @Column(length = 150)
   private String email;
@@ -133,6 +139,14 @@ public class Organization {
 
   public void setPhone(String phone) {
     this.phone = phone;
+  }
+
+  public String getPolicy() {
+    return policy;
+  }
+
+  public void setPolicy(String policy) {
+    this.policy = policy;
   }
 
   public String getEmail() {
