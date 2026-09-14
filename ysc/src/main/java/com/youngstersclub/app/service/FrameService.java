@@ -43,6 +43,7 @@ import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.function.Supplier;
+import com.youngstersclub.app.policy.PricingType;
 
 @Service
 public class FrameService {
@@ -62,6 +63,7 @@ public class FrameService {
     private final UserBranchAccessRepository userBranchAccessRepository;
     private final UserDueService userDueService;
     private final LeaderboardCacheService leaderboardCacheService;
+    private final OrganizationPolicyService organizationPolicyService;
 
     public FrameService(
             SnookerTableRepository tableRepository,
@@ -73,7 +75,8 @@ public class FrameService {
             BranchRepository branchRepository,
             UserBranchAccessRepository userBranchAccessRepository,
             UserDueService userDueService,
-            LeaderboardCacheService leaderboardCacheService) {
+            LeaderboardCacheService leaderboardCacheService,
+            OrganizationPolicyService organizationPolicyService) {
         this.tableRepository = tableRepository;
         this.frameRepository = frameRepository;
         this.framePlayerRepository = framePlayerRepository;
@@ -84,6 +87,7 @@ public class FrameService {
         this.userBranchAccessRepository = userBranchAccessRepository;
         this.userDueService = userDueService;
         this.leaderboardCacheService = leaderboardCacheService;
+        this.organizationPolicyService = organizationPolicyService;
     }
 
     @Transactional
@@ -547,7 +551,10 @@ public class FrameService {
         BigDecimal baseRate = table.getRatePerMinute();
         BigDecimal effectiveRate = baseRate;
 
-        if (playerCount > 2) {
+        PricingType pricingType = organizationPolicyService == null
+                ? PricingType.DYNAMIC
+                : organizationPolicyService.getEffectivePolicy(context.organizationId()).pricing().type();
+        if (pricingType == PricingType.DYNAMIC && playerCount > 2) {
             BigDecimal extraPlayers = BigDecimal.valueOf(playerCount - 2);
             BigDecimal extraCharge = extraPlayers.multiply(BigDecimal.valueOf(0.5));
             effectiveRate = baseRate.add(extraCharge);

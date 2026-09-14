@@ -55,6 +55,13 @@ interface BranchOption {
   name: string;
 }
 
+type PricingType = 'FIXED' | 'DYNAMIC';
+type Weekday = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
+interface OrganizationPolicy {
+  pricing: { type: PricingType };
+  whatsappPaymentReminder: { weekdays: Weekday[]; minimumDueThreshold: number };
+}
+
 @Component({
   selector: 'app-club-setup-portal',
   standalone: true,
@@ -75,6 +82,7 @@ export class ClubSetupPortalComponent implements OnInit, OnDestroy {
   isTablesPanelExpanded = false;
   isItemsPanelExpanded = false;
   isManagersPanelExpanded = false;
+  isPolicyPanelExpanded = false;
 
   currentOrganizationName: string = '';
 
@@ -111,6 +119,16 @@ export class ClubSetupPortalComponent implements OnInit, OnDestroy {
   accessEditorOrgUserId: number | null = null;
   actorBranches: BranchOption[] = [];
   busyAccessKey = '';
+  isLoadingPolicy = false;
+  isSavingPolicy = false;
+  policyError = '';
+  policy: OrganizationPolicy = this.defaultPolicy();
+  readonly weekdays: { value: Weekday; label: string }[] = [
+    { value: 'MONDAY', label: 'Monday' }, { value: 'TUESDAY', label: 'Tuesday' },
+    { value: 'WEDNESDAY', label: 'Wednesday' }, { value: 'THURSDAY', label: 'Thursday' },
+    { value: 'FRIDAY', label: 'Friday' }, { value: 'SATURDAY', label: 'Saturday' },
+    { value: 'SUNDAY', label: 'Sunday' },
+  ];
 
   private managerSearchRequestId = 0;
   private currentBranchId: number | null = null;
@@ -193,6 +211,61 @@ export class ClubSetupPortalComponent implements OnInit, OnDestroy {
     } else {
       this.cdr.markForCheck();
     }
+  }
+
+  togglePolicyPanel(): void {
+    if (!this.canManageClub) return;
+    this.isPolicyPanelExpanded = !this.isPolicyPanelExpanded;
+    if (this.isPolicyPanelExpanded && !this.isLoadingPolicy) this.loadPolicy();
+    else this.cdr.markForCheck();
+  }
+
+  loadPolicy(): void {
+    this.isLoadingPolicy = true;
+    this.policyError = '';
+    this.cdr.markForCheck();
+    this.http.get<OrganizationPolicy>('/api/organization/policy', { headers: this.buildActorHeaders() }).subscribe({
+      next: (policy) => {
+        this.policy = policy ?? this.defaultPolicy();
+        this.isLoadingPolicy = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        this.policyError = err?.error?.message || 'Unable to load organization policy right now';
+        this.isLoadingPolicy = false;
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  isReminderDaySelected(day: Weekday): boolean {
+    return this.policy.whatsappPaymentReminder.weekdays.includes(day);
+  }
+
+  toggleReminderDay(day: Weekday): void {
+    const selected = this.policy.whatsappPaymentReminder.weekdays;
+    const weekdays = selected.includes(day) ? selected.filter((value) => value !== day) : [...selected, day];
+    this.policy = { ...this.policy, whatsappPaymentReminder: { ...this.policy.whatsappPaymentReminder, weekdays } };
+  }
+
+  savePolicy(): void {
+    if (this.policy.whatsappPaymentReminder.minimumDueThreshold < 0 || this.isSavingPolicy) return;
+    this.isSavingPolicy = true;
+    this.policyError = '';
+    this.cdr.markForCheck();
+    this.http.put<OrganizationPolicy>('/api/organization/policy', this.policy, { headers: this.buildActorHeaders() }).subscribe({
+      next: (policy) => {
+        this.policy = policy;
+        this.isSavingPolicy = false;
+        alert('Organization policy saved successfully');
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        this.policyError = err?.error?.message || 'Unable to save organization policy right now';
+        this.isSavingPolicy = false;
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   loadTables(): void {
@@ -746,6 +819,9 @@ export class ClubSetupPortalComponent implements OnInit, OnDestroy {
     this.isTablesPanelExpanded = false;
     this.isItemsPanelExpanded = false;
     this.isManagersPanelExpanded = false;
+    this.isPolicyPanelExpanded = false;
+    this.policy = this.defaultPolicy();
+    this.policyError = '';
     this.tables = [];
     this.items = [];
     this.managers = [];
@@ -768,5 +844,15 @@ export class ClubSetupPortalComponent implements OnInit, OnDestroy {
   private buildActorHeaders(): HttpHeaders {
     const actorEmail = this.auth.getSnapshot()?.user.email;
     return actorEmail ? new HttpHeaders({ 'X-User-Email': actorEmail.trim() }) : new HttpHeaders();
+  }
+
+  private defaultPolicy(): OrganizationPolicy {
+    return {
+      pricing: { type: 'DYNAMIC' },
+      whatsappPaymentReminder: {
+        weekdays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+        minimumDueThreshold: 500,
+      },
+    };
   }
 }

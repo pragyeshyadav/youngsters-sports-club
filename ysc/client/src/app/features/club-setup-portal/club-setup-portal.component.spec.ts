@@ -53,10 +53,11 @@ describe('ClubSetupPortalComponent', () => {
 
     const buttons = (): NodeListOf<HTMLButtonElement> =>
       fixture.nativeElement.querySelectorAll('.panel-header');
-    expect(buttons().length).toBe(3);
+    expect(buttons().length).toBe(4);
     expect(fixture.nativeElement.textContent).toContain('Update Snooker Table');
     expect(fixture.nativeElement.textContent).toContain('Update Consumable Items');
     expect(fixture.nativeElement.textContent).toContain('Update Manager');
+    expect(fixture.nativeElement.textContent).toContain('Policy');
 
     const tablesHeader = buttons()[0] as HTMLButtonElement;
     tablesHeader.click();

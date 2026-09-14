@@ -13,6 +13,7 @@ import com.youngstersclub.app.repository.KidsPlaySessionRepository;
 import com.youngstersclub.app.repository.OrganizationRepository;
 import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.util.TimeUtil;
+import com.youngstersclub.app.policy.OrganizationPolicy;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -29,7 +30,6 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(PaymentDueReminderExecutor.class);
     private static final String TEMPLATE_NAME = "payment_due_reminder";
-    private static final BigDecimal DUE_THRESHOLD = new BigDecimal("500");
 
     private final OrganizationUserRepository organizationUserRepository;
     private final BranchRepository branchRepository;
@@ -42,6 +42,7 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
     private final BrevoEmailService brevoEmailService;
     private final OrganizationRepository organizationRepository;
     private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
+    private final OrganizationPolicyService organizationPolicyService;
 
     public PaymentDueReminderExecutor(
             OrganizationUserRepository organizationUserRepository,
@@ -54,7 +55,8 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
             WhatsAppService whatsAppService,
             BrevoEmailService brevoEmailService,
             OrganizationRepository organizationRepository,
-            OrganizationSummaryRecipientService organizationSummaryRecipientService) {
+            OrganizationSummaryRecipientService organizationSummaryRecipientService,
+            OrganizationPolicyService organizationPolicyService) {
         this.organizationUserRepository = organizationUserRepository;
         this.branchRepository = branchRepository;
         this.frameRepository = frameRepository;
@@ -66,6 +68,7 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         this.brevoEmailService = brevoEmailService;
         this.organizationRepository = organizationRepository;
         this.organizationSummaryRecipientService = organizationSummaryRecipientService;
+        this.organizationPolicyService = organizationPolicyService;
     }
 
     @Override
@@ -105,6 +108,16 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
             Long organizationId,
             boolean isDryRun,
             LocalDateTime executionTime) {
+        OrganizationPolicy policy = organizationPolicyService == null
+                ? defaultPolicy()
+                : organizationPolicyService.getEffectivePolicy(organizationId);
+        OrganizationPolicy.WhatsappPaymentReminderPolicy reminderPolicy = policy.whatsappPaymentReminder();
+        if (!reminderPolicy.weekdays().contains(executionTime.toLocalDate().getDayOfWeek())) {
+            log.info("Payment due reminder skipped. organizationId: {}, weekday: {}", organizationId, executionTime.toLocalDate().getDayOfWeek());
+            return new WhatsappTemplateExecutionResultDto(
+                    TEMPLATE_NAME, isDryRun, executionTime, 0, 0, 0, 0, 0, List.of());
+        }
+
         List<OrganizationUserRepository.ActiveCustomerMembershipProjection> organizationMemberships =
                 organizationUserRepository.findActiveCustomerMembershipsByRoleAndOrganizationId(
                         UserRole.CUSTOMER,
@@ -129,14 +142,15 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships = organizationMemberships.stream()
                 .filter(membership -> totalDueByUserId
                         .getOrDefault(membership.getUserId(), BigDecimal.ZERO)
-                        .compareTo(DUE_THRESHOLD) > 0)
+                        .compareTo(reminderPolicy.minimumDueThreshold()) > 0)
                 .toList();
 
         Map<Integer, String> branchNamesByUserId = resolveDueBranchNamesByUser(organizationId, eligibleMemberships);
         List<WhatsappTemplateExecutionRecipientDto> eligibleRecipients = buildEligibleRecipients(
                 eligibleMemberships,
                 totalDueByUserId,
-                branchNamesByUserId);
+                branchNamesByUserId,
+                reminderPolicy.minimumDueThreshold());
 
         int successCount = 0;
         int failedCount = 0;
@@ -183,10 +197,27 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         return result;
     }
 
+    private OrganizationPolicy defaultPolicy() {
+        return new OrganizationPolicy(
+                new OrganizationPolicy.PricingPolicy(com.youngstersclub.app.policy.PricingType.DYNAMIC),
+                new OrganizationPolicy.WhatsappPaymentReminderPolicy(
+                        List.of(java.time.DayOfWeek.values()),
+                        OrganizationPolicyService.DEFAULT_MINIMUM_DUE_THRESHOLD));
+    }
+
     protected List<WhatsappTemplateExecutionRecipientDto> buildEligibleRecipients(
             List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships,
             Map<Integer, BigDecimal> totalDueByUserId,
             Map<Integer, String> branchNamesByUserId) {
+        return buildEligibleRecipients(eligibleMemberships, totalDueByUserId, branchNamesByUserId,
+                OrganizationPolicyService.DEFAULT_MINIMUM_DUE_THRESHOLD);
+    }
+
+    protected List<WhatsappTemplateExecutionRecipientDto> buildEligibleRecipients(
+            List<OrganizationUserRepository.ActiveCustomerMembershipProjection> eligibleMemberships,
+            Map<Integer, BigDecimal> totalDueByUserId,
+            Map<Integer, String> branchNamesByUserId,
+            BigDecimal minimumDueThreshold) {
         return (eligibleMemberships == null ? List.<OrganizationUserRepository.ActiveCustomerMembershipProjection>of() : eligibleMemberships)
                 .stream()
                 .map(membership -> {
@@ -200,7 +231,7 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
                             null,
                             membership.getOrganizationName(),
                             branchNamesByUserId.getOrDefault(userId, fallbackBranchName(membership)),
-                            "TOTAL DUE ABOVE ₹500");
+                            "TOTAL DUE ABOVE ₹" + minimumDueThreshold.stripTrailingZeros().toPlainString());
                 })
                 .sorted((left, right) -> right.getAmount().compareTo(left.getAmount()))
                 .toList();
