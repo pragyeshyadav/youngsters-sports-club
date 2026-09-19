@@ -7,6 +7,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 public class OrganizationSummaryRecipientService {
@@ -15,6 +16,9 @@ public class OrganizationSummaryRecipientService {
 
     private final UserRepository userRepository;
     private final OrganizationUserRepository organizationUserRepository;
+
+    @Value("${whatsapp.club-notification.failure-report-recipient:pragyesh.yadav@gmail.com}")
+    private String clubNotificationFailureReportRecipient = "pragyesh.yadav@gmail.com";
 
     public OrganizationSummaryRecipientService(
             UserRepository userRepository,
@@ -27,6 +31,16 @@ public class OrganizationSummaryRecipientService {
         Set<String> recipients = new LinkedHashSet<>();
         recipients.addAll(resolveGlobalSummaryRecipients());
         recipients.addAll(resolveOrganizationSummaryRecipients(organizationId));
+        return List.copyOf(recipients);
+    }
+
+    public List<String> resolveRecipientsForClubNotificationFailureReport(Long organizationId) {
+        // Unlike existing global summaries, failure details must never go to
+        // super-admins who are not members of the broadcast organization.
+        Set<String> recipients = new LinkedHashSet<>(resolveOrganizationSummaryRecipients(organizationId));
+        if (isUsableEmail(clubNotificationFailureReportRecipient)) {
+            recipients.add(normalizeEmail(clubNotificationFailureReportRecipient));
+        }
         return List.copyOf(recipients);
     }
 

@@ -20,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -32,10 +33,20 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final ClubNotificationBroadcastTracker clubNotificationBroadcastTracker;
 
     public ValkeyWhatsAppMessageStatusStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
+        this(redisTemplate, objectMapper, null);
+    }
+
+    @Autowired
+    public ValkeyWhatsAppMessageStatusStore(
+            StringRedisTemplate redisTemplate,
+            ObjectMapper objectMapper,
+            ClubNotificationBroadcastTracker clubNotificationBroadcastTracker) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper.copy().findAndRegisterModules();
+        this.clubNotificationBroadcastTracker = clubNotificationBroadcastTracker;
     }
 
     @Override
@@ -259,6 +270,9 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
             }
         }
         persistRecord(record);
+        if (clubNotificationBroadcastTracker != null) {
+            clubNotificationBroadcastTracker.recordWebhookStatus(wamid, statusNode);
+        }
         log.info(
                 "WhatsApp webhook status applied. organizationId: {}, branchId: {}, userId: {}, templateName: {}, status: {}, trackingId: {}",
                 record.getOrganizationId(),

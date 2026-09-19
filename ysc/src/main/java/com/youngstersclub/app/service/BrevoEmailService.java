@@ -2,6 +2,7 @@ package com.youngstersclub.app.service;
 
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
+import com.youngstersclub.app.dto.ClubNotificationFailureReport;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
@@ -176,6 +177,39 @@ public class BrevoEmailService {
             }
         }
 
+        return sentCount;
+    }
+
+    public int sendClubNotificationFailureReportEmail(
+            ClubNotificationFailureReport report,
+            List<String> recipients) {
+        List<String> effectiveRecipients = sanitizeEmails(recipients == null ? List.of() : recipients);
+        if (effectiveRecipients.isEmpty()) {
+            log.warn("Brevo Club Notification failure report skipped because no recipients were found");
+            return 0;
+        }
+        if (brevoApiKey == null || brevoApiKey.isBlank() || senderEmail == null || senderEmail.isBlank()) {
+            log.warn("Brevo Club Notification failure report skipped because configuration is missing");
+            return 0;
+        }
+
+        String subject = "WhatsApp Notification Failure Report - "
+                + (report == null || report.organizationName() == null ? "Unknown Organization" : report.organizationName());
+        String htmlContent = report == null
+                ? "<h3>WhatsApp Notification Failure Report</h3><p>No report data available.</p>"
+                : ClubNotificationFailureEmailService.buildHtml(report);
+        int sentCount = 0;
+        for (String recipient : effectiveRecipients) {
+            try {
+                sendToRecipient(recipient, subject, htmlContent);
+                sentCount++;
+            } catch (RestClientResponseException ex) {
+                log.error("Brevo Club Notification failure report failed for {}. status: {}, reason: {}",
+                        recipient, ex.getStatusCode(), ex.getMessage());
+            } catch (Exception ex) {
+                log.error("Brevo Club Notification failure report failed for {}. reason: {}", recipient, ex.getMessage(), ex);
+            }
+        }
         return sentCount;
     }
 
