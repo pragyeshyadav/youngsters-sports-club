@@ -46,6 +46,7 @@ class AdminNotificationBroadcastServiceTest {
     @Mock private BranchRepository branchRepository;
     @Mock private UserBranchAccessRepository userBranchAccessRepository;
     @Mock private OrganizationSummaryRecipientService organizationSummaryRecipientService;
+    @Mock private ClubNotificationBroadcastTracker clubNotificationBroadcastTracker;
 
     @InjectMocks private AdminNotificationBroadcastService adminNotificationBroadcastService;
 
@@ -147,17 +148,18 @@ class AdminNotificationBroadcastServiceTest {
                 organization.getId(),
                 null))
                 .thenReturn(List.of(customer));
-        when(whatsAppService.sendClubCustomerNotificationMessage(
-                "9999999999",
-                "Prince",
-                "Hi",
-                "9765657902",
-                "Youngsters",
-                organization.getId(),
-                null,
-                "All Branches",
-                101))
-                .thenReturn(true);
+        when(whatsAppService.sendClubCustomerNotificationMessageForBroadcast(
+                eq("9999999999"),
+                eq("Prince"),
+                eq("Hi"),
+                eq("9765657902"),
+                eq("Youngsters"),
+                eq(organization.getId()),
+                eq((Long) null),
+                eq("All Branches"),
+                eq(101),
+                any()))
+                .thenReturn(new WhatsAppService.ClubNotificationSendResult(true, "wamid.broadcast.101"));
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
                 .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
         when(brevoEmailService.sendNotificationBroadcastSummaryEmail(
@@ -200,17 +202,18 @@ class AdminNotificationBroadcastServiceTest {
                 organization.getId(),
                 satnaBranch.getId()))
                 .thenReturn(List.of(customer));
-        when(whatsAppService.sendClubCustomerNotificationMessage(
-                "9999999999",
-                "Prince",
-                "Hi",
-                "9765657902",
-                "Youngsters",
-                organization.getId(),
-                satnaBranch.getId(),
-                satnaBranch.getName(),
-                101))
-                .thenReturn(true);
+        when(whatsAppService.sendClubCustomerNotificationMessageForBroadcast(
+                eq("9999999999"),
+                eq("Prince"),
+                eq("Hi"),
+                eq("9765657902"),
+                eq("Youngsters"),
+                eq(organization.getId()),
+                eq(satnaBranch.getId()),
+                eq(satnaBranch.getName()),
+                eq(101),
+                any()))
+                .thenReturn(new WhatsAppService.ClubNotificationSendResult(true, "wamid.broadcast.101"));
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
                 .thenReturn(List.of("pragyesh.yadav@gmail.com", "youngsterssportsclub@gmail.com"));
         when(brevoEmailService.sendNotificationBroadcastSummaryEmail(
@@ -253,17 +256,18 @@ class AdminNotificationBroadcastServiceTest {
                 organization.getId(),
                 null))
                 .thenReturn(List.of(customer));
-        when(whatsAppService.sendClubCustomerNotificationMessage(
-                "9999999999",
-                "Prince",
-                "Hi",
-                "   ",
-                "Youngsters",
-                organization.getId(),
-                null,
-                "All Branches",
-                101))
-                .thenReturn(true);
+        when(whatsAppService.sendClubCustomerNotificationMessageForBroadcast(
+                eq("9999999999"),
+                eq("Prince"),
+                eq("Hi"),
+                eq("   "),
+                eq("Youngsters"),
+                eq(organization.getId()),
+                eq((Long) null),
+                eq("All Branches"),
+                eq(101),
+                any()))
+                .thenReturn(new WhatsAppService.ClubNotificationSendResult(true, "wamid.broadcast.101"));
         when(organizationSummaryRecipientService.resolveRecipientsForOrganization(organization.getId()))
                 .thenReturn(List.of("pragyesh.yadav@gmail.com"));
         when(brevoEmailService.sendNotificationBroadcastSummaryEmail(
@@ -283,16 +287,17 @@ class AdminNotificationBroadcastServiceTest {
                 "admin@test.com",
                 null);
 
-        verify(whatsAppService).sendClubCustomerNotificationMessage(
-                "9999999999",
-                "Prince",
-                "Hi",
-                "   ",
-                "Youngsters",
-                organization.getId(),
-                null,
-                "All Branches",
-                101);
+        verify(whatsAppService).sendClubCustomerNotificationMessageForBroadcast(
+                eq("9999999999"),
+                eq("Prince"),
+                eq("Hi"),
+                eq("   "),
+                eq("Youngsters"),
+                eq(organization.getId()),
+                eq((Long) null),
+                eq("All Branches"),
+                eq(101),
+                any());
     }
 
     @Test

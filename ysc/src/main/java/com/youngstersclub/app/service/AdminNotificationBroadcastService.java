@@ -37,6 +37,7 @@ public class AdminNotificationBroadcastService {
     private final BranchRepository branchRepository;
     private final UserBranchAccessRepository userBranchAccessRepository;
     private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
+    private final ClubNotificationBroadcastTracker clubNotificationBroadcastTracker;
 
     public AdminNotificationBroadcastService(
             UserRepository userRepository,
@@ -47,7 +48,8 @@ public class AdminNotificationBroadcastService {
             OrganizationUserRepository organizationUserRepository,
             BranchRepository branchRepository,
             UserBranchAccessRepository userBranchAccessRepository,
-            OrganizationSummaryRecipientService organizationSummaryRecipientService) {
+            OrganizationSummaryRecipientService organizationSummaryRecipientService,
+            ClubNotificationBroadcastTracker clubNotificationBroadcastTracker) {
         this.userRepository = userRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
@@ -57,6 +59,7 @@ public class AdminNotificationBroadcastService {
         this.branchRepository = branchRepository;
         this.userBranchAccessRepository = userBranchAccessRepository;
         this.organizationSummaryRecipientService = organizationSummaryRecipientService;
+        this.clubNotificationBroadcastTracker = clubNotificationBroadcastTracker;
     }
 
     @Async
@@ -91,6 +94,12 @@ public class AdminNotificationBroadcastService {
 
         int successCount = 0;
         int failedCount = 0;
+        String broadcastId = clubNotificationBroadcastTracker.startBroadcast(
+                scope.organizationId(),
+                scope.branchId(),
+                scope.organizationName(),
+                "club_customer_notification_org_wise",
+                normalizedMessage);
         log.info(
                 "Starting WhatsApp notification broadcast. recipientType: {}, totalRecipients: {}",
                 resolvedRecipientType,
@@ -98,7 +107,7 @@ public class AdminNotificationBroadcastService {
 
         for (User recipient : uniqueRecipients) {
             try {
-                boolean sent = whatsAppService.sendClubCustomerNotificationMessage(
+                WhatsAppService.ClubNotificationSendResult sendResult = whatsAppService.sendClubCustomerNotificationMessageForBroadcast(
                         recipient.getPhone(),
                         recipient.getName(),
                         normalizedMessage,
@@ -107,8 +116,9 @@ public class AdminNotificationBroadcastService {
                         scope.organizationId(),
                         scope.branchId(),
                         scope.branchLabel(),
-                        recipient.getId());
-                if (sent) {
+                        recipient.getId(),
+                        wamid -> clubNotificationBroadcastTracker.registerAccepted(broadcastId, wamid));
+                if (sendResult != null && sendResult.accepted()) {
                     successCount++;
                 } else {
                     failedCount++;
@@ -119,6 +129,8 @@ public class AdminNotificationBroadcastService {
                 log.warn("Notification broadcast failed for userId: {}. Reason: {}", recipient.getId(), ex.getMessage(), ex);
             }
         }
+
+        clubNotificationBroadcastTracker.completeRegistration(broadcastId);
 
         sendBroadcastSummary(
                 uniqueRecipients,

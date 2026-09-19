@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -50,6 +51,29 @@ class WhatsAppServiceTest {
         assertTextParameter(whatsAppService.parameters.get(3), "10");
         assertTextParameter(whatsAppService.parameters.get(4), "40");
         assertTextParameter(whatsAppService.parameters.get(5), "9765657902");
+    }
+
+    @Test
+    void clubNotificationBroadcastExposesAcceptedWamidWithoutChangingExistingSendResult() {
+        RecordingStore store = new RecordingStore();
+        TestWhatsAppService whatsAppService = new TestWhatsAppService(store);
+        AtomicReference<String> acceptedWamid = new AtomicReference<>();
+
+        WhatsAppService.ClubNotificationSendResult result = whatsAppService.sendClubCustomerNotificationMessageForBroadcast(
+                "9876543210",
+                "Pragyesh",
+                "Club closed today",
+                "9765657902",
+                "Youngsters",
+                1L,
+                2L,
+                "Satna",
+                10,
+                acceptedWamid::set);
+
+        assertTrue(result.accepted());
+        assertEquals("wamid.123", result.wamid());
+        assertEquals("wamid.123", acceptedWamid.get());
     }
 
     @Test

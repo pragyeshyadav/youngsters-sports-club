@@ -7,6 +7,7 @@ import com.youngstersclub.app.entity.User;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -158,21 +159,38 @@ public class WhatsAppService {
             Long branchId,
             String branchName,
             Integer userId) {
+        ClubNotificationSendResult result = sendClubCustomerNotificationMessageForBroadcast(
+                phoneNumber, name, message, organizationPhone, organizationName,
+                organizationId, branchId, branchName, userId, null);
+        return result != null && result.accepted();
+    }
+
+    public ClubNotificationSendResult sendClubCustomerNotificationMessageForBroadcast(
+            String phoneNumber,
+            String name,
+            String message,
+            String organizationPhone,
+            String organizationName,
+            Long organizationId,
+            Long branchId,
+            String branchName,
+            Integer userId,
+            Consumer<String> acceptedWamidConsumer) {
         if (accessToken == null || accessToken.isBlank() || phoneNumberId == null || phoneNumberId.isBlank()) {
             log.warn("Club customer notification skipped for userId: {} because configuration is missing", userId);
-            return false;
+            return new ClubNotificationSendResult(false, null);
         }
 
         String normalizedPhoneNumber = normalizePhoneNumber(phoneNumber);
         if (normalizedPhoneNumber == null) {
             log.warn("Club customer notification skipped for userId: {} because phone number is invalid", userId);
-            return false;
+            return new ClubNotificationSendResult(false, null);
         }
 
         String resolvedOrganizationName = normalizeOrganizationText(organizationName);
         if (resolvedOrganizationName == null) {
             log.warn("Club customer notification skipped for userId: {} because organization name is missing", userId);
-            return false;
+            return new ClubNotificationSendResult(false, null);
         }
 
         TemplateSendResult result = executeTemplateMessage(
@@ -196,7 +214,14 @@ public class WhatsAppService {
                         name,
                         normalizedPhoneNumber,
                         CLUB_NOTIFICATION_TEMPLATE_NAME));
-        return result.success();
+        if (result.wamid() != null && acceptedWamidConsumer != null) {
+            try {
+                acceptedWamidConsumer.accept(result.wamid());
+            } catch (Exception ex) {
+                log.warn("Club notification broadcast tracking callback failed for userId: {}. Reason: {}", userId, ex.getMessage());
+            }
+        }
+        return new ClubNotificationSendResult(result.success(), result.wamid());
     }
 
     public boolean sendPaymentDueReminderMessage(
@@ -473,5 +498,8 @@ public class WhatsAppService {
             String wamid,
             Integer errorCode,
             String errorMessage) {
+    }
+
+    public record ClubNotificationSendResult(boolean accepted, String wamid) {
     }
 }
