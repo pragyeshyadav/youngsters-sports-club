@@ -16,6 +16,7 @@ import com.youngstersclub.app.service.ConsumableService;
 import com.youngstersclub.app.service.AdminAnalyticsService;
 import com.youngstersclub.app.service.AdminNotificationBroadcastService;
 import com.youngstersclub.app.service.AdminWhatsAppMessageStatusService;
+import com.youngstersclub.app.service.AdminWhatsAppRecipientHealthService;
 import com.youngstersclub.app.service.DailyCustomerEngagementService;
 import com.youngstersclub.app.service.WhatsAppTemplateExecutionService;
 import java.util.List;
@@ -44,18 +45,21 @@ public class AdminController {
     private final WhatsAppTemplateExecutionService whatsAppTemplateExecutionService;
     private final AdminNotificationBroadcastService adminNotificationBroadcastService;
     private final AdminWhatsAppMessageStatusService adminWhatsAppMessageStatusService;
+    private final AdminWhatsAppRecipientHealthService adminWhatsAppRecipientHealthService;
 
     public AdminController(
             AdminAnalyticsService adminAnalyticsService,
             ConsumableService consumableService,
             WhatsAppTemplateExecutionService whatsAppTemplateExecutionService,
             AdminNotificationBroadcastService adminNotificationBroadcastService,
-            AdminWhatsAppMessageStatusService adminWhatsAppMessageStatusService) {
+            AdminWhatsAppMessageStatusService adminWhatsAppMessageStatusService,
+            AdminWhatsAppRecipientHealthService adminWhatsAppRecipientHealthService) {
         this.adminAnalyticsService = adminAnalyticsService;
         this.consumableService = consumableService;
         this.whatsAppTemplateExecutionService = whatsAppTemplateExecutionService;
         this.adminNotificationBroadcastService = adminNotificationBroadcastService;
         this.adminWhatsAppMessageStatusService = adminWhatsAppMessageStatusService;
+        this.adminWhatsAppRecipientHealthService = adminWhatsAppRecipientHealthService;
     }
 
     @GetMapping("/monthly-earnings")
@@ -200,5 +204,21 @@ public class AdminController {
             @RequestParam(name = "page", required = false) Integer page,
             @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
         return ResponseEntity.ok(adminWhatsAppMessageStatusService.getTodayStatuses(actorEmail, page));
+    }
+
+    @GetMapping("/whatsapp/recipient-health")
+    public ResponseEntity<?> getWhatsAppRecipientHealth(
+            @RequestParam String status,
+            @RequestParam(required = false) String cursor,
+            @RequestHeader(name = "X-User-Email", required = false) String actorEmail) {
+        try {
+            return ResponseEntity.ok(adminWhatsAppRecipientHealthService.getHealth(actorEmail, status, cursor));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(new MessageResponseDto(ex.getMessage()));
+        } catch (SecurityException ex) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(new MessageResponseDto(ex.getMessage()));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(new MessageResponseDto(ex.getMessage()));
+        }
     }
 }

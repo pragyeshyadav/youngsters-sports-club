@@ -218,4 +218,51 @@ describe('AdminPageComponent – Club Setup Portal entry', () => {
     expect(text).toContain('Delivered');
     expect(text).toContain('Satna');
   });
+
+  it('lazily loads organization WhatsApp health after selecting a status and appends the next page', () => {
+    seedSession('admin@example.com');
+    const fixture = TestBed.createComponent(AdminPageComponent);
+    fixture.detectChanges();
+
+    flushUserRole('ADMIN');
+    rerender(fixture);
+
+    const panelButton = Array.from(
+      fixture.nativeElement.querySelectorAll('.panel-header'),
+    ).find((element) => (element as HTMLElement).textContent?.includes("Customer's WhatsApp Healthcheck")) as HTMLButtonElement | undefined;
+    expect(panelButton).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('#whatsapp-health-status')).toBeNull();
+
+    panelButton?.click();
+    fixture.detectChanges();
+    const select = fixture.nativeElement.querySelector('#whatsapp-health-status') as HTMLSelectElement;
+    select.value = 'FAILED';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    const firstRequest = httpMock.expectOne('/api/admin/whatsapp/recipient-health?status=FAILED');
+    firstRequest.flush({
+      customers: [{ customerName: 'Rahul Sharma', phoneNumber: '9999999999' }],
+      nextCursor: '1',
+      hasMore: true,
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Rahul Sharma');
+    const loadMore = fixture.nativeElement.querySelector('.whatsapp-health-load-more') as HTMLButtonElement;
+    loadMore.click();
+    fixture.detectChanges();
+
+    const secondRequest = httpMock.expectOne('/api/admin/whatsapp/recipient-health?status=FAILED&cursor=1');
+    secondRequest.flush({
+      customers: [{ customerName: 'Amit Singh', phoneNumber: '9888888888' }],
+      nextCursor: null,
+      hasMore: false,
+    });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Rahul Sharma');
+    expect(fixture.nativeElement.textContent).toContain('Amit Singh');
+    expect(fixture.nativeElement.querySelector('.whatsapp-health-load-more')).toBeNull();
+  });
 });

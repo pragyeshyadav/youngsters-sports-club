@@ -30,18 +30,21 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
     private final BrevoEmailService brevoEmailService;
     private final OrganizationRepository organizationRepository;
     private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
+    private final WhatsAppRecipientHealthService recipientHealthService;
 
     public DailyCustomerEngagementService(
             DailyCustomerVisitRepository dailyCustomerVisitRepository,
             WhatsAppService whatsAppService,
             BrevoEmailService brevoEmailService,
             OrganizationRepository organizationRepository,
-            OrganizationSummaryRecipientService organizationSummaryRecipientService) {
+            OrganizationSummaryRecipientService organizationSummaryRecipientService,
+            WhatsAppRecipientHealthService recipientHealthService) {
         this.dailyCustomerVisitRepository = dailyCustomerVisitRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
         this.organizationRepository = organizationRepository;
         this.organizationSummaryRecipientService = organizationSummaryRecipientService;
+        this.recipientHealthService = recipientHealthService;
     }
 
     @Scheduled(cron = "0 30 21 * * *", zone = "Asia/Kolkata")
@@ -151,8 +154,11 @@ public class DailyCustomerEngagementService implements WhatsAppTemplateExecutor 
         int sentCount = 0;
         int failedCount = 0;
         List<WhatsappTemplateExecutionRecipientDto> recipientSummaries = new ArrayList<>();
+        List<DailyVisitedOrganizationDto> eligibleCustomers = recipientHealthService == null
+                ? (customers == null ? List.of() : customers)
+                : recipientHealthService.filterEligible(organizationId, customers, DailyVisitedOrganizationDto::getPhone);
 
-        for (DailyVisitedOrganizationDto customer : customers == null ? List.<DailyVisitedOrganizationDto>of() : customers) {
+        for (DailyVisitedOrganizationDto customer : eligibleCustomers) {
             if (customer.getPhone() == null || customer.getPhone().isBlank()) {
                 log.warn(
                         "Daily visit thank-you skipped for userId: {}, organizationId: {} because phone number is missing",

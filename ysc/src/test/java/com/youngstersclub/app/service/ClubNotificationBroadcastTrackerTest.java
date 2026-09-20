@@ -4,15 +4,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 
@@ -58,5 +63,34 @@ class ClubNotificationBroadcastTrackerTest {
 
         assertTrue(redisTracker.claimFinalization("broadcast-1"));
         assertFalse(redisTracker.claimFinalization("broadcast-1"));
+    }
+
+    @Test
+    void deadlineExtensionReturnsFalseWhenValkeyUpdateFails() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        when(redisTemplate.execute(
+                any(RedisScript.class), anyList(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenThrow(new IllegalStateException("Valkey unavailable"));
+
+        ClubNotificationBroadcastTracker redisTracker =
+                new ClubNotificationBroadcastTracker(redisTemplate, new ObjectMapper(), null);
+
+        assertFalse(redisTracker.ensureDeadlineAtLeast("broadcast-1", LocalDateTime.now().plusMinutes(15)));
+    }
+
+    @Test
+    void successfulDeadlineExtensionUsesAtomicScript() {
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        SetOperations<String, String> setOperations = mock(SetOperations.class);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        when(setOperations.members(anyString())).thenReturn(java.util.Set.of());
+        when(redisTemplate.execute(
+                any(RedisScript.class), anyList(), anyString(), anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(1L);
+
+        ClubNotificationBroadcastTracker redisTracker =
+                new ClubNotificationBroadcastTracker(redisTemplate, new ObjectMapper(), null);
+
+        assertTrue(redisTracker.ensureDeadlineAtLeast("broadcast-1", LocalDateTime.now().plusMinutes(15)));
     }
 }

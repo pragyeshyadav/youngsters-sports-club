@@ -63,6 +63,19 @@ interface WhatsAppTrackedMessagePage {
   hasMore: boolean;
 }
 
+type WhatsAppRecipientHealthStatus = 'READ' | 'DELIVERED' | 'SENT' | 'FAILED';
+
+interface WhatsAppRecipientHealthCustomer {
+  customerName: string;
+  phoneNumber: string;
+}
+
+interface WhatsAppRecipientHealthPage {
+  customers: WhatsAppRecipientHealthCustomer[];
+  nextCursor?: string | null;
+  hasMore: boolean;
+}
+
 @Component({
   selector: 'app-admin-page',
   standalone: true,
@@ -87,16 +100,24 @@ export class AdminPageComponent implements OnInit {
   isConsumableReportExpanded = false;
   isMonthlyReportExpanded = false;
   isWhatsAppStatusExpanded = false;
+  isWhatsAppHealthExpanded = false;
   isLoadingStockItems = false;
   isSavingStock = false;
   isLoadingConsumableReport = false;
   isLoadingMonthlyReport = false;
   isLoadingWhatsAppStatuses = false;
   isLoadingMoreWhatsAppStatuses = false;
+  isLoadingWhatsAppHealth = false;
+  isLoadingMoreWhatsAppHealth = false;
   reportError = '';
   stockError = '';
   consumableReportError = '';
   whatsAppStatusError = '';
+  whatsAppHealthError = '';
+  selectedWhatsAppHealthStatus: WhatsAppRecipientHealthStatus | '' = '';
+  whatsAppHealthCustomers: WhatsAppRecipientHealthCustomer[] = [];
+  hasMoreWhatsAppHealth = false;
+  private whatsAppHealthCursor: string | null = null;
   selectedMonth = '';
   selectedYear = '';
   selectedConsumableReportMonth = '';
@@ -162,12 +183,17 @@ export class AdminPageComponent implements OnInit {
       if (contextChanged) {
         this.resetMonthlyReportState();
         this.resetWhatsAppStatusState();
+        this.resetWhatsAppHealthState();
         if (this.isMonthlyReportExpanded) {
           this.loadMonthlyReport();
           return;
         }
         if (this.isWhatsAppStatusExpanded) {
           this.loadWhatsAppStatuses(true);
+          return;
+        }
+        if (this.isWhatsAppHealthExpanded && this.selectedWhatsAppHealthStatus) {
+          this.loadWhatsAppHealth(true);
           return;
         }
       }
@@ -510,6 +536,84 @@ export class AdminPageComponent implements OnInit {
     this.isLoadingWhatsAppStatuses = false;
     this.isLoadingMoreWhatsAppStatuses = false;
     this.whatsAppStatusError = '';
+  }
+
+  toggleWhatsAppHealthPanel(): void {
+    if (!this.canViewAdminReport) {
+      return;
+    }
+    this.isWhatsAppHealthExpanded = !this.isWhatsAppHealthExpanded;
+    this.cdr.markForCheck();
+  }
+
+  onWhatsAppHealthStatusChange(): void {
+    if (!this.selectedWhatsAppHealthStatus) {
+      this.resetWhatsAppHealthState();
+      this.cdr.markForCheck();
+      return;
+    }
+    this.loadWhatsAppHealth(true);
+  }
+
+  loadMoreWhatsAppHealth(): void {
+    if (!this.hasMoreWhatsAppHealth || this.isLoadingWhatsAppHealth || this.isLoadingMoreWhatsAppHealth) {
+      return;
+    }
+    this.loadWhatsAppHealth(false);
+  }
+
+  protected loadWhatsAppHealth(reset: boolean): void {
+    const status = this.selectedWhatsAppHealthStatus;
+    if (!status) {
+      return;
+    }
+    if (reset) {
+      this.whatsAppHealthCustomers = [];
+      this.whatsAppHealthCursor = null;
+      this.hasMoreWhatsAppHealth = false;
+      this.isLoadingWhatsAppHealth = true;
+    } else {
+      this.isLoadingMoreWhatsAppHealth = true;
+    }
+    this.whatsAppHealthError = '';
+    this.cdr.markForCheck();
+
+    const cursor = this.whatsAppHealthCursor ? `&cursor=${encodeURIComponent(this.whatsAppHealthCursor)}` : '';
+    this.http.get<WhatsAppRecipientHealthPage>(
+      `/api/admin/whatsapp/recipient-health?status=${status}${cursor}`,
+      { headers: this.buildActorHeaders() },
+    ).subscribe({
+      next: (response) => {
+        this.whatsAppHealthCustomers = reset
+          ? (response?.customers ?? [])
+          : [...this.whatsAppHealthCustomers, ...(response?.customers ?? [])];
+        this.whatsAppHealthCursor = response?.nextCursor ?? null;
+        this.hasMoreWhatsAppHealth = !!response?.hasMore;
+        this.isLoadingWhatsAppHealth = false;
+        this.isLoadingMoreWhatsAppHealth = false;
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        console.error('Failed to load WhatsApp recipient health', err);
+        if (reset) {
+          this.whatsAppHealthCustomers = [];
+        }
+        this.hasMoreWhatsAppHealth = false;
+        this.isLoadingWhatsAppHealth = false;
+        this.isLoadingMoreWhatsAppHealth = false;
+        this.whatsAppHealthError = err?.error?.message || 'Unable to load WhatsApp health records';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  protected resetWhatsAppHealthState(): void {
+    this.whatsAppHealthCustomers = [];
+    this.whatsAppHealthCursor = null;
+    this.hasMoreWhatsAppHealth = false;
+    this.isLoadingWhatsAppHealth = false;
+    this.isLoadingMoreWhatsAppHealth = false;
+    this.whatsAppHealthError = '';
   }
 
   private loadConsumableReport(): void {

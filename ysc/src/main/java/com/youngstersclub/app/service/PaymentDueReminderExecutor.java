@@ -43,6 +43,7 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
     private final OrganizationRepository organizationRepository;
     private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
     private final OrganizationPolicyService organizationPolicyService;
+    private final WhatsAppRecipientHealthService recipientHealthService;
 
     public PaymentDueReminderExecutor(
             OrganizationUserRepository organizationUserRepository,
@@ -56,7 +57,8 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
             BrevoEmailService brevoEmailService,
             OrganizationRepository organizationRepository,
             OrganizationSummaryRecipientService organizationSummaryRecipientService,
-            OrganizationPolicyService organizationPolicyService) {
+            OrganizationPolicyService organizationPolicyService,
+            WhatsAppRecipientHealthService recipientHealthService) {
         this.organizationUserRepository = organizationUserRepository;
         this.branchRepository = branchRepository;
         this.frameRepository = frameRepository;
@@ -69,6 +71,7 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
         this.organizationRepository = organizationRepository;
         this.organizationSummaryRecipientService = organizationSummaryRecipientService;
         this.organizationPolicyService = organizationPolicyService;
+        this.recipientHealthService = recipientHealthService;
     }
 
     @Override
@@ -151,6 +154,12 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
                 totalDueByUserId,
                 branchNamesByUserId,
                 reminderPolicy.minimumDueThreshold());
+        if (recipientHealthService != null) {
+            eligibleRecipients = recipientHealthService.filterEligible(
+                    organizationId,
+                    eligibleRecipients,
+                    WhatsappTemplateExecutionRecipientDto::getPhone);
+        }
 
         int successCount = 0;
         int failedCount = 0;

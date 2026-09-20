@@ -440,18 +440,7 @@ public class WhatsAppService {
     }
 
     protected String normalizePhoneNumber(String phone) {
-        if (phone == null || phone.isBlank()) {
-            return null;
-        }
-
-        String digits = phone.replaceAll("\\D", "");
-        if (digits.length() == 10) {
-            return "91" + digits;
-        }
-        if (digits.length() == 12 && digits.startsWith("91")) {
-            return digits;
-        }
-        return null;
+        return WhatsAppPhoneNumberNormalizer.normalize(phone);
     }
 
     protected String formatAmount(BigDecimal amount) {

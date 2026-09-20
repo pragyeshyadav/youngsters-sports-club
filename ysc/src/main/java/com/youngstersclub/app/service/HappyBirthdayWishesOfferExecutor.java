@@ -28,18 +28,21 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
     private final BrevoEmailService brevoEmailService;
     private final OrganizationRepository organizationRepository;
     private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
+    private final WhatsAppRecipientHealthService recipientHealthService;
 
     public HappyBirthdayWishesOfferExecutor(
             ChildRepository childRepository,
             WhatsAppService whatsAppService,
             BrevoEmailService brevoEmailService,
             OrganizationRepository organizationRepository,
-            OrganizationSummaryRecipientService organizationSummaryRecipientService) {
+            OrganizationSummaryRecipientService organizationSummaryRecipientService,
+            WhatsAppRecipientHealthService recipientHealthService) {
         this.childRepository = childRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
         this.organizationRepository = organizationRepository;
         this.organizationSummaryRecipientService = organizationSummaryRecipientService;
+        this.recipientHealthService = recipientHealthService;
     }
 
     @Override
@@ -121,7 +124,13 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
             LocalDateTime executionTime) {
         List<ChildRepository.BirthdayChildProjection> safeBirthdayChildren =
                 birthdayChildren == null ? List.of() : birthdayChildren;
-        List<WhatsappTemplateExecutionRecipientDto> recipients = safeBirthdayChildren
+        List<ChildRepository.BirthdayChildProjection> eligibleChildren = recipientHealthService == null
+                ? safeBirthdayChildren
+                : recipientHealthService.filterEligible(
+                        organizationId,
+                        safeBirthdayChildren,
+                        ChildRepository.BirthdayChildProjection::getParentPhone);
+        List<WhatsappTemplateExecutionRecipientDto> recipients = eligibleChildren
                 .stream()
                 .map(this::toRecipient)
                 .toList();
@@ -131,7 +140,7 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
 
         for (int index = 0; index < recipients.size(); index++) {
             WhatsappTemplateExecutionRecipientDto recipient = recipients.get(index);
-            ChildRepository.BirthdayChildProjection child = safeBirthdayChildren.get(index);
+            ChildRepository.BirthdayChildProjection child = eligibleChildren.get(index);
             log.info(
                     "Happy birthday eligible parent. userId: {}, organization: {}, parentName: {}, kidName: {}",
                     recipient.getUserId(),
@@ -170,9 +179,9 @@ public class HappyBirthdayWishesOfferExecutor implements WhatsAppTemplateExecuto
                 TEMPLATE_NAME,
                 isDryRun,
                 executionTime,
+                safeBirthdayChildren.size(),
                 recipients.size(),
-                recipients.size(),
-                0,
+                Math.max(safeBirthdayChildren.size() - recipients.size(), 0),
                 successCount,
                 failedCount,
                 recipients);

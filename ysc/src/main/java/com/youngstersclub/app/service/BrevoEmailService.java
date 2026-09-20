@@ -3,6 +3,7 @@ package com.youngstersclub.app.service;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionRecipientDto;
 import com.youngstersclub.app.dto.WhatsappTemplateExecutionResultDto;
 import com.youngstersclub.app.dto.ClubNotificationFailureReport;
+import com.youngstersclub.app.dto.ClubNotificationBroadcastSummary;
 import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.util.TimeUtil;
 import java.time.LocalDate;
@@ -177,6 +178,47 @@ public class BrevoEmailService {
             }
         }
 
+        return sentCount;
+    }
+
+    public int sendClubNotificationBroadcastSummaryEmail(
+            ClubNotificationBroadcastSummary summary,
+            List<User> recipients,
+            List<String> adminEmails,
+            String organizationEmail) {
+        List<String> effectiveRecipients = resolveEffectiveRecipients(adminEmails, organizationEmail);
+        if (effectiveRecipients.isEmpty()) {
+            log.warn("Brevo Club Notification summary skipped because no admin recipient emails were found");
+            return 0;
+        }
+        if (brevoApiKey == null || brevoApiKey.isBlank() || senderEmail == null || senderEmail.isBlank()) {
+            log.warn("Brevo Club Notification summary skipped because configuration is missing");
+            return 0;
+        }
+
+        List<UserSummary> sortedRecipients = (recipients == null ? List.<User>of() : recipients)
+                .stream()
+                .map(user -> new UserSummary(sanitizeName(user.getName()), sanitizePhone(user.getPhone())))
+                .collect(Collectors.toMap(
+                        recipient -> recipient.name.toLowerCase() + "|" + recipient.phone,
+                        recipient -> recipient,
+                        (existing, ignored) -> existing))
+                .values()
+                .stream()
+                .sorted((left, right) -> left.name.compareToIgnoreCase(right.name))
+                .toList();
+
+        String htmlContent = buildClubNotificationBroadcastSummaryHtml(summary, sortedRecipients);
+        int sentCount = 0;
+        for (String adminEmail : effectiveRecipients) {
+            try {
+                sendToRecipient(adminEmail, BROADCAST_SUBJECT, htmlContent);
+                sentCount++;
+                log.info("Brevo Club Notification summary email sent successfully to {}", adminEmail);
+            } catch (Exception ex) {
+                log.error("Brevo Club Notification summary email failed for {}. Reason: {}", adminEmail, ex.getMessage(), ex);
+            }
+        }
         return sentCount;
     }
 
@@ -439,6 +481,32 @@ public class BrevoEmailService {
                 + "</div>"
                 + "<p style=\"margin-top:16px;\">Recipients:</p>"
                 + "<ul>" + recipientListHtml + "</ul>";
+    }
+
+    private String buildClubNotificationBroadcastSummaryHtml(
+            ClubNotificationBroadcastSummary summary,
+            List<UserSummary> recipients) {
+        ClubNotificationBroadcastSummary safeSummary = summary == null
+                ? new ClubNotificationBroadcastSummary("Unknown", "", 0, 0, 0, 0, 0, 0, 0)
+                : summary;
+        String recipientListHtml = recipients == null || recipients.isEmpty()
+                ? "<li>No eligible users found.</li>"
+                : recipients.stream()
+                        .map(item -> "<li>" + escapeHtml(item.name) + " - " + escapeHtml(item.phone) + "</li>")
+                        .collect(Collectors.joining());
+        return "<h3>WhatsApp Notification Broadcast Summary</h3>"
+                + "<p>Date: " + escapeHtml(TimeUtil.nowIST().toLocalDate().format(DATE_FORMATTER)) + "</p>"
+                + "<p>Recipient Type: " + escapeHtml(safeSummary.recipientType()) + "</p>"
+                + "<p>Original Candidates: " + safeSummary.originalCandidates() + "</p>"
+                + "<p>Health-Excluded Recipients: " + safeSummary.healthExcludedRecipients() + "</p>"
+                + "<p>Eligible Recipients: " + safeSummary.eligibleRecipients() + "</p>"
+                + "<p>Attempted Recipients: " + safeSummary.attemptedRecipients() + "</p>"
+                + "<p>Accepted by Meta: " + safeSummary.acceptedByMeta() + "</p>"
+                + "<p>Immediate Send Failures: " + safeSummary.immediateSendFailures() + "</p>"
+                + "<p>Uncertain/Skipped after crash: " + safeSummary.uncertainRecipients() + "</p>"
+                + "<p>Message:</p><div style=\"padding:12px;border-radius:8px;background:#f8fafc;border:1px solid #dbe4ee;white-space:pre-wrap;\">"
+                + escapeHtml(safeSummary.message()) + "</div>"
+                + "<p style=\"margin-top:16px;\">Recipients:</p><ul>" + recipientListHtml + "</ul>";
     }
 
     private String buildPaymentDueReminderSummaryHtml(WhatsappTemplateExecutionResultDto result) {
