@@ -38,6 +38,8 @@ public class AdminNotificationBroadcastService {
     private final UserBranchAccessRepository userBranchAccessRepository;
     private final OrganizationSummaryRecipientService organizationSummaryRecipientService;
     private final ClubNotificationBroadcastTracker clubNotificationBroadcastTracker;
+    private final WhatsAppRecipientHealthService recipientHealthService;
+    private final ClubNotificationBatchDispatcher batchDispatcher;
 
     public AdminNotificationBroadcastService(
             UserRepository userRepository,
@@ -49,7 +51,9 @@ public class AdminNotificationBroadcastService {
             BranchRepository branchRepository,
             UserBranchAccessRepository userBranchAccessRepository,
             OrganizationSummaryRecipientService organizationSummaryRecipientService,
-            ClubNotificationBroadcastTracker clubNotificationBroadcastTracker) {
+            ClubNotificationBroadcastTracker clubNotificationBroadcastTracker,
+            WhatsAppRecipientHealthService recipientHealthService,
+            ClubNotificationBatchDispatcher batchDispatcher) {
         this.userRepository = userRepository;
         this.whatsAppService = whatsAppService;
         this.brevoEmailService = brevoEmailService;
@@ -60,6 +64,8 @@ public class AdminNotificationBroadcastService {
         this.userBranchAccessRepository = userBranchAccessRepository;
         this.organizationSummaryRecipientService = organizationSummaryRecipientService;
         this.clubNotificationBroadcastTracker = clubNotificationBroadcastTracker;
+        this.recipientHealthService = recipientHealthService;
+        this.batchDispatcher = batchDispatcher;
     }
 
     @Async
@@ -91,6 +97,34 @@ public class AdminNotificationBroadcastService {
         RecipientType resolvedRecipientType = RecipientType.from(recipientType);
         List<User> recipients = resolveRecipients(resolvedRecipientType, customerIds, scope);
         List<User> uniqueRecipients = deduplicateRecipients(recipients);
+
+        List<User> eligibleRecipients = recipientHealthService == null
+                ? uniqueRecipients
+                : recipientHealthService.filterEligible(scope.organizationId(), uniqueRecipients, User::getPhone);
+        int healthExcludedCount = uniqueRecipients.size() - eligibleRecipients.size();
+
+        if (batchDispatcher != null) {
+            String broadcastId = batchDispatcher.startBroadcast(
+                    eligibleRecipients,
+                    uniqueRecipients.size(),
+                    healthExcludedCount,
+                    normalizedMessage,
+                    resolvedRecipientType.toDisplayLabel(),
+                    scope.organizationId(),
+                    scope.branchId(),
+                    scope.branchLabel(),
+                    scope.organizationName(),
+                    scope.organizationPhone(),
+                    scope.organizationEmail());
+            log.info(
+                    "Club Notification broadcast queued. organizationId: {}, candidates: {}, healthExcluded: {}, eligible: {}, broadcastId: {}",
+                    scope.organizationId(),
+                    uniqueRecipients.size(),
+                    healthExcludedCount,
+                    eligibleRecipients.size(),
+                    broadcastId);
+            return;
+        }
 
         int successCount = 0;
         int failedCount = 0;

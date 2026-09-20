@@ -83,6 +83,10 @@
   background: linear-gradient(135deg, #7c2d12 0%, #c2410c 48%, #ea580c 100%);
 }
 
+.whatsapp-health-header {
+  background: linear-gradient(135deg, #14532d 0%, #15803d 48%, #166534 100%);
+}
+
 .panel-chevron {
   font-size: 0.95rem;
 }
@@ -577,6 +581,75 @@
   background: linear-gradient(135deg, #7c2d12 0%, #ea580c 100%);
 }
 
+.whatsapp-health-filter {
+  max-width: 360px;
+}
+
+.whatsapp-health-table-wrap {
+  display: block;
+  overflow-x: auto;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.whatsapp-health-table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: 0.95rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+  }
+
+  th {
+    background: #f0fdf4;
+    color: #14532d;
+    font-size: 0.9rem;
+    font-weight: 800;
+  }
+
+  td {
+    color: #0f172a;
+    font-weight: 600;
+  }
+
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.whatsapp-health-cards {
+  display: none;
+}
+
+.whatsapp-health-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+
+  strong {
+    color: #0f172a;
+  }
+
+  span {
+    color: #475569;
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+}
+
+.whatsapp-health-load-more {
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #14532d 0%, #15803d 100%);
+}
+
 .stock-report-card {
   padding: 1rem;
   border-radius: 1rem;
@@ -652,7 +725,8 @@
   }
 
   .stock-report-cards,
-  .whatsapp-status-cards {
+  .whatsapp-status-cards,
+  .whatsapp-health-cards {
     display: grid;
     gap: 0.85rem;
   }
@@ -665,5 +739,18 @@
   .whatsapp-status-card__row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .whatsapp-health-table-wrap {
+    display: none;
+  }
+
+  .whatsapp-health-card {
+    align-items: flex-start;
+    flex-direction: column;
+
+    span {
+      text-align: left;
+    }
   }
 }

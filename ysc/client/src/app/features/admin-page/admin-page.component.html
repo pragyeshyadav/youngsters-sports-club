@@ -361,6 +361,77 @@
         }
       </div>
 
+      <div class="admin-panel whatsapp-health-panel">
+        <button type="button" class="panel-header whatsapp-health-header" (click)="toggleWhatsAppHealthPanel()">
+          <span>👥 Customer's WhatsApp Healthcheck</span>
+          <span class="panel-chevron">{{ isWhatsAppHealthExpanded ? '▲' : '▼' }}</span>
+        </button>
+
+        @if (isWhatsAppHealthExpanded) {
+          <div class="panel-body">
+            <div class="filter-field whatsapp-health-filter">
+              <label for="whatsapp-health-status">WhatsApp Status</label>
+              <select
+                id="whatsapp-health-status"
+                [(ngModel)]="selectedWhatsAppHealthStatus"
+                (ngModelChange)="onWhatsAppHealthStatusChange()">
+                <option value="">Select Status</option>
+                <option value="READ">READ</option>
+                <option value="DELIVERED">DELIVERED</option>
+                <option value="SENT">SENT</option>
+                <option value="FAILED">FAILED</option>
+              </select>
+            </div>
+
+            @if (isLoadingWhatsAppHealth) {
+              <p class="panel-message">Loading WhatsApp health records...</p>
+            } @else if (whatsAppHealthError) {
+              <p class="panel-message error-message">{{ whatsAppHealthError }}</p>
+            } @else if (!selectedWhatsAppHealthStatus) {
+              <p class="panel-message">Select a status to view customer health records.</p>
+            } @else if (whatsAppHealthCustomers.length === 0) {
+              <p class="panel-message">No customers found with {{ selectedWhatsAppHealthStatus }} status.</p>
+            } @else {
+              <div class="whatsapp-health-table-wrap">
+                <table class="whatsapp-health-table">
+                  <thead>
+                    <tr>
+                      <th>Customer Name</th>
+                      <th>Phone Number</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (customer of whatsAppHealthCustomers; track customer.phoneNumber) {
+                      <tr>
+                        <td>{{ customer.customerName }}</td>
+                        <td>{{ customer.phoneNumber }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <div class="whatsapp-health-cards">
+                @for (customer of whatsAppHealthCustomers; track customer.phoneNumber) {
+                  <div class="whatsapp-health-card">
+                    <strong>{{ customer.customerName }}</strong>
+                    <span>{{ customer.phoneNumber }}</span>
+                  </div>
+                }
+              </div>
+              @if (hasMoreWhatsAppHealth) {
+                <button
+                  type="button"
+                  class="submit-btn whatsapp-health-load-more"
+                  [disabled]="isLoadingMoreWhatsAppHealth"
+                  (click)="loadMoreWhatsAppHealth()">
+                  {{ isLoadingMoreWhatsAppHealth ? 'Loading More...' : 'Load More' }}
+                </button>
+              }
+            }
+          </div>
+        }
+      </div>
+
       <button type="button" class="submit-btn club-setup-nav-btn" (click)="goToClubSetupPortal()">
         <span>🏛 Club Setup Portal</span>
       </button>

@@ -36,19 +36,29 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final ClubNotificationBroadcastTracker clubNotificationBroadcastTracker;
+    private final WhatsAppRecipientHealthService recipientHealthService;
 
     public ValkeyWhatsAppMessageStatusStore(StringRedisTemplate redisTemplate, ObjectMapper objectMapper) {
-        this(redisTemplate, objectMapper, null);
+        this(redisTemplate, objectMapper, null, null);
+    }
+
+    public ValkeyWhatsAppMessageStatusStore(
+            StringRedisTemplate redisTemplate,
+            ObjectMapper objectMapper,
+            ClubNotificationBroadcastTracker clubNotificationBroadcastTracker) {
+        this(redisTemplate, objectMapper, clubNotificationBroadcastTracker, null);
     }
 
     @Autowired
     public ValkeyWhatsAppMessageStatusStore(
             StringRedisTemplate redisTemplate,
             ObjectMapper objectMapper,
-            ClubNotificationBroadcastTracker clubNotificationBroadcastTracker) {
+            ClubNotificationBroadcastTracker clubNotificationBroadcastTracker,
+            WhatsAppRecipientHealthService recipientHealthService) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper.copy().findAndRegisterModules();
         this.clubNotificationBroadcastTracker = clubNotificationBroadcastTracker;
+        this.recipientHealthService = recipientHealthService;
     }
 
     @Override
@@ -271,6 +281,9 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
                 record.setMetaErrorMessage(normalizeText(errorNode.path("title").asText(null)));
             }
             logFailedWebhookDiagnostics(record, wamid, statusNode);
+        }
+        if (recipientHealthService != null) {
+            recipientHealthService.recordClubNotificationStatus(record, statusNode);
         }
         persistRecord(record);
         if (clubNotificationBroadcastTracker != null) {

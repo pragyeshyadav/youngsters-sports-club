@@ -7,6 +7,8 @@ import com.youngstersclub.app.dto.ClubNotificationFailureReason;
 import com.youngstersclub.app.dto.ClubNotificationFailureReport;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -37,6 +39,7 @@ public class ClubNotificationBroadcastTracker {
     private static final String PREFIX = "ysc:whatsapp:club-broadcast:v1:";
     private static final String DEADLINE_INDEX_KEY = PREFIX + "deadlines";
     private static final long STATE_TTL_MINUTES = 60L;
+    private static final long RETENTION_BUFFER_MINUTES = 30L;
     private static final long FINALIZER_BATCH_SIZE = 100L;
     private static final String SOURCE = "CLUB_NOTIFICATION";
     private static final DefaultRedisScript<Long> CLAIM_FINALIZATION_SCRIPT = new DefaultRedisScript<>(
@@ -46,6 +49,16 @@ public class ClubNotificationBroadcastTracker {
                     + "return 1 "
                     + "end "
                     + "return 0",
+            Long.class);
+    private static final DefaultRedisScript<Long> EXTEND_DEADLINE_SCRIPT = new DefaultRedisScript<>(
+            "if redis.call('HGET', KEYS[1], 'finalized') == 'true' then return 0 end "
+                    + "local current = tonumber(redis.call('HGET', KEYS[1], 'deadlineEpoch')) or 0 "
+                    + "if current >= tonumber(ARGV[1]) then "
+                    + "redis.call('ZADD', KEYS[2], current, ARGV[5]) return 1 end "
+                    + "redis.call('HSET', KEYS[1], 'deadlineAt', ARGV[2], 'deadlineEpoch', ARGV[1], 'expiryEpoch', ARGV[3], 'ttlSeconds', ARGV[4]) "
+                    + "redis.call('ZADD', KEYS[2], ARGV[1], ARGV[5]) "
+                    + "redis.call('EXPIRE', KEYS[1], ARGV[4]) "
+                    + "return 1",
             Long.class);
 
     private final StringRedisTemplate redisTemplate;
@@ -68,9 +81,27 @@ public class ClubNotificationBroadcastTracker {
             String organizationName,
             String templateName,
             String notificationMessage) {
+        return startBroadcast(
+                organizationId,
+                branchId,
+                organizationName,
+                templateName,
+                notificationMessage,
+                LocalDateTime.now(BUSINESS_ZONE).plusMinutes(15));
+    }
+
+    public String startBroadcast(
+            Long organizationId,
+            Long branchId,
+            String organizationName,
+            String templateName,
+            String notificationMessage,
+            LocalDateTime deadlineAt) {
         String broadcastId = UUID.randomUUID().toString();
         LocalDateTime startedAt = LocalDateTime.now(BUSINESS_ZONE);
-        LocalDateTime deadlineAt = startedAt.plusMinutes(15);
+        LocalDateTime safeDeadlineAt = deadlineAt == null ? startedAt.plusMinutes(15) : deadlineAt;
+        LocalDateTime expiryAt = safeDeadlineAt.plusMinutes(RETENTION_BUFFER_MINUTES);
+        long ttlSeconds = Math.max(60L, Duration.between(Instant.now(), expiryAt.atZone(BUSINESS_ZONE).toInstant()).getSeconds());
         String stateKey = stateKey(broadcastId);
         try {
             HashOperations<String, String, String> hash = redisTemplate.opsForHash();
@@ -81,13 +112,16 @@ public class ClubNotificationBroadcastTracker {
             hash.put(stateKey, "templateName", safe(templateName));
             hash.put(stateKey, "notificationMessage", safe(notificationMessage));
             hash.put(stateKey, "triggeredAt", startedAt.toString());
-            hash.put(stateKey, "deadlineAt", deadlineAt.toString());
+            hash.put(stateKey, "deadlineAt", safeDeadlineAt.toString());
+            hash.put(stateKey, "deadlineEpoch", String.valueOf(toEpochMillis(safeDeadlineAt)));
+            hash.put(stateKey, "expiryEpoch", String.valueOf(toEpochMillis(expiryAt)));
+            hash.put(stateKey, "ttlSeconds", String.valueOf(ttlSeconds));
+            hash.put(stateKey, "lifecycle", "CREATING");
             hash.put(stateKey, "acceptedCount", "0");
             hash.put(stateKey, "registrationComplete", "false");
             hash.put(stateKey, "finalized", "false");
-            redisTemplate.expire(stateKey, STATE_TTL_MINUTES, TimeUnit.MINUTES);
-            redisTemplate.opsForZSet().add(DEADLINE_INDEX_KEY, broadcastId, toEpochMillis(deadlineAt));
-            redisTemplate.expire(DEADLINE_INDEX_KEY, STATE_TTL_MINUTES, TimeUnit.MINUTES);
+            redisTemplate.expire(stateKey, ttlSeconds, TimeUnit.SECONDS);
+            redisTemplate.opsForZSet().add(DEADLINE_INDEX_KEY, broadcastId, toEpochMillis(safeDeadlineAt));
             log.info("Club notification broadcast tracking started. broadcastId: {}, organizationId: {}", broadcastId, organizationId);
         } catch (Exception ex) {
             log.warn("Unable to start Club Notification broadcast tracking. organizationId: {}, reason: {}", organizationId, ex.getMessage());
@@ -104,7 +138,11 @@ public class ClubNotificationBroadcastTracker {
             Boolean added = redisTemplate.opsForSet().add(wamidsKey(broadcastId), normalizedWamid) == 1L;
             if (Boolean.TRUE.equals(added)) {
                 redisTemplate.opsForHash().increment(stateKey(broadcastId), "acceptedCount", 1L);
-                redisTemplate.opsForValue().set(wamidLookupKey(normalizedWamid), broadcastId, STATE_TTL_MINUTES, TimeUnit.MINUTES);
+                redisTemplate.opsForValue().set(
+                        wamidLookupKey(normalizedWamid),
+                        broadcastId,
+                        remainingTtlSeconds(broadcastId),
+                        TimeUnit.SECONDS);
                 expireRelatedKeys(broadcastId);
             }
         } catch (Exception ex) {
@@ -118,6 +156,7 @@ public class ClubNotificationBroadcastTracker {
         }
         try {
             redisTemplate.opsForHash().put(stateKey(broadcastId), "registrationComplete", "true");
+            redisTemplate.opsForHash().put(stateKey(broadcastId), "lifecycle", "READY");
             finalizeIfComplete(broadcastId, false);
         } catch (Exception ex) {
             log.warn("Unable to complete Club Notification registration. broadcastId: {}, reason: {}", broadcastId, ex.getMessage());
@@ -179,6 +218,7 @@ public class ClubNotificationBroadcastTracker {
     protected void finalizeIfComplete(String broadcastId, boolean timedOut) {
         Map<Object, Object> state = redisTemplate.opsForHash().entries(stateKey(broadcastId));
         if (state == null || state.isEmpty() || !SOURCE.equals(state.get("source"))) {
+            redisTemplate.opsForZSet().remove(DEADLINE_INDEX_KEY, broadcastId);
             return;
         }
         if ("true".equals(state.get("finalized"))) {
@@ -213,7 +253,10 @@ public class ClubNotificationBroadcastTracker {
 
         boolean registrationComplete = "true".equals(state.get("registrationComplete"));
         boolean deadlineReached = timedOut || isDeadlineReached(state.get("deadlineAt"));
-        if (!deadlineReached && (!registrationComplete || terminalCount < safeWamids.size())) {
+        // A deadline is only meaningful after every batch has finished adding
+        // accepted wamids. Otherwise an early batch could be finalized while
+        // later batches are still waiting to be sent.
+        if (!registrationComplete || (!deadlineReached && terminalCount < safeWamids.size())) {
             return;
         }
 
@@ -260,6 +303,49 @@ public class ClubNotificationBroadcastTracker {
         if (failedCount > 0) {
             failureEmailService.sendAsync(report);
         }
+    }
+
+    public boolean ensureDeadlineAtLeast(String broadcastId, LocalDateTime desiredDeadlineAt) {
+        if (isBlank(broadcastId) || desiredDeadlineAt == null) {
+            return false;
+        }
+        try {
+            LocalDateTime expiryAt = desiredDeadlineAt.plusMinutes(RETENTION_BUFFER_MINUTES);
+            long expiryEpoch = toEpochMillis(expiryAt);
+            long ttlSeconds = Math.max(60L, Duration.between(Instant.now(), expiryAt.atZone(BUSINESS_ZONE).toInstant()).getSeconds());
+            Long changed = redisTemplate.execute(
+                    EXTEND_DEADLINE_SCRIPT,
+                    List.of(stateKey(broadcastId), DEADLINE_INDEX_KEY),
+                    String.valueOf(toEpochMillis(desiredDeadlineAt)),
+                    desiredDeadlineAt.toString(),
+                    String.valueOf(expiryEpoch),
+                    String.valueOf(ttlSeconds),
+                    broadcastId);
+            if (Long.valueOf(1L).equals(changed)) {
+                refreshAcceptedWamidTtls(broadcastId, ttlSeconds);
+                return true;
+            }
+            return false;
+        } catch (Exception ex) {
+            log.warn("Unable to extend Club Notification failure deadline. broadcastId: {}, reason: {}",
+                    broadcastId, ex.getMessage());
+            return false;
+        }
+    }
+
+    public void markReady(String broadcastId) {
+        if (isBlank(broadcastId)) {
+            return;
+        }
+        redisTemplate.opsForHash().put(stateKey(broadcastId), "lifecycle", "READY");
+    }
+
+    public void abortBroadcast(String broadcastId) {
+        if (isBlank(broadcastId)) {
+            return;
+        }
+        redisTemplate.opsForHash().put(stateKey(broadcastId), "lifecycle", "ABORTED");
+        redisTemplate.opsForZSet().remove(DEADLINE_INDEX_KEY, broadcastId);
     }
 
     /**
@@ -354,9 +440,27 @@ public class ClubNotificationBroadcastTracker {
     }
 
     private void expireRelatedKeys(String broadcastId) {
-        redisTemplate.expire(stateKey(broadcastId), STATE_TTL_MINUTES, TimeUnit.MINUTES);
-        redisTemplate.expire(wamidsKey(broadcastId), STATE_TTL_MINUTES, TimeUnit.MINUTES);
-        redisTemplate.expire(statusesKey(broadcastId), STATE_TTL_MINUTES, TimeUnit.MINUTES);
+        long ttlSeconds = remainingTtlSeconds(broadcastId);
+        redisTemplate.expire(stateKey(broadcastId), ttlSeconds, TimeUnit.SECONDS);
+        redisTemplate.expire(wamidsKey(broadcastId), ttlSeconds, TimeUnit.SECONDS);
+        redisTemplate.expire(statusesKey(broadcastId), ttlSeconds, TimeUnit.SECONDS);
+    }
+
+    private long remainingTtlSeconds(String broadcastId) {
+        Object expiry = redisTemplate.opsForHash().get(stateKey(broadcastId), "expiryEpoch");
+        try {
+            return Math.max(1L, (Long.parseLong(String.valueOf(expiry)) - System.currentTimeMillis()) / 1000L);
+        } catch (Exception ex) {
+            return STATE_TTL_MINUTES * 60L;
+        }
+    }
+
+    private void refreshAcceptedWamidTtls(String broadcastId, long ttlSeconds) {
+        Set<String> wamids = redisTemplate.opsForSet().members(wamidsKey(broadcastId));
+        if (wamids == null) return;
+        for (String wamid : wamids) {
+            redisTemplate.expire(wamidLookupKey(wamid), ttlSeconds, TimeUnit.SECONDS);
+        }
     }
 
     private String stateKey(String broadcastId) { return PREFIX + broadcastId + ":state"; }
