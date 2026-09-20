@@ -1,7 +1,14 @@
 package com.youngstersclub.app.api;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.youngstersclub.app.service.WhatsAppMessageStatusStore;
+import java.util.Iterator;
+import java.util.Locale;
+import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,12 +27,24 @@ public class WhatsAppWebhookController {
     private static final Logger log = LoggerFactory.getLogger(WhatsAppWebhookController.class);
 
     private final WhatsAppMessageStatusStore whatsAppMessageStatusStore;
+    private final ObjectMapper objectMapper;
 
     @Value("${whatsapp.webhook.verify-token:}")
     private String verifyToken;
 
+    @Value("${whatsapp.webhook.full-payload-logging-enabled:false}")
+    private boolean fullPayloadLoggingEnabled;
+
     public WhatsAppWebhookController(WhatsAppMessageStatusStore whatsAppMessageStatusStore) {
+        this(whatsAppMessageStatusStore, new ObjectMapper());
+    }
+
+    @Autowired
+    public WhatsAppWebhookController(
+            WhatsAppMessageStatusStore whatsAppMessageStatusStore,
+            ObjectMapper objectMapper) {
         this.whatsAppMessageStatusStore = whatsAppMessageStatusStore;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping
@@ -48,8 +67,57 @@ public class WhatsAppWebhookController {
                 payload != null,
                 countEntries(payload),
                 countStatuses(payload));
+        logFullPayloadIfEnabled(payload);
         whatsAppMessageStatusStore.applyWebhookPayload(payload);
         return ResponseEntity.ok().build();
+    }
+
+    protected void logFullPayloadIfEnabled(JsonNode payload) {
+        if (!fullPayloadLoggingEnabled || payload == null) {
+            return;
+        }
+        try {
+            log.info("WhatsApp webhook sanitized payload: {}",
+                    objectMapper.writeValueAsString(sanitizePayload(payload)));
+        } catch (Exception ex) {
+            log.warn("Unable to produce sanitized WhatsApp webhook diagnostic log. Reason: {}", ex.getMessage());
+        }
+    }
+
+    protected JsonNode sanitizePayload(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return node;
+        }
+        if (node.isObject()) {
+            ObjectNode sanitized = objectMapper.createObjectNode();
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                sanitized.set(field.getKey(), isSensitiveField(field.getKey())
+                        ? objectMapper.getNodeFactory().textNode("[REDACTED]")
+                        : sanitizePayload(field.getValue()));
+            }
+            return sanitized;
+        }
+        if (node.isArray()) {
+            ArrayNode sanitized = objectMapper.createArrayNode();
+            for (JsonNode child : node) {
+                sanitized.add(sanitizePayload(child));
+            }
+            return sanitized;
+        }
+        return node;
+    }
+
+    protected boolean isSensitiveField(String fieldName) {
+        String field = fieldName == null ? "" : fieldName.toLowerCase(Locale.ROOT);
+        return field.contains("token")
+                || field.contains("authorization")
+                || field.contains("phone")
+                || field.equals("wa_id")
+                || field.equals("recipient_id")
+                || field.equals("from")
+                || field.equals("to");
     }
 
     private int countEntries(JsonNode payload) {

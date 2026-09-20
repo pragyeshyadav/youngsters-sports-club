@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,14 @@ public class ClubNotificationBroadcastTracker {
     private static final long STATE_TTL_MINUTES = 60L;
     private static final long FINALIZER_BATCH_SIZE = 100L;
     private static final String SOURCE = "CLUB_NOTIFICATION";
+    private static final DefaultRedisScript<Long> CLAIM_FINALIZATION_SCRIPT = new DefaultRedisScript<>(
+            "local current = redis.call('HGET', KEYS[1], ARGV[1]) "
+                    + "if current == ARGV[2] then "
+                    + "redis.call('HSET', KEYS[1], ARGV[1], ARGV[3]) "
+                    + "return 1 "
+                    + "end "
+                    + "return 0",
+            Long.class);
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
@@ -173,7 +182,6 @@ public class ClubNotificationBroadcastTracker {
             return;
         }
         if ("true".equals(state.get("finalized"))) {
-            redisTemplate.opsForZSet().remove(DEADLINE_INDEX_KEY, broadcastId);
             return;
         }
 
@@ -209,9 +217,9 @@ public class ClubNotificationBroadcastTracker {
             return;
         }
 
-        Boolean claimed = redisTemplate.opsForHash().putIfAbsent(stateKey(broadcastId), "finalized", "true");
-        if (!Boolean.TRUE.equals(claimed)) {
-            redisTemplate.opsForZSet().remove(DEADLINE_INDEX_KEY, broadcastId);
+        if (!claimFinalization(broadcastId)) {
+            // Another instance owns finalization, or the state is still open.
+            // Leave deadline cleanup to the caller that wins the CAS.
             return;
         }
 
@@ -252,6 +260,19 @@ public class ClubNotificationBroadcastTracker {
         if (failedCount > 0) {
             failureEmailService.sendAsync(report);
         }
+    }
+
+    /**
+     * Atomically claims the single finalization slot shared by all instances.
+     */
+    protected boolean claimFinalization(String broadcastId) {
+        Long result = redisTemplate.execute(
+                CLAIM_FINALIZATION_SCRIPT,
+                List.of(stateKey(broadcastId)),
+                "finalized",
+                "false",
+                "true");
+        return Long.valueOf(1L).equals(result);
     }
 
     protected boolean shouldReplaceStatus(String previousStatus, String incomingStatus) {

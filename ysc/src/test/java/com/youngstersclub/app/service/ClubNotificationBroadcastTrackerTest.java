@@ -3,10 +3,20 @@ package com.youngstersclub.app.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.script.RedisScript;
 
+@ExtendWith(MockitoExtension.class)
 class ClubNotificationBroadcastTrackerTest {
 
     private final ClubNotificationBroadcastTracker tracker =
@@ -29,5 +39,24 @@ class ClubNotificationBroadcastTrackerTest {
         assertEquals(2, tracker.statusRank("DELIVERED"));
         assertEquals(3, tracker.statusRank("read"));
         assertEquals(4, tracker.statusRank("FAILED"));
+    }
+
+    @Test
+    void finalizationClaimUsesAtomicRedisScriptAndAcceptsOnlyTheWinningResult() {
+        StringRedisTemplate redisTemplate = org.mockito.Mockito.mock(StringRedisTemplate.class);
+        ClubNotificationBroadcastTracker redisTracker =
+                new ClubNotificationBroadcastTracker(redisTemplate, new ObjectMapper(), null);
+
+        when(redisTemplate.execute(
+                any(RedisScript.class),
+                eq(List.of("ysc:whatsapp:club-broadcast:v1:broadcast-1:state")),
+                eq("finalized"),
+                eq("false"),
+                eq("true")))
+                .thenReturn(1L)
+                .thenReturn(0L);
+
+        assertTrue(redisTracker.claimFinalization("broadcast-1"));
+        assertFalse(redisTracker.claimFinalization("broadcast-1"));
     }
 }
