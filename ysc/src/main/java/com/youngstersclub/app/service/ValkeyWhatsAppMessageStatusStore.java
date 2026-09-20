@@ -11,7 +11,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -268,6 +270,7 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
                 record.setMetaErrorCode(errorNode.path("code").isIntegralNumber() ? errorNode.path("code").asInt() : null);
                 record.setMetaErrorMessage(normalizeText(errorNode.path("title").asText(null)));
             }
+            logFailedWebhookDiagnostics(record, wamid, statusNode);
         }
         persistRecord(record);
         if (clubNotificationBroadcastTracker != null) {
@@ -281,6 +284,44 @@ public class ValkeyWhatsAppMessageStatusStore implements WhatsAppMessageStatusSt
                 record.getTemplateName(),
                 mappedStatus,
                 trackingId);
+    }
+
+    /** Logs only safe, useful Meta diagnostics for failed statuses. */
+    protected void logFailedWebhookDiagnostics(
+            WhatsAppTrackedMessageDto record,
+            String wamid,
+            JsonNode statusNode) {
+        JsonNode errorsNode = statusNode == null ? null : statusNode.path("errors");
+        Set<String> loggedErrors = new LinkedHashSet<>();
+        if (errorsNode != null && errorsNode.isArray()) {
+            for (JsonNode errorNode : errorsNode) {
+                Integer code = errorNode.path("code").isIntegralNumber() ? errorNode.path("code").asInt() : null;
+                String title = normalizeText(errorNode.path("title").asText(null));
+                String message = normalizeText(errorNode.path("message").asText(null));
+                String details = normalizeText(errorNode.path("error_data").path("details").asText(null));
+                String signature = String.valueOf(code) + "|" + title + "|" + message + "|" + details;
+                if (loggedErrors.add(signature)) {
+                    log.warn(
+                            "WhatsApp webhook FAILED diagnostic. templateName: {}, organizationId: {}, branchId: {}, wamid: {}, errorCode: {}, title: {}, message: {}, details: {}",
+                            record.getTemplateName(),
+                            record.getOrganizationId(),
+                            record.getBranchId(),
+                            wamid,
+                            code,
+                            title,
+                            message,
+                            details);
+                }
+            }
+        }
+        if (loggedErrors.isEmpty()) {
+            log.warn(
+                    "WhatsApp webhook FAILED diagnostic without Meta error details. templateName: {}, organizationId: {}, branchId: {}, wamid: {}",
+                    record.getTemplateName(),
+                    record.getOrganizationId(),
+                    record.getBranchId(),
+                    wamid);
+        }
     }
 
     protected LocalDateTime resolveWebhookTimestamp(JsonNode statusNode) {
