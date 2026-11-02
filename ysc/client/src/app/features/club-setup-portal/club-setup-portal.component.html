@@ -412,6 +412,12 @@
                 <label class="policy-option"><input type="radio" name="pricingType" value="FIXED" [(ngModel)]="policy.pricing.type" /> Fixed</label>
                 <label class="policy-option"><input type="radio" name="pricingType" value="DYNAMIC" [(ngModel)]="policy.pricing.type" /> Dynamic</label>
 
+                <label class="search-label policy-section-label" for="policy-min-frame-time">Minimum Frame Time (Minutes)</label>
+                <input id="policy-min-frame-time" type="number" min="1" step="1" class="search-input" placeholder="Optional" [(ngModel)]="policy.pricing['min-frame-time']" />
+
+                <label class="search-label" for="policy-min-frame-prize">Minimum Frame Price (₹)</label>
+                <input id="policy-min-frame-prize" type="number" min="0" step="0.01" class="search-input" placeholder="Optional" [(ngModel)]="policy.pricing['min-frame-prize']" />
+
                 <span class="search-label policy-section-label">WhatsApp Payment Reminder</span>
                 <span class="policy-helper">Reminder Days</span>
                 <div class="weekday-grid">

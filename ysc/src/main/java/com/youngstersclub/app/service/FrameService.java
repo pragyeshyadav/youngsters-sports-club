@@ -44,6 +44,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.function.Supplier;
 import com.youngstersclub.app.policy.PricingType;
+import com.youngstersclub.app.policy.OrganizationPolicy;
 
 @Service
 public class FrameService {
@@ -551,9 +552,12 @@ public class FrameService {
         BigDecimal baseRate = table.getRatePerMinute();
         BigDecimal effectiveRate = baseRate;
 
-        PricingType pricingType = organizationPolicyService == null
+        OrganizationPolicy organizationPolicy = organizationPolicyService == null
+                ? null
+                : organizationPolicyService.getEffectivePolicy(context.organizationId());
+        PricingType pricingType = organizationPolicy == null
                 ? PricingType.DYNAMIC
-                : organizationPolicyService.getEffectivePolicy(context.organizationId()).pricing().type();
+                : organizationPolicy.pricing().type();
         if (pricingType == PricingType.DYNAMIC && playerCount > 2) {
             BigDecimal extraPlayers = BigDecimal.valueOf(playerCount - 2);
             BigDecimal extraCharge = extraPlayers.multiply(BigDecimal.valueOf(0.5));
@@ -561,6 +565,12 @@ public class FrameService {
         }
 
         BigDecimal totalAmount = effectiveRate.multiply(BigDecimal.valueOf(duration));
+        if (organizationPolicy != null
+                && organizationPolicy.pricing().minFrameTime() != null
+                && organizationPolicy.pricing().minFramePrize() != null
+                && duration <= organizationPolicy.pricing().minFrameTime()) {
+            totalAmount = organizationPolicy.pricing().minFramePrize();
+        }
 
         List<Integer> winnerIds = request.getWinnerIds();
         List<Integer> loserIds = request.getLoserIds();

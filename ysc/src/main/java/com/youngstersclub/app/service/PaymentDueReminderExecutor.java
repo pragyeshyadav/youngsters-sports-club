@@ -208,7 +208,7 @@ public class PaymentDueReminderExecutor implements WhatsAppTemplateExecutor {
 
     private OrganizationPolicy defaultPolicy() {
         return new OrganizationPolicy(
-                new OrganizationPolicy.PricingPolicy(com.youngstersclub.app.policy.PricingType.DYNAMIC),
+                new OrganizationPolicy.PricingPolicy(com.youngstersclub.app.policy.PricingType.DYNAMIC, null, null),
                 new OrganizationPolicy.WhatsappPaymentReminderPolicy(
                         List.of(java.time.DayOfWeek.values()),
                         OrganizationPolicyService.DEFAULT_MINIMUM_DUE_THRESHOLD));

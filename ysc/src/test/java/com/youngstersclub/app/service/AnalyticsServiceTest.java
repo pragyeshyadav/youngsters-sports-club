@@ -23,6 +23,7 @@ import com.youngstersclub.app.repository.OrganizationUserRepository;
 import com.youngstersclub.app.repository.PaymentRepository;
 import com.youngstersclub.app.repository.UserBranchAccessRepository;
 import com.youngstersclub.app.repository.UserRepository;
+import com.youngstersclub.app.util.TimeUtil;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -85,7 +86,7 @@ class AnalyticsServiceTest {
 
     @Test
     void getEarningsForDateReturnsOnlyCurrentBranchSettledPayments() {
-        LocalDate selectedDate = LocalDate.of(2026, 7, 31);
+        LocalDate selectedDate = TimeUtil.nowIST().toLocalDate().minusDays(1);
         mockAuthorizedContext();
         when(frameRepository.findEarningsAnalyticsByBranchAndDateRange(branch.getId(), selectedDate.atStartOfDay(), selectedDate.plusDays(1).atStartOfDay()))
                 .thenReturn(List.of());
@@ -159,7 +160,7 @@ class AnalyticsServiceTest {
 
         SecurityException exception = assertThrows(
                 SecurityException.class,
-                () -> analyticsService.getEarningsForDate(LocalDate.of(2026, 7, 31), "manager@test.com"));
+                () -> analyticsService.getEarningsForDate(TimeUtil.nowIST().toLocalDate().minusDays(1), "manager@test.com"));
 
         assertEquals("You do not have access to the current branch", exception.getMessage());
     }
