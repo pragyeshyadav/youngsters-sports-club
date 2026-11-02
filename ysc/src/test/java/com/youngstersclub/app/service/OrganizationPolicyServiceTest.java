@@ -20,6 +20,8 @@ class OrganizationPolicyServiceTest {
     OrganizationPolicy policy = service.parseEffective(null);
 
     assertEquals(PricingType.DYNAMIC, policy.pricing().type());
+    assertEquals(null, policy.pricing().minFrameTime());
+    assertEquals(null, policy.pricing().minFramePrize());
     assertEquals(List.of(DayOfWeek.values()), policy.whatsappPaymentReminder().weekdays());
     assertEquals(new BigDecimal("500"), policy.whatsappPaymentReminder().minimumDueThreshold());
   }
@@ -44,6 +46,30 @@ class OrganizationPolicyServiceTest {
     assertEquals(PricingType.FIXED, policy.pricing().type());
     assertEquals(List.of(DayOfWeek.MONDAY, DayOfWeek.SUNDAY), policy.whatsappPaymentReminder().weekdays());
     assertEquals(new BigDecimal("501"), policy.whatsappPaymentReminder().minimumDueThreshold());
+  }
+
+  @Test
+  void parsesNullableMinimumFramePricingAndPreservesMissingValues() {
+    OrganizationPolicy configured = service.parseEffective("""
+        {"pricing":{"type":"FIXED","min-frame-time":20,"min-frame-prize":50},"whatsappPaymentReminder":{"weekdays":["MONDAY"],"minimumDueThreshold":700}}
+        """);
+
+    assertEquals(20, configured.pricing().minFrameTime());
+    assertEquals(new BigDecimal("50"), configured.pricing().minFramePrize());
+    assertEquals(List.of(DayOfWeek.MONDAY), configured.whatsappPaymentReminder().weekdays());
+    assertEquals(new BigDecimal("700"), configured.whatsappPaymentReminder().minimumDueThreshold());
+
+    OrganizationPolicy missing = service.parseEffective("{\"pricing\":{\"type\":\"DYNAMIC\"}}");
+    assertEquals(null, missing.pricing().minFrameTime());
+    assertEquals(null, missing.pricing().minFramePrize());
+  }
+
+  @Test
+  void rejectsInvalidMinimumFramePricing() {
+    assertThrows(IllegalArgumentException.class,
+        () -> service.parseEffective("{\"pricing\":{\"min-frame-time\":0}}"));
+    assertThrows(IllegalArgumentException.class,
+        () -> service.parseEffective("{\"pricing\":{\"min-frame-prize\":-1}}"));
   }
 
   @Test

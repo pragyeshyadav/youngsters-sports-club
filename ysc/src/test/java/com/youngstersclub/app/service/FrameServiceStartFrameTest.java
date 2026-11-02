@@ -25,6 +25,8 @@ import com.youngstersclub.app.entity.User;
 import com.youngstersclub.app.enums.FrameStatus;
 import com.youngstersclub.app.enums.PaymentStatus;
 import com.youngstersclub.app.enums.UserRole;
+import com.youngstersclub.app.policy.OrganizationPolicy;
+import com.youngstersclub.app.policy.PricingType;
 import com.youngstersclub.app.repository.BranchRepository;
 import com.youngstersclub.app.repository.FramePlayerRepository;
 import com.youngstersclub.app.repository.FrameRepository;
@@ -62,6 +64,7 @@ class FrameServiceStartFrameTest {
   @Mock private UserBranchAccessRepository userBranchAccessRepository;
   @Mock private UserDueService userDueService;
   @Mock private LeaderboardCacheService leaderboardCacheService;
+  @Mock private OrganizationPolicyService organizationPolicyService;
 
   @InjectMocks private FrameService frameService;
 
@@ -199,6 +202,30 @@ class FrameServiceStartFrameTest {
     assertEquals(branch.getId(), frame.getBranch().getId());
     assertEquals(FrameStatus.ENDED, frame.getStatus());
     assertEquals(true, table.getIsAvailable());
+  }
+
+  @Test
+  void endFrameUsesConfiguredMinimumChargeForShortFrames() {
+    mockAuthorizedContext();
+    when(organizationPolicyService.getEffectivePolicy(organization.getId())).thenReturn(new OrganizationPolicy(
+        new OrganizationPolicy.PricingPolicy(PricingType.DYNAMIC, 20, new BigDecimal("50")),
+        new OrganizationPolicy.WhatsappPaymentReminderPolicy(List.of(), BigDecimal.ZERO)));
+    Frame frame = buildStartedFrame(701, branch, table);
+    FramePlayer winnerPlayer = buildFramePlayer(frame, buildPlayer(91, "Winner"), true, false, BigDecimal.ZERO, PaymentStatus.PAID);
+    FramePlayer loserPlayer = buildFramePlayer(frame, buildPlayer(92, "Loser"), false, true, BigDecimal.ZERO, PaymentStatus.UNPAID);
+    when(frameRepository.findForUpdateByIdAndBranchId(frame.getId(), branch.getId())).thenReturn(Optional.of(frame));
+    when(framePlayerRepository.findByFrame_Id(frame.getId())).thenReturn(List.of(winnerPlayer, loserPlayer));
+    when(userRepository.findById(91)).thenReturn(Optional.of(winnerPlayer.getUser()));
+    when(userRepository.findById(92)).thenReturn(Optional.of(loserPlayer.getUser()));
+    when(frameRepository.save(any(Frame.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(tableRepository.save(any(SnookerTable.class))).thenAnswer(invocation -> invocation.getArgument(0));
+    when(framePlayerRepository.save(any(FramePlayer.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    frameService.endFrame(frame.getId(), buildSingleEndRequest(91, 92), "manager@test.com");
+
+    assertEquals(new BigDecimal("50"), frame.getTotalAmount());
+    assertEquals(new BigDecimal("50"), frame.getPaymentDue());
+    assertEquals(new BigDecimal("50"), loserPlayer.getAmountDue());
   }
 
   @Test

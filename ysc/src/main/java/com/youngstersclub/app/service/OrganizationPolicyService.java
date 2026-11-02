@@ -82,6 +82,8 @@ public class OrganizationPolicyService {
       String typeValue = pricing.path("type").isMissingNode() || pricing.path("type").isNull()
           ? null : pricing.path("type").asText();
       PricingType type = typeValue == null || typeValue.isBlank() ? PricingType.DYNAMIC : parsePricingType(typeValue);
+      Integer minFrameTime = parseOptionalPositiveInteger(pricing, "min-frame-time");
+      BigDecimal minFramePrize = parseOptionalNonNegativeDecimal(pricing, "min-frame-prize");
 
       JsonNode reminder = root.path("whatsappPaymentReminder");
       JsonNode weekdaysNode = reminder.path("weekdays");
@@ -91,7 +93,7 @@ public class OrganizationPolicyService {
       BigDecimal threshold = thresholdNode.isMissingNode() || thresholdNode.isNull()
           ? DEFAULT_MINIMUM_DUE_THRESHOLD : parseThreshold(thresholdNode);
       return new OrganizationPolicy(
-          new OrganizationPolicy.PricingPolicy(type),
+          new OrganizationPolicy.PricingPolicy(type, minFrameTime, minFramePrize),
           new OrganizationPolicy.WhatsappPaymentReminderPolicy(weekdays, threshold));
     } catch (IllegalArgumentException ex) {
       throw ex;
@@ -112,8 +114,16 @@ public class OrganizationPolicyService {
     if (threshold.compareTo(BigDecimal.ZERO) < 0) {
       throw new IllegalArgumentException("Minimum due threshold cannot be negative");
     }
+    Integer minFrameTime = policy.pricing().minFrameTime();
+    BigDecimal minFramePrize = policy.pricing().minFramePrize();
+    if (minFrameTime != null && minFrameTime <= 0) {
+      throw new IllegalArgumentException("Minimum frame time must be positive");
+    }
+    if (minFramePrize != null && minFramePrize.compareTo(BigDecimal.ZERO) < 0) {
+      throw new IllegalArgumentException("Minimum frame price cannot be negative");
+    }
     return new OrganizationPolicy(
-        new OrganizationPolicy.PricingPolicy(policy.pricing().type()),
+        new OrganizationPolicy.PricingPolicy(policy.pricing().type(), minFrameTime, minFramePrize),
         new OrganizationPolicy.WhatsappPaymentReminderPolicy(weekdays, threshold));
   }
 
@@ -155,6 +165,44 @@ public class OrganizationPolicyService {
       return value;
     } catch (NumberFormatException ex) {
       throw new IllegalArgumentException("Minimum due threshold must be numeric");
+    }
+  }
+
+  private Integer parseOptionalPositiveInteger(JsonNode pricing, String fieldName) {
+    JsonNode node = pricing.path(fieldName);
+    if (node.isMissingNode() || node.isNull()) {
+      return null;
+    }
+    if (!node.isIntegralNumber() && !node.isTextual()) {
+      throw new IllegalArgumentException(fieldName + " must be a positive integer");
+    }
+    try {
+      int value = Integer.parseInt(node.asText());
+      if (value <= 0) {
+        throw new IllegalArgumentException(fieldName + " must be positive");
+      }
+      return value;
+    } catch (NumberFormatException ex) {
+      throw new IllegalArgumentException(fieldName + " must be a positive integer");
+    }
+  }
+
+  private BigDecimal parseOptionalNonNegativeDecimal(JsonNode pricing, String fieldName) {
+    JsonNode node = pricing.path(fieldName);
+    if (node.isMissingNode() || node.isNull()) {
+      return null;
+    }
+    if (!node.isNumber() && !node.isTextual()) {
+      throw new IllegalArgumentException(fieldName + " must be numeric");
+    }
+    try {
+      BigDecimal value = new BigDecimal(node.asText());
+      if (value.compareTo(BigDecimal.ZERO) < 0) {
+        throw new IllegalArgumentException(fieldName + " cannot be negative");
+      }
+      return value;
+    } catch (NumberFormatException ex) {
+      throw new IllegalArgumentException(fieldName + " must be numeric");
     }
   }
 

@@ -58,7 +58,7 @@ interface BranchOption {
 type PricingType = 'FIXED' | 'DYNAMIC';
 type Weekday = 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY' | 'SUNDAY';
 interface OrganizationPolicy {
-  pricing: { type: PricingType };
+  pricing: { type: PricingType; 'min-frame-time': number | null; 'min-frame-prize': number | null };
   whatsappPaymentReminder: { weekdays: Weekday[]; minimumDueThreshold: number };
 }
 
@@ -249,7 +249,10 @@ export class ClubSetupPortalComponent implements OnInit, OnDestroy {
   }
 
   savePolicy(): void {
-    if (this.policy.whatsappPaymentReminder.minimumDueThreshold < 0 || this.isSavingPolicy) return;
+    if (this.policy.whatsappPaymentReminder.minimumDueThreshold < 0
+      || (this.policy.pricing['min-frame-time'] !== null && this.policy.pricing['min-frame-time'] <= 0)
+      || (this.policy.pricing['min-frame-prize'] !== null && this.policy.pricing['min-frame-prize'] < 0)
+      || this.isSavingPolicy) return;
     this.isSavingPolicy = true;
     this.policyError = '';
     this.cdr.markForCheck();
@@ -848,7 +851,7 @@ export class ClubSetupPortalComponent implements OnInit, OnDestroy {
 
   private defaultPolicy(): OrganizationPolicy {
     return {
-      pricing: { type: 'DYNAMIC' },
+      pricing: { type: 'DYNAMIC', 'min-frame-time': null, 'min-frame-prize': null },
       whatsappPaymentReminder: {
         weekdays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
         minimumDueThreshold: 500,
